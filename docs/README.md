@@ -4,7 +4,7 @@
 ## Supported docstring conventions (google)
 For documentation generation Sphinx uses the google docstring convention.
 
-[https://www.sphinx-doc.org/en/master/usage/extensions/example_google.html](https://www.sphinx-doc.org/en/master/usage/extensions/example_google.html)
+[https://www.sphinx-doc.org/en/master/usage/extensions/example_numpy.html](https://www.sphinx-doc.org/en/master/usage/extensions/example_numpy.html)
 ```python
 def add(a: int, b: int) -> int:
     """
