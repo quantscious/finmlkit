@@ -1,13 +1,12 @@
 import numpy as np
 import pytest
 import os
-#os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
+os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
 from finmlkit.bars.base import comp_bar_ohlcv
 
 def test_comp_ohlcv():
     # Sample input data
-    timestamps = np.array([1, 2, 3, 4, 5, 6], dtype=np.int64)
     prices = np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 150.0, 100.0, 50.0, 25.0], dtype=np.float64)
     bar_open_indices = np.array([0, 3, 6], dtype=np.int64)  # Defines two bars
@@ -37,7 +36,6 @@ def test_comp_ohlcv():
 
 def test_single_trade_per_bar():
     # Each bar has exactly one trade
-    timestamps = np.array([1, 2, 3], dtype=np.int64)
     prices = np.array([10.0, 12.0, 14.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 300.0], dtype=np.float64)
     bar_open_indices = np.array([0, 1, 2, 3], dtype=np.int64)  # Three bars, each with one trade
@@ -65,7 +63,6 @@ def test_single_trade_per_bar():
 
 def test_zero_volume():
     # One trade with zero volume
-    timestamps = np.array([1], dtype=np.int64)
     prices = np.array([10.0], dtype=np.float64)
     volumes = np.array([0.0], dtype=np.float64)  # Zero volume
     bar_open_indices = np.array([0, 1], dtype=np.int64)  # One bar
@@ -99,7 +96,6 @@ def test_empty_bars():
 
     """
     # Gap between bar open indices, indicating an empty bar
-    timestamps = np.array([1, 12, 13], dtype=np.int64)
     prices = np.array([10.0, 12.0, 14.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 300.0], dtype=np.float64)
     bar_open_indices = np.array([0, 1, 1, 3], dtype=np.int64)  # One empty bar in the middle

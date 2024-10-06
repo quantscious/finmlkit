@@ -148,7 +148,8 @@ def comp_bar_directional_features(
         current_volume_sell = 0.0
         current_dollars_buy = 0.0
         current_dollars_sell = 0.0
-        current_cum_ticks = 0.0
+        # Cumulative values
+        current_cum_ticks = 0
         current_cum_volumes = 0.0
         current_cum_dollars = 0.0
         current_max_spread = 0.0
@@ -164,7 +165,7 @@ def comp_bar_directional_features(
 
             # Calculate the spread between buy and sell prices
             if current_tick_sign != prev_tick_sign:
-                spread = prices[j] - prices[j - 1]
+                spread = abs(prices[j] - prices[j - 1])
                 if spread > current_max_spread:
                     current_max_spread = spread
             prev_tick_sign = current_tick_sign
@@ -185,6 +186,8 @@ def comp_bar_directional_features(
                 current_cum_ticks -= 1
                 current_cum_volumes -= volumes[j]
                 current_cum_dollars -= prices[j] * volumes[j]
+            else:
+                continue
 
             # Update the cumulative min and max values
             cum_ticks_max[i] = max(cum_ticks_max[i], current_cum_ticks)

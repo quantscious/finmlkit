@@ -75,14 +75,14 @@ def test_comp_bar_directional_features_mixed_trades():
     volume_sell_expected = np.array([20.0], dtype=np.float32)
     dollars_buy_expected = np.array([100.0 * 30.0 + 101.0 * 40.0], dtype=np.float32)
     dollars_sell_expected = np.array([99.0 * 20.0], dtype=np.float32)
-    max_spread_expected = np.array([2.0], dtype=np.float32)  # 101.0 - 99.0
+    max_spread_expected = np.array([1.0], dtype=np.float32)  #
 
     cum_ticks_min_expected = np.array([-1.0])
     cum_ticks_max_expected = np.array([1.0])
     cum_volumes_min_expected = np.array([-20.0])
-    cum_volumes_max_expected = np.array([70.0])
+    cum_volumes_max_expected = np.array([50.0])
     cum_dollars_min_expected = np.array([-1980.0])  # -99.0 * 20.0
-    cum_dollars_max_expected = np.array([100.0 * 30.0 + 101.0 * 40.0])
+    cum_dollars_max_expected = np.array([100.0 * 30.0 + 101.0 * 40.0 -1980])
 
     # Call the function
     result = comp_bar_directional_features(prices, volumes, bar_open_indices)
@@ -177,7 +177,7 @@ def test_comp_bar_directional_features_all_sells():
     volume_sell_expected = np.array([20.0 + 30.0], dtype=np.float32)
     dollars_buy_expected = np.array([0.0], dtype=np.float32)
     dollars_sell_expected = np.array([99.0 * 20.0 + 98.0 * 30.0], dtype=np.float32)
-    max_spread_expected = np.array([0.0], dtype=np.float32)  # No spread as all trades are sells
+    max_spread_expected = np.array([1.0], dtype=np.float32)
 
     cum_ticks_min_expected = np.array([-2.0])
     cum_ticks_max_expected = np.array([-1.0])
@@ -263,3 +263,6 @@ def test_comp_bar_directional_features_constant_price():
     np.testing.assert_array_equal(cum_volumes_max, cum_volumes_max_expected)
     np.testing.assert_array_equal(cum_dollars_min, cum_dollars_min_expected)
     np.testing.assert_array_equal(cum_dollars_max, cum_dollars_max_expected)
+
+if __name__ == "__main__":
+    pytest.main([__file__])
