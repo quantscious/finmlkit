@@ -27,3 +27,10 @@ By **pooling our expertise**, we can create a **stronger foundation** for financ
 
 # Contribution
 We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, or improving documentation, **your contribution matters**. Let’s work together to make the financial machine learning space better for everyone!
+
+# Project Structure
+## Bars
+Bars are the primary data structure in FinMLKit – constructed from raw trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data). Bars are used as input for indicators, strategies, and other components of the library.
+
+## Indicators
+Everything that processes bars data (candlestick/OHLCV) and calculates derived values/features from it is considered an indicator. This includes moving averages, RSI, MACD, etc. Indicators are the building blocks of trading strategies and are used to generate signals for buying or selling assets. 
