@@ -4,10 +4,8 @@ from numpy.typing import NDArray
 import numpy as np
 import pandas as pd
 
-type float64 = float | np.float64  # Float type alias
-
 @njit(nopython=True, nogil=True, fastmath=True)
-def comp_trade_side(price: float64, prev_price: float64, prev_tick: int) -> Literal[-1, 1]:
+def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[-1, 1]:
     """
     Implements the tick rule defined on page 29 of "Advances in Financial Machine Learning". It classifies the
     trade as an aggressive buy or sell based on the direction of price change.

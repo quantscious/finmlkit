@@ -1,12 +1,13 @@
 import numpy as np
 from numba import njit
 from numba import prange
+from typing import Tuple
 from numpy.typing import NDArray
 
-type NDArrayF64 = NDArray[np.float64]
-
 @njit(nogil=True, parallel=False)
-def chu_stinchcombe_white_developing(y: NDArrayF64, warmup_period: int = 30) -> tuple[NDArrayF64, NDArrayF64, NDArrayF64, NDArrayF64]:
+def chu_stinchcombe_white_developing(y: NDArray[np.float64], warmup_period: int = 30) -> (
+        Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+):
     """
     Perform the Chu-Stinchcombe-White CUSUM Test on Levels.
 
@@ -90,7 +91,7 @@ def chu_stinchcombe_white_developing(y: NDArrayF64, warmup_period: int = 30) -> 
 
 
 @njit(nogil=True)
-def chu_stinchcombe_white_last(y: NDArrayF64) -> tuple[float, float, float, float]:
+def chu_stinchcombe_white_last(y: NDArray[np.float64]) -> Tuple[float, float, float, float]:
     """
     Perform the Chu-Stinchcombe-White CUSUM Test on Levels for the last observation.
 
@@ -162,7 +163,8 @@ def chu_stinchcombe_white_last(y: NDArrayF64) -> tuple[float, float, float, floa
 
 
 @njit(nogil=True, parallel=True)
-def chu_stinchcombe_white_rolling(close_prices: NDArrayF64, window_size: int = 1000, warmup_period: int = 30) -> tuple[NDArrayF64, NDArrayF64, NDArrayF64, NDArrayF64]:
+def chu_stinchcombe_white_rolling(close_prices: NDArray[np.float64], window_size: int = 1000, warmup_period: int = 30) -> (
+        Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]):
     """
     Perform the Chu-Stinchcombe-White CUSUM Test on Levels over a rolling window.
 

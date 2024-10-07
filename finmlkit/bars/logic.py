@@ -2,6 +2,7 @@
 This module contains the logic for generating time, tick, volume, and dollar bars.
 These functions return the open indices of the bars in the raw trades data.
 """
+from typing import Tuple
 import numpy as np
 from numba import njit
 from numba.typed import List as NumbaList
@@ -9,7 +10,7 @@ from numpy.typing import NDArray
 
 
 @njit(nopython=True, nogil=True)
-def time_bar_indexer(timestamps: NDArray[np.int64], interval_seconds: int) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def time_bar_indexer(timestamps: NDArray[np.int64], interval_seconds: int) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the time bar open indices in the raw trades timestamp array.
 
@@ -52,7 +53,7 @@ def time_bar_indexer(timestamps: NDArray[np.int64], interval_seconds: int) -> tu
 
 
 @njit(nogil=True)
-def tick_bar_indexer(timestamps: NDArray[np.int64], threshold: int) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def tick_bar_indexer(timestamps: NDArray[np.int64], threshold: int) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the tick bar open indices in the raw trades price array.
 
@@ -90,7 +91,7 @@ def tick_bar_indexer(timestamps: NDArray[np.int64], threshold: int) -> tuple[NDA
 
 
 @njit(nogi=True)
-def volume_bar_indexer(timestamps: NDArray[np.int64], volumes: NDArray[np.float64], threshold: float) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def volume_bar_indexer(timestamps: NDArray[np.int64], volumes: NDArray[np.float64], threshold: float) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the volume bar open indices in the raw trades price array.
 
@@ -134,7 +135,7 @@ def volume_bar_indexer(timestamps: NDArray[np.int64], volumes: NDArray[np.float6
 
 
 @njit(nogil=True)
-def dollar_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.int64], volumes: NDArray[np.float64], threshold: float) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def dollar_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.int64], volumes: NDArray[np.float64], threshold: float) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the dollar bar open indices in the raw trades price array.
 
@@ -180,7 +181,7 @@ def dollar_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.int64],
 
 
 @njit(nogil=True)
-def imbalance_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.float64], volumes: NDArray[np.float64], threshold: float) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def imbalance_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.float64], volumes: NDArray[np.float64], threshold: float) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the imbalance bar open indices in the raw trades price array.
 
@@ -209,7 +210,7 @@ def imbalance_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.floa
 
 
 @njit(nogil=True)
-def run_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.float64], volumes: NDArray[np.float64], threshold: float) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+def run_bar_indexer(timestamps: NDArray[np.int64], prices: NDArray[np.float64], volumes: NDArray[np.float64], threshold: float) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the run bar open indices in the raw trades price array.
 
