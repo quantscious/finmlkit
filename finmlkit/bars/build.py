@@ -1,3 +1,8 @@
+"""
+This module contains the functions to build candlestick bars and other intra-bar features
+(i.e. directional features, footprints) from raw trades data using the indexer functions outputs
+defined in the logic module.
+"""
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray

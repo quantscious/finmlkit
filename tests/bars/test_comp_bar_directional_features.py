@@ -3,7 +3,7 @@ import numpy as np
 import os
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.bars.base import comp_bar_directional_features
+from finmlkit.bars.build import comp_bar_directional_features
 
 def test_comp_bar_directional_features_simple_case():
     prices = np.array([100.0, 101.0, 102.0], dtype=np.float64)
