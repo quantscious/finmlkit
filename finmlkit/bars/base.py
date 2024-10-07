@@ -2,7 +2,12 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from numba import prange
-from .utils import comp_trade_side_vector
+from .utils import comp_trade_side_vector, footprint_to_dataframe
+from dataclasses import dataclass
+from typing import Union, Optional, List, Dict, Tuple
+import pandas as pd
+import datetime as dt
+import numba as nb
 from finmlkit.utils.log import logger
 
 
@@ -214,6 +219,240 @@ def comp_bar_directional_features(
         cum_volumes_min, cum_volumes_max,
         cum_dollars_min, cum_dollars_max
     )
+
+
+@dataclass
+class FootprintData:
+    """
+    Footprint data container for the dynamic memory footprint calculations.
+    All list attributes are initialized as numpy arrays with dtype=object to ensure they are serializable.
+    """
+    # Data attributes
+    bar_timestamps: np.ndarray      # 1D int64 array
+    price_levels: Union[np.ndarray, list[np.array]]        # Array of 1D int32 arrays (price levels in price tick units)
+    price_tick:   float               # Price tick size (float)
+    buy_volumes:  Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
+    sell_volumes: Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
+    buy_ticks:    Union[np.ndarray, list[np.array]]         # Array of 1D int32 arrays
+    sell_ticks:   Union[np.ndarray, list[np.array]]         # Array of 1D int32 arrays
+    buy_imbalances:  Union[np.ndarray, list[np.array]]      # Array of 1D bool arrays
+    sell_imbalances: Union[np.ndarray, list[np.array]]      # Array of 1D bool arrays
+
+    # Additional attributes
+    cot_price_levels: Optional[np.ndarray] = None  # 1D int32 array
+    sell_imbalances_sum: Optional[np.ndarray] = None  # 1D uint16 array
+    buy_imbalances_sum: Optional[np.ndarray] = None  # 1D uint16 array
+
+    # Private attributes
+    _datetime_index: pd.Series = None  # DatetimeIndex for date time slicing (will be set in __post_init__)
+
+    def __post_init__(self):
+        # Convert bar_timestamps to pandas DatetimeIndex for easier slicing
+        # timestamps are in nanoseconds
+        self._datetime_index = pd.to_datetime(self.bar_timestamps, unit='ns')
+
+
+    def __len__(self) -> int:
+        """
+        Returns the number of data points in the FootprintData object.
+        """
+        return len(self.bar_timestamps)
+
+    def __repr__(self) -> str:
+        """
+        String representation for debugging and logging.
+        """
+        additional_info = {
+            'cot_price_levels': 'present' if self.cot_price_levels is not None else 'missing',
+            'sell_imbalances_sum': 'present' if self.sell_imbalances_sum is not None else 'missing',
+            'buy_imbalances_sum': 'present' if self.buy_imbalances_sum is not None else 'missing'
+        }
+
+        # Check if all arrays are of the same type
+        array_types = {type(getattr(self, attr)).__name__ for attr in [
+            'price_levels', 'buy_volumes', 'sell_volumes',
+            'buy_ticks', 'sell_ticks', 'buy_imbalances', 'sell_imbalances'
+        ]}
+
+        if len(array_types) == 1:
+            array_type = array_types.pop()
+            type_message = array_type
+        else:
+            type_message = f"Warning: Arrays have mixed types: {', '.join(array_types)}"
+
+        # Calculate total memory usage
+        total_memory_usage = self.memory_usage()
+
+        return (
+            f"FootprintData:\n"
+            f"  Number of Bars: {len(self)}\n"
+            f"  Price Tick: {self.price_tick}\n"
+            f"  Date Range: {self._datetime_index[0]} to {self._datetime_index[-1]}\n"
+            f"  Array Types: {type_message}\n"
+            f"  Optional Attributes:\n"
+            f"    COT Price Levels: {additional_info['cot_price_levels']}\n"
+            f"    Sell Imbalances Sum: {additional_info['sell_imbalances_sum']}\n"
+            f"    Buy Imbalances Sum: {additional_info['buy_imbalances_sum']}\n"
+            f"  Total Memory Usage: {total_memory_usage:.3f} MB\n"
+        )
+
+    def __getitem__(self, key) -> 'FootprintData':
+        """
+        Enable slicing of the FootprintData object.
+        Args:
+            key: The slice or integer index to access specific data.
+        Returns:
+            A new FootprintData object with the sliced data.
+        """
+        if isinstance(key, slice):
+            if isinstance(key.start, (str, dt.datetime)) and isinstance(key.stop, (str, dt.datetime)):
+                # Use pandas indexing with datetime slice
+                start_idx, end_idx = self._datetime_index.slice_locs(start=key.start, end=key.stop)
+                return self[start_idx:end_idx]
+
+            # Regular numeric slicing
+            return FootprintData(
+                bar_timestamps=self.bar_timestamps[key],
+                price_levels=self.price_levels[key],
+                price_tick=self.price_tick,
+                buy_volumes=self.buy_volumes[key],
+                sell_volumes=self.sell_volumes[key],
+                buy_ticks=self.buy_ticks[key],
+                sell_ticks=self.sell_ticks[key],
+                buy_imbalances=self.buy_imbalances[key],
+                sell_imbalances=self.sell_imbalances[key],
+                cot_price_levels=self.cot_price_levels[key] if self.cot_price_levels is not None else None,
+                sell_imbalances_sum=self.sell_imbalances_sum[key] if self.sell_imbalances_sum is not None else None,
+                buy_imbalances_sum=self.buy_imbalances_sum[key] if self.buy_imbalances_sum is not None else None
+            )
+        else:
+            raise TypeError("Invalid argument type. Expected a slice.")
+
+    @classmethod
+    def from_numba(cls, data: Tuple, price_tick: float) -> 'FootprintData':
+        """
+        Initialize the FootprintData data container from the output of the calculate_footprint_dynamic function.
+        (The output is a numba list which we cast to numpy arrays for serialization and saving purposes.)
+        Args:
+            data: Output of the calculate_footprint_dynamic function, containing array of numpy arrays.
+            price_tick: The price tick size.
+        """
+        instance = cls(
+            bar_timestamps=np.array(data[0], dtype=np.int64),
+            price_levels=np.array(data[1], dtype=object),
+            price_tick=price_tick,
+            buy_volumes=np.array(data[2], dtype=object),
+            sell_volumes=np.array(data[3], dtype=object),
+            buy_ticks=np.array(data[4], dtype=object),
+            sell_ticks=np.array(data[5], dtype=object),
+            buy_imbalances=np.array(data[6], dtype=object),
+            sell_imbalances=np.array(data[7], dtype=object),
+            buy_imbalances_sum=np.array(data[8], dtype=np.int16),
+            sell_imbalances_sum=np.array(data[9], dtype=np.int16),
+            cot_price_levels=np.array(data[10], dtype=np.int32)
+        )
+
+        # Validate the data
+        if not instance.is_valid():
+            raise ValueError("Inconsistent data length in the FootprintData container!")
+
+        return instance
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'FootprintData':
+        """
+        Initialize the FootprintData data container from a dictionary.
+        Args:
+            data: Dictionary containing the footprint data;
+                    keys: bar_timestamps, price_levels, buy_volumes, sell_volumes,
+                          buy_ticks, sell_ticks, buy_imbalances, sell_imbalances, price_tick
+        """
+        instance = cls(
+            bar_timestamps=data['bar_timestamps'],
+            price_levels=data['price_levels'],
+            price_tick=data['price_tick'],
+            buy_volumes=data['buy_volumes'],
+            sell_volumes=data['sell_volumes'],
+            buy_ticks=data['buy_ticks'],
+            sell_ticks=data['sell_ticks'],
+            buy_imbalances=data['buy_imbalances'],
+            sell_imbalances=data['sell_imbalances']
+        )
+
+        # Validate the data
+        if not instance.is_valid():
+            raise ValueError("Inconsistent data length in the FootprintData container!")
+
+        return instance
+
+    def get_df(self):
+        """
+        Convert the footprint data to a pandas DataFrame format.
+        Returns: footprint dataframe
+        """
+        df = footprint_to_dataframe(self.bar_timestamps, self.price_levels, self.buy_volumes,
+                                    self.sell_volumes, self.buy_ticks, self.sell_ticks,
+                                    self.buy_imbalances, self.sell_imbalances, self.price_tick)
+        return df
+
+    def cast_to_numba_list(self):
+        """
+        Cast the footprint data in-place to a numba list for numba calculations.
+        (Numba does not support numpy arrays with dtype=object, we have to cast them to numba lists.)
+        """
+        self.price_levels = nb.typed.List(self.price_levels)
+        self.buy_volumes = nb.typed.List(self.buy_volumes)
+        self.sell_volumes = nb.typed.List(self.sell_volumes)
+        self.buy_ticks = nb.typed.List(self.buy_ticks)
+        self.sell_ticks = nb.typed.List(self.sell_ticks)
+        self.buy_imbalances = nb.typed.List(self.buy_imbalances)
+        self.sell_imbalances = nb.typed.List(self.sell_imbalances)
+
+    def cast_to_numpy(self):
+        """
+        Cast the footprint data in-place to numpy arrays object for general processing and serialization.
+        """
+        self.price_levels = np.array(self.price_levels, dtype=object)
+        self.buy_volumes = np.array(self.buy_volumes, dtype=object)
+        self.sell_volumes = np.array(self.sell_volumes, dtype=object)
+        self.buy_ticks = np.array(self.buy_ticks, dtype=object)
+        self.sell_ticks = np.array(self.sell_ticks, dtype=object)
+        self.buy_imbalances = np.array(self.buy_imbalances, dtype=object)
+        self.sell_imbalances = np.array(self.sell_imbalances, dtype=object)
+
+    def memory_usage(self) -> float:
+        """
+        Calculate total memory usage of the FootprintData object by iterating through its elements.
+        """
+        from pympler import asizeof  # memory profiler
+
+        total_memory = 0
+        attributes = [
+            'bar_timestamps', 'price_levels', 'buy_volumes',
+            'sell_volumes', 'buy_ticks', 'sell_ticks',
+            'buy_imbalances', 'sell_imbalances',
+            'cot_price_levels', 'sell_imbalances_sum', 'buy_imbalances_sum'
+        ]
+
+        for attr in attributes:
+            array = getattr(self, attr)
+            if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, nb.typed.List):
+                # Use pympler to measure the size of each element
+                total_memory += sum(asizeof.asizeof(item) for item in array if item is not None)
+
+        return total_memory / (1024 ** 2)  # Convert to MB
+
+    def is_valid(self) -> bool:
+        # Check for consistent lengths and types of all attributes
+        expected_length = len(self.bar_timestamps)
+        attributes = [
+            self.price_levels, self.buy_volumes, self.sell_volumes,
+            self.buy_ticks, self.sell_ticks, self.buy_imbalances, self.sell_imbalances
+        ]
+        for attr in attributes:
+            if len(attr) != expected_length:
+                return False
+        return True
 
 
 @njit(nopython=True, nogil=True)

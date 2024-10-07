@@ -2,6 +2,7 @@ from typing import Literal
 from numba import njit
 from numpy.typing import NDArray
 import numpy as np
+import pandas as pd
 
 type float64 = float | np.float64  # Float type alias
 
@@ -114,3 +115,89 @@ def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
     rounded_tick_size = round(price_tick_size, ndigits)
 
     return rounded_tick_size
+
+
+def footprint_to_dataframe(bar_timestamps, price_levels, buy_volumes, sell_volumes, buy_ticks, sell_ticks,
+                           buy_imbalance, sell_imbalance, price_tick):
+    """
+    Convert footprint data to a pandas DataFrame format.
+    The output filters out NaN price levels and sorts them in descending order by price level and ascending order by bar datetime.
+
+    Args:
+        bar_timestamps: bar timestamps (1d numpy array)
+        price_levels: price levels (list of 1d numpy arrays) in ascending order
+        buy_volumes: aligned buy volumes (list of 1d numpy arrays)
+        sell_volumes: aligned sell volumes (list of 1d numpy arrays)
+        buy_ticks: aligned buy ticks (list of 1d numpy arrays)
+        sell_ticks: aligned sell ticks (list of 1d numpy arrays)
+        buy_imbalance: aligned buy imbalance (list of 1d numpy arrays)
+        sell_imbalance: aligned sell imbalance (list of 1d numpy arrays)
+        price_tick: price tick size (float)
+
+    Returns: footprint dataframe
+    """
+    # Convert bar_timestamps to datetime
+    bar_dt = pd.to_datetime(bar_timestamps)
+
+    # Create lists to hold the data for the DataFrame
+    bar_dt_repeated = []
+    bar_ids_repeated = []
+    price_levels_flat = []
+    buy_volumes_flat = []
+    sell_volumes_flat = []
+    buy_ticks_flat = []
+    sell_ticks_flat = []
+    buy_imbalance_flat = []
+    sell_imbalance_flat = []
+
+    # Process each bar's data
+    for bar_idx, bar_time in enumerate(bar_dt):
+        n_levels = len(price_levels[bar_idx])
+
+        bar_dt_repeated.extend([bar_time] * n_levels)
+        bar_ids_repeated.extend([bar_idx] * n_levels)
+        price_levels_flat.extend(price_levels[bar_idx])
+        buy_volumes_flat.extend(buy_volumes[bar_idx])
+        sell_volumes_flat.extend(sell_volumes[bar_idx])
+        buy_ticks_flat.extend(buy_ticks[bar_idx])
+        sell_ticks_flat.extend(sell_ticks[bar_idx])
+        buy_imbalance_flat.extend(buy_imbalance[bar_idx])
+        sell_imbalance_flat.extend(sell_imbalance[bar_idx])
+
+    # Convert lists to numpy arrays
+    bar_dt_repeated = np.array(bar_dt_repeated)
+    bar_ids_repeated = np.array(bar_ids_repeated)
+    price_levels_flat = np.array(price_levels_flat)
+    buy_volumes_flat = np.array(buy_volumes_flat)
+    sell_volumes_flat = np.array(sell_volumes_flat)
+    buy_ticks_flat = np.array(buy_ticks_flat)
+    sell_ticks_flat = np.array(sell_ticks_flat)
+    buy_imbalance_flat = np.array(buy_imbalance_flat)
+    sell_imbalance_flat = np.array(sell_imbalance_flat)
+
+    data = {
+        'price_level': price_levels_flat,
+        'sell_ticks': sell_ticks_flat,
+        'buy_ticks': buy_ticks_flat,
+        'sell_volume': sell_volumes_flat,
+        'buy_volume': buy_volumes_flat,
+        'sell_imbalance': sell_imbalance_flat,
+        'buy_imbalance': buy_imbalance_flat
+    }
+
+    # Create MultiIndex from the valid row indices, bar timestamps, and price levels
+    multi_index = pd.MultiIndex.from_arrays([
+        bar_ids_repeated,
+        bar_dt_repeated,
+    ], names=['bar_idx', 'bar_datetime_idx'])
+
+    # Create the DataFrame
+    df = pd.DataFrame(data, index=multi_index)
+
+    # Convert price levels to actual price unit
+    df['price_level'] = df['price_level'] * price_tick
+
+    # Descending order by price level and ascending order by bar datetime
+    df = df.sort_values(by=['bar_datetime_idx', 'price_level'], ascending=[True, False])
+
+    return df
