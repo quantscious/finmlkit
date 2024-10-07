@@ -4,6 +4,7 @@ from typing import Dict, Tuple, Any
 from numpy.typing import NDArray
 from .build import BarBuilderBase
 from .logic import time_bar_indexer, tick_bar_indexer, volume_bar_indexer, dollar_bar_indexer, imbalance_bar_indexer, run_bar_indexer
+from finmlkit.utils.log import logger
 
 
 class TimeBarKit(BarBuilderBase):
@@ -24,6 +25,8 @@ class TimeBarKit(BarBuilderBase):
         """
         super().__init__(trades)
         self.interval = interval
+
+        logger.info(f"Time bar builder initialized with interval: {interval} seconds.")
 
     def generate_bar_indices(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """

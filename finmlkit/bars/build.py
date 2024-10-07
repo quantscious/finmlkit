@@ -14,7 +14,6 @@ import pandas as pd
 import datetime as dt
 import numba as nb
 from abc import ABC, abstractmethod
-from finmlkit.utils.log import logger
 
 
 @dataclass
