@@ -87,7 +87,7 @@ def ewm_std(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
         raise ValueError("Window size is less than 1. Please provide a window size greater than 1.")
 
     alpha = 2.0 / (window + 1.0)
-    one_minus_alpha = 1.0 - alpha
+    beta = 1.0 - alpha
 
     # Initialize cumulative sums and weights
     S_y = 0.0  # Cumulative sum of weighted y
@@ -96,7 +96,7 @@ def ewm_std(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     S_w2 = 0.0  # Cumulative sum of squared weights
 
     for i in range(n):
-        w_i = one_minus_alpha ** (n - i - 1)
+        w_i = beta ** (n - i - 1)
         S_w += w_i
         S_w2 += w_i ** 2
         S_y += w_i * y[i]

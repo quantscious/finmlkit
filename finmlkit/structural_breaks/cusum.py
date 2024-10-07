@@ -4,6 +4,7 @@ from numba import prange
 from typing import Tuple
 from numpy.typing import NDArray
 
+
 @njit(nogil=True, parallel=False)
 def chu_stinchcombe_white_developing(y: NDArray[np.float64], warmup_period: int = 30) -> (
         Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
