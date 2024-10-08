@@ -6,7 +6,7 @@ FinMLKit is an **open-source, lightweight** alternative to the well-known MLFinL
 FinMLKit uses Numba over Pandas for complex financial algorithms to ensure speed and precision. Numba’s **Just-In-Time (JIT)** compilation allows it to convert Python code into machine code, significantly improving performance, especially in iterative tasks where parallelization can be utilized. In contrast, Pandas, while great for structuring and managing data, is slow and cumbersome for such operations. Therefore, we use Pandas only as a wrapper for handling data, allowing it to shine where it excels, while Numba powers the core algorithmic computations for efficiency and clarity. This way, we can avoid relying on slow and elusive pandas operations and focus on efficient, more explicit codes in the core functions.
 
 Key principles are **Simplicity**, **Speed**, and **Accessibility**:
-- **Simplicity**: No complex frameworks, no elusive pandas operations, just efficient, easy-to-understand code.
+- **Simplicity**: No complex frameworks, no elusive pandas operations, just efficient, explicit algorithms.
 - **Speed**: Core functions built with Numba for high-performance computation.
 - **Accessibility:** The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
 
@@ -31,6 +31,18 @@ We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s
 # Project Structure
 ## Bars
 Bars are the primary data structure in FinMLKit – constructed from raw trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data). Bars are used as input for indicators, strategies, and other components of the library.
+
+[x] - OHLCV bars
+[x] - Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
+[x] - Bar footprints
+
+[x] - Time bars
+[x] - Tick bars
+[x] - Volume bars
+[x] - Dollar bars
+[] - Imbalance bars
+[] - Run bars
+
 
 ## Indicators
 Everything that processes bars data (candlestick/OHLCV) and calculates derived values/features from it is considered an indicator. This includes moving averages, RSI, MACD, etc. Indicators are the building blocks of trading strategies and are used to generate signals for buying or selling assets. 

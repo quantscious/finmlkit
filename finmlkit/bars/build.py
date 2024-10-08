@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Union, Optional, List, Dict, Tuple
 import pandas as pd
 import datetime as dt
-import numba as nb
+from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
 
 
@@ -23,8 +23,8 @@ class FootprintData:
     All list attributes are initialized as numpy arrays with dtype=object to ensure they are serializable.
     """
     # Data attributes
-    bar_timestamps: np.ndarray      # 1D int64 array
-    price_levels: Union[np.ndarray, list[np.array]]        # Array of 1D int32 arrays (price levels in price tick units)
+    bar_timestamps: NDArray[np.int64]      # 1D int64 array
+    price_levels: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]        # Array of 1D int32 arrays (price levels in price tick units)
     price_tick:   float               # Price tick size (float)
     buy_volumes:  Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
     sell_volumes: Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
@@ -45,7 +45,6 @@ class FootprintData:
         # Convert bar_timestamps to pandas DatetimeIndex for easier slicing
         # timestamps are in nanoseconds
         self._datetime_index = pd.to_datetime(self.bar_timestamps, unit='ns')
-
 
     def __len__(self) -> int:
         """
@@ -195,13 +194,13 @@ class FootprintData:
         Cast the footprint data in-place to a numba list for numba calculations.
         (Numba does not support numpy arrays with dtype=object, we have to cast them to numba lists.)
         """
-        self.price_levels = nb.typed.List(self.price_levels)
-        self.buy_volumes = nb.typed.List(self.buy_volumes)
-        self.sell_volumes = nb.typed.List(self.sell_volumes)
-        self.buy_ticks = nb.typed.List(self.buy_ticks)
-        self.sell_ticks = nb.typed.List(self.sell_ticks)
-        self.buy_imbalances = nb.typed.List(self.buy_imbalances)
-        self.sell_imbalances = nb.typed.List(self.sell_imbalances)
+        self.price_levels = NumbaList(self.price_levels)
+        self.buy_volumes = NumbaList(self.buy_volumes)
+        self.sell_volumes = NumbaList(self.sell_volumes)
+        self.buy_ticks = NumbaList(self.buy_ticks)
+        self.sell_ticks = NumbaList(self.sell_ticks)
+        self.buy_imbalances = NumbaList(self.buy_imbalances)
+        self.sell_imbalances = NumbaList(self.sell_imbalances)
 
     def cast_to_numpy(self):
         """
@@ -231,7 +230,7 @@ class FootprintData:
 
         for attr in attributes:
             array = getattr(self, attr)
-            if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, nb.typed.List):
+            if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, NumbaList):
                 # Use pympler to measure the size of each element
                 total_memory += sum(asizeof.asizeof(item) for item in array if item is not None)
 
@@ -264,11 +263,22 @@ class BarBuilderBase(ABC):
         trades : pd.DataFrame
             A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
         """
+        assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
+        assert 'price' in trades.columns, "Missing 'price' column in trades data!"
+        assert 'amount' in trades.columns, "Missing 'amount' column in trades data!"
+
         self._raw_data = trades
-        self._open_indices = None
+        self._raw_data.sort_values('timestamp', inplace=True)
+
+        self._open_ts = self._open_indices = None
+    
+    def __str__(self):
+        return (f"Class: {self.__class__.__name__} with members:\n"
+                f"{[f"{key}: {value}\n" for key, value in self.__dict__.items()]} "
+                f"\nRaw trades data:\n{self._raw_data.info()}")
 
     @abstractmethod
-    def generate_bar_indices(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Abstract method to generate bar indices using the appropriate bar indexer.
         Returns
@@ -278,15 +288,45 @@ class BarBuilderBase(ABC):
         """
         pass
 
+    def _set_bar_open_values(self):
+        """
+        Calculate and sets the open timestamps and indices if not already calculated.
+        """
+        if self._open_indices is None:
+            self._open_ts, self._open_indices = self._generate_bar_opens()
+
     def build_ohlcv(self) -> pd.DataFrame:
         """
         Build the bar features using the generated indices and raw trades data.
         Returns
         -------
         pd.DataFrame
-            A dataframe containing the OHLCV + VWAP features.
+            A dataframe containing the OHLCV + VWAP features with datetime index.
         """
-        pass
+        self._set_bar_open_values()
+
+        ohlcv_tuple = comp_bar_ohlcv(
+            self._raw_data['price'].values,
+            self._raw_data['amount'].values,
+            self._open_indices
+        )
+
+        ohlcv_df = pd.DataFrame({
+            'timestamp': self._open_ts,
+            'open': ohlcv_tuple[0],
+            'high': ohlcv_tuple[1],
+            'low': ohlcv_tuple[2],
+            'close': ohlcv_tuple[3],
+            'volume': ohlcv_tuple[4],
+            'vwap': ohlcv_tuple[5]
+        })
+
+        # Convert timestamps to datetime index
+        ohlcv_df['timestamp'] = pd.to_datetime(ohlcv_df['timestamp'], unit='ns')
+        ohlcv_df.set_index('timestamp', inplace=True)
+
+        return ohlcv_df
+
 
     def build_directional_features(self) -> pd.DataFrame:
         """
@@ -298,7 +338,34 @@ class BarBuilderBase(ABC):
             ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread,
             cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
         """
-        pass
+        self._set_bar_open_values()
+
+        directional_tuple = comp_bar_directional_features(
+            self._raw_data['price'].values,
+            self._raw_data['amount'].values,
+            self._open_indices
+        )
+
+        directional_df = pd.DataFrame({
+            'timestamp': self._open_ts,
+            'ticks_buy': directional_tuple[0],
+            'ticks_sell': directional_tuple[1],
+            'volume_buy': directional_tuple[2],
+            'volume_sell': directional_tuple[3],
+            'dollars_buy': directional_tuple[4],
+            'dollars_sell': directional_tuple[5],
+            'max_spread': directional_tuple[6],
+            'cum_volumes_min': directional_tuple[7],
+            'cum_volumes_max': directional_tuple[8],
+            'cum_dollars_min': directional_tuple[9],
+            'cum_dollars_max': directional_tuple[10]
+        })
+
+        # Convert timestamps to datetime index
+        directional_df['timestamp'] = pd.to_datetime(directional_df['timestamp'], unit='ns')
+        directional_df.set_index('timestamp', inplace=True)
+
+        return directional_df
 
     def build_footprints(self) -> FootprintData:
         """
@@ -387,7 +454,6 @@ def comp_bar_ohlcv(
         bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
 
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
-
 
 
 @njit(nopython=True, nogil=True, parallel=True)
@@ -520,10 +586,15 @@ def comp_bar_directional_features(
         cum_dollars_min, cum_dollars_max
     )
 
+
 @njit(nopython=True, nogil=True)
 def comp_bar_footprints(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
-    bar_open_indices: NDArray[np.int64]
+    bar_open_indices: NDArray[np.int64],
+    price_tick_size: float,
+    bar_lows: NDArray[np.float64],
+    bar_highs: NDArray[np.float64],
+    imbalance_factor: float
 ):
     pass

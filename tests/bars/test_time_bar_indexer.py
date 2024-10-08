@@ -2,7 +2,7 @@ import numpy as np
 import os
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.bars.logic import time_bar_indexer
+from finmlkit.bars.logic import _time_bar_indexer
 
 def test_time_bar_indexer():
     # Prepare test data
@@ -23,7 +23,7 @@ def test_time_bar_indexer():
     expected_bar_open_indices = np.array([2, 4, 7])
 
     # Call the function
-    bar_open_indices = time_bar_indexer(timestamps, interval_seconds)
+    bar_open_indices = _time_bar_indexer(timestamps, interval_seconds)
 
     # Assert the output is as expected
     np.testing.assert_array_equal(bar_open_indices, expected_bar_open_indices)

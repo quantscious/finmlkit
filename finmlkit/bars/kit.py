@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Tuple, Any
 from numpy.typing import NDArray
 from .build import BarBuilderBase
-from .logic import time_bar_indexer, tick_bar_indexer, volume_bar_indexer, dollar_bar_indexer, imbalance_bar_indexer, run_bar_indexer
+from .logic import _time_bar_indexer, _tick_bar_indexer, _volume_bar_indexer, _dollar_bar_indexer, _imbalance_bar_indexer, _run_bar_indexer
 from finmlkit.utils.log import logger
 
 
@@ -28,7 +28,7 @@ class TimeBarKit(BarBuilderBase):
 
         logger.info(f"Time bar builder initialized with interval: {interval} seconds.")
 
-    def generate_bar_indices(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate time bar indices using the time bar indexer.
         Returns
@@ -37,4 +37,4 @@ class TimeBarKit(BarBuilderBase):
             Open timestamps and corresponding open indices in the raw trades data.
         """
         timestamps = self._raw_data['timestamp'].astype(np.int64).values
-        return time_bar_indexer(timestamps, self.interval)
+        return _time_bar_indexer(timestamps, self.interval)
