@@ -7,7 +7,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from numba import prange
-from .utils import comp_trade_side_vector, footprint_to_dataframe
+from .utils import comp_trade_side_vector, footprint_to_dataframe, comp_price_tick_size
 from dataclasses import dataclass
 from typing import Union, Optional, List, Dict, Tuple
 import pandas as pd
@@ -26,12 +26,12 @@ class FootprintData:
     bar_timestamps: NDArray[np.int64]      # 1D int64 array
     price_levels: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]        # Array of 1D int32 arrays (price levels in price tick units)
     price_tick:   float               # Price tick size (float)
-    buy_volumes:  Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
-    sell_volumes: Union[np.ndarray, list[np.array]]         # Array of 1D float32 arrays
-    buy_ticks:    Union[np.ndarray, list[np.array]]         # Array of 1D int32 arrays
-    sell_ticks:   Union[np.ndarray, list[np.array]]         # Array of 1D int32 arrays
-    buy_imbalances:  Union[np.ndarray, list[np.array]]      # Array of 1D bool arrays
-    sell_imbalances: Union[np.ndarray, list[np.array]]      # Array of 1D bool arrays
+    buy_volumes:  Union[np.ndarray, NumbaList[np.array]]         # Array of 1D float32 arrays
+    sell_volumes: Union[np.ndarray, NumbaList[np.array]]         # Array of 1D float32 arrays
+    buy_ticks:    Union[np.ndarray, NumbaList[np.array]]         # Array of 1D int32 arrays
+    sell_ticks:   Union[np.ndarray, NumbaList[np.array]]         # Array of 1D int32 arrays
+    buy_imbalances:  Union[np.ndarray, NumbaList[np.array]]      # Array of 1D bool arrays
+    sell_imbalances: Union[np.ndarray, NumbaList[np.array]]      # Array of 1D bool arrays
 
     # Additional attributes
     cot_price_levels: Optional[np.ndarray] = None  # 1D int32 array
@@ -125,10 +125,9 @@ class FootprintData:
     @classmethod
     def from_numba(cls, data: Tuple, price_tick: float) -> 'FootprintData':
         """
-        Initialize the FootprintData data container from the output of the calculate_footprint_dynamic function.
-        (The output is a numba list which we cast to numpy arrays for serialization and saving purposes.)
+        Initialize the FootprintData data container from the output of the comp_bar_footprint function.
         Args:
-            data: Output of the calculate_footprint_dynamic function, containing array of numpy arrays.
+            data: Output of the comp_bar_footprint function, containing NumbaList of numpy arrays.
             price_tick: The price tick size.
         """
         instance = cls(
