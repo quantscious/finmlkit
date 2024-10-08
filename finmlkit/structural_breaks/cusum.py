@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 
 
 @njit(nogil=True)
-def _compute_max_s_n_values(y: NDArray, t: int, sigma_sq_t: float) -> (
+def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
         Tuple[float, float, float, float]):
     """
     Compute the maximum S_n values and critical values for upward and downward movements.
@@ -40,22 +40,22 @@ def _compute_max_s_n_values(y: NDArray, t: int, sigma_sq_t: float) -> (
 
     b_alpha = 4.6  # As per Homm and Breitung (2011)
 
-    for k in range(1, t - 1):
-        dyk = y[t] - y[k]
+    for n in range(1, t - 1):
+        dyn = y[t] - y[n]
 
-        denominator = sigma_sq_t * np.sqrt(t - k) + 1e-12
+        denominator = sigma_sq_t * np.sqrt(t - n) + 1e-12
 
-        # One-sided tests, abs(dyk) split into positive and negative parts
-        s_n_t_up = max(0, dyk) / denominator
-        s_n_t_down = -min(0, dyk) / denominator  # Make it positive
+        # One-sided tests, abs(dyn) split into positive and negative parts
+        s_n_t_up = max(0, dyn) / denominator
+        s_n_t_down = -min(0, dyn) / denominator  # Mane it positive
 
         if s_n_t_up > max_s_n_value_up:
             max_s_n_value_up = s_n_t_up
-            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t / k))
+            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t / n))
 
         if s_n_t_down > max_s_n_value_down:
             max_s_n_value_down = s_n_t_down
-            max_s_n_critical_value_down = np.sqrt(b_alpha + np.log(t / k))
+            max_s_n_critical_value_down = np.sqrt(b_alpha + np.log(t / n))
 
     return (
         max_s_n_value_up,
@@ -66,7 +66,7 @@ def _compute_max_s_n_values(y: NDArray, t: int, sigma_sq_t: float) -> (
 
 
 @njit(nogil=True, parallel=False)
-def chu_stinchcombe_white_developing(
+def cusum_developing(
     y: NDArray, warmup_period: int = 30
 ) -> Tuple[
     NDArray[np.float64],
@@ -128,7 +128,7 @@ def chu_stinchcombe_white_developing(
             max_s_n_value_down,
             max_s_n_critical_value_up,
             max_s_n_critical_value_down,
-        ) = _compute_max_s_n_values(y, t, sigma_sq_t)
+        ) = _comp_max_s_nt(y, t, sigma_sq_t)
         s_n_t_values_up[t] = max_s_n_value_up
         s_n_t_values_down[t] = max_s_n_value_down
         critical_values_up[t] = max_s_n_critical_value_up
@@ -142,7 +142,7 @@ def chu_stinchcombe_white_developing(
     )
 
 @njit(nogil=True)
-def chu_stinchcombe_white_last(y: NDArray) -> Tuple[float, float, float, float]:
+def cusum_last(y: NDArray) -> Tuple[float, float, float, float]:
     """
     Perform the Chu-Stinchcombe-White CUSUM Test on Levels for the last observation.
 
@@ -184,7 +184,7 @@ def chu_stinchcombe_white_last(y: NDArray) -> Tuple[float, float, float, float]:
         max_s_n_value_down,
         max_s_n_critical_value_up,
         max_s_n_critical_value_down,
-    ) = _compute_max_s_n_values(y, t, sigma_sq_t)
+    ) = _comp_max_s_nt(y, t, sigma_sq_t)
 
     return (
         max_s_n_value_up,
@@ -195,7 +195,7 @@ def chu_stinchcombe_white_last(y: NDArray) -> Tuple[float, float, float, float]:
 
 
 @njit(nogil=True, parallel=True)
-def chu_stinchcombe_white_rolling(
+def cusum_rolling(
     close_prices: NDArray, window_size: int = 1000, warmup_period: int = 30
 ) -> Tuple[
     NDArray[np.float64],
@@ -260,7 +260,7 @@ def chu_stinchcombe_white_rolling(
                     s_n_t_values_down,
                     c_values_up,
                     c_values_down,
-                ) = chu_stinchcombe_white_developing(current_prices, warmup_period)
+                ) = cusum_developing(current_prices, warmup_period)
                 snt_up[start_idx:current_idx + 1] = s_n_t_values_up
                 snt_down[start_idx:current_idx + 1] = s_n_t_values_down
                 critical_values_up[start_idx:current_idx + 1] = c_values_up
@@ -272,7 +272,7 @@ def chu_stinchcombe_white_rolling(
                     s_n_t_down,
                     c_value_up,
                     c_value_down,
-                ) = chu_stinchcombe_white_last(current_prices)
+                ) = cusum_last(current_prices)
                 snt_up[current_idx] = s_n_t_up
                 snt_down[current_idx] = s_n_t_down
                 critical_values_up[current_idx] = c_value_up
@@ -284,7 +284,7 @@ def chu_stinchcombe_white_rolling(
             s_n_t_values_down,
             c_values_up,
             c_values_down,
-        ) = chu_stinchcombe_white_developing(close_prices, warmup_period)
+        ) = cusum_developing(close_prices, warmup_period)
         snt_up = s_n_t_values_up
         snt_down = s_n_t_values_down
         critical_values_up = c_values_up

@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from finmlkit.structural_breaks.cusum import chu_stinchcombe_white_rolling
+from finmlkit.structural_breaks.cusum import cusum_rolling
 
 def csw_rolling_perf_test():
     for _ in range(10):
@@ -11,7 +11,7 @@ def csw_rolling_perf_test():
 
         # Time the function
         start = time.time()
-        chu_stinchcombe_white_rolling(arr_in, window, warmup)
+        cusum_rolling(arr_in, window, warmup)
         end = time.time()
         dur = end - start
         print(f"\nTime taken for chu_stinchcombe_white_rolling: {dur:.5f} seconds")
