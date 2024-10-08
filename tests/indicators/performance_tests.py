@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import time
 
-from finmlkit.indicators.utils import ewma, ewm_std
+from finmlkit.indicators.utils import ewma, ewms
 
 def ewma_perf_test():
     for _ in range(10):
@@ -32,7 +32,7 @@ def ewm_std_perf_test():
 
         # Time the function
         start = time.time()
-        ewm_std(arr_in, window)
+        ewms(arr_in, window)
         end = time.time()
         dur = end - start
         print(f"\nTime taken for ewm_std: {dur:.5f} seconds")

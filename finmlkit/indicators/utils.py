@@ -51,9 +51,9 @@ def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
 
 
 @njit(nopython=True, nogil=True, fastmath=True)
-def ewm_std(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
+def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     """
-    Calculates the exponentially weighted moving standard deviation (EWMSTD) of a one-dimensional numpy array.
+    Calculates the Exponentially Weighted Moving Standard Deviation (EWM_STD) of a one-dimensional numpy array.
     Similar to pandas' ewm.std with adjust=True.
 
 

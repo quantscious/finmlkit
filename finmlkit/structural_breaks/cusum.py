@@ -66,7 +66,7 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
 
 
 @njit(nogil=True, parallel=False)
-def cusum_developing(
+def cusum_test_developing(
     y: NDArray, warmup_period: int = 30
 ) -> Tuple[
     NDArray[np.float64],
@@ -141,8 +141,9 @@ def cusum_developing(
         critical_values_down,
     )
 
+
 @njit(nogil=True)
-def cusum_last(y: NDArray) -> Tuple[float, float, float, float]:
+def cusum_test_last(y: NDArray) -> Tuple[float, float, float, float]:
     """
     Perform the Chu-Stinchcombe-White CUSUM Test on Levels for the last observation.
 
@@ -195,7 +196,7 @@ def cusum_last(y: NDArray) -> Tuple[float, float, float, float]:
 
 
 @njit(nogil=True, parallel=True)
-def cusum_rolling(
+def cusum_test_rolling(
     close_prices: NDArray, window_size: int = 1000, warmup_period: int = 30
 ) -> Tuple[
     NDArray[np.float64],
@@ -260,7 +261,7 @@ def cusum_rolling(
                     s_n_t_values_down,
                     c_values_up,
                     c_values_down,
-                ) = cusum_developing(current_prices, warmup_period)
+                ) = cusum_test_developing(current_prices, warmup_period)
                 snt_up[start_idx:current_idx + 1] = s_n_t_values_up
                 snt_down[start_idx:current_idx + 1] = s_n_t_values_down
                 critical_values_up[start_idx:current_idx + 1] = c_values_up
@@ -272,7 +273,7 @@ def cusum_rolling(
                     s_n_t_down,
                     c_value_up,
                     c_value_down,
-                ) = cusum_last(current_prices)
+                ) = cusum_test_last(current_prices)
                 snt_up[current_idx] = s_n_t_up
                 snt_down[current_idx] = s_n_t_down
                 critical_values_up[current_idx] = c_value_up
@@ -284,7 +285,7 @@ def cusum_rolling(
             s_n_t_values_down,
             c_values_up,
             c_values_down,
-        ) = cusum_developing(close_prices, warmup_period)
+        ) = cusum_test_developing(close_prices, warmup_period)
         snt_up = s_n_t_values_up
         snt_down = s_n_t_values_down
         critical_values_up = c_values_up

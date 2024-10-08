@@ -7,7 +7,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from numba import prange
-from .utils import comp_trade_side_vector, footprint_to_dataframe, comp_price_tick_size
+from .utils import comp_trade_side_vector, footprint_to_dataframe, comp_price_tick_size, comp_trade_side
 from dataclasses import dataclass
 from typing import Union, Optional, List, Dict, Tuple
 import pandas as pd
@@ -19,31 +19,86 @@ from abc import ABC, abstractmethod
 @dataclass
 class FootprintData:
     """
-    Footprint data container for the dynamic memory footprint calculations.
-    All list attributes are initialized as numpy arrays with dtype=object to ensure they are serializable.
+    FootprintData is a container for dynamic memory footprint calculations.
+
+    Parameters
+    ----------
+    bar_timestamps : NDArray[np.int64]
+        1D array of bar timestamps in nanoseconds.
+    price_levels : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Array of 1D int32 arrays representing price levels in price tick units.
+    price_tick : float
+        Price tick size.
+    buy_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
+        Array of 1D float32 arrays representing buy volumes.
+    sell_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
+        Array of 1D float32 arrays representing sell volumes.
+    buy_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Array of 1D int32 arrays representing buy ticks.
+    sell_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Array of 1D int32 arrays representing sell ticks.
+    buy_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
+        Array of 1D bool arrays representing buy imbalances.
+    sell_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
+        Array of 1D bool arrays representing sell imbalances.
+    cot_price_levels : Optional[NDArray[np.int32]], optional
+        1D int32 array of COT price levels, by default None.
+    sell_imbalances_sum : Optional[NDArray[np.uint16]], optional
+        1D uint16 array of summed sell imbalances, by default None.
+    buy_imbalances_sum : Optional[NDArray[np.uint16]], optional
+        1D uint16 array of summed buy imbalances, by default None.
+
+    Attributes
+    ----------
+    bar_timestamps : NDArray[np.int64]
+        Timestamps of the bars.
+    price_levels : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Price levels in price tick units.
+    price_tick : float
+        Price tick size.
+    buy_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
+        Buy volumes.
+    sell_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
+        Sell volumes.
+    buy_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Buy ticks.
+    sell_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
+        Sell ticks.
+    buy_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
+        Buy imbalances.
+    sell_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
+        Sell imbalances.
+    cot_price_levels : Optional[NDArray[np.int32]]
+        COT price levels.
+    sell_imbalances_sum : Optional[NDArray[np.uint16]]
+        Summed sell imbalances.
+    buy_imbalances_sum : Optional[NDArray[np.uint16]]
+        Summed buy imbalances.
+    _datetime_index : pd.DatetimeIndex
+        Datetime index for date time slicing.
     """
     # Data attributes
-    bar_timestamps: NDArray[np.int64]      # 1D int64 array
-    price_levels: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]        # Array of 1D int32 arrays (price levels in price tick units)
-    price_tick:   float               # Price tick size (float)
-    buy_volumes:  Union[np.ndarray, NumbaList[np.array]]         # Array of 1D float32 arrays
-    sell_volumes: Union[np.ndarray, NumbaList[np.array]]         # Array of 1D float32 arrays
-    buy_ticks:    Union[np.ndarray, NumbaList[np.array]]         # Array of 1D int32 arrays
-    sell_ticks:   Union[np.ndarray, NumbaList[np.array]]         # Array of 1D int32 arrays
-    buy_imbalances:  Union[np.ndarray, NumbaList[np.array]]      # Array of 1D bool arrays
-    sell_imbalances: Union[np.ndarray, NumbaList[np.array]]      # Array of 1D bool arrays
+    bar_timestamps: NDArray[np.int64]  # 1D int64 array
+    price_tick: float  # Price tick size (float)
+    price_levels: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]     # Array of 1D int32 arrays (price levels in price tick units)
+    buy_volumes: Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]  # Array of 1D float32 arrays
+    sell_volumes: Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]] # Array of 1D float32 arrays
+    buy_ticks: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]        # Array of 1D int32 arrays
+    sell_ticks: Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]       # Array of 1D int32 arrays
+    buy_imbalances: Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]   # Array of 1D bool arrays
+    sell_imbalances: Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]  # Array of 1D bool arrays
 
     # Additional attributes
-    cot_price_levels: Optional[np.ndarray] = None  # 1D int32 array
-    sell_imbalances_sum: Optional[np.ndarray] = None  # 1D uint16 array
-    buy_imbalances_sum: Optional[np.ndarray] = None  # 1D uint16 array
+    cot_price_levels: Optional[NDArray[np.int32]] = None      # 1D int32 array
+    sell_imbalances_sum: Optional[NDArray[np.uint16]] = None  # 1D uint16 array
+    buy_imbalances_sum: Optional[NDArray[np.uint16]] = None   # 1D uint16 array
 
     # Private attributes
     _datetime_index: pd.Series = None  # DatetimeIndex for date time slicing (will be set in __post_init__)
 
     def __post_init__(self):
         # Convert bar_timestamps to pandas DatetimeIndex for easier slicing
-        # timestamps are in nanoseconds
+        # This method is automatically called after the object is initialized.
         self._datetime_index = pd.to_datetime(self.bar_timestamps, unit='ns')
 
     def __len__(self) -> int:
@@ -93,18 +148,29 @@ class FootprintData:
     def __getitem__(self, key) -> 'FootprintData':
         """
         Enable slicing of the FootprintData object.
-        Args:
-            key: The slice or integer index to access specific data.
-        Returns:
+
+        Parameters
+        ----------
+        key : slice or int
+            The slice or integer index to access specific data.
+
+        Returns
+        -------
+        FootprintData
             A new FootprintData object with the sliced data.
+
+        Raises
+        ------
+        TypeError
+            If the key is not a slice or integer.
         """
-        if isinstance(key, slice):
-            if isinstance(key.start, (str, dt.datetime)) and isinstance(key.stop, (str, dt.datetime)):
+        if isinstance(key, (slice, int)):
+            if isinstance(key, slice) and isinstance(key.start, (str, dt.datetime)) and isinstance(key.stop, (str, dt.datetime)):
                 # Use pandas indexing with datetime slice
                 start_idx, end_idx = self._datetime_index.slice_locs(start=key.start, end=key.stop)
                 return self[start_idx:end_idx]
 
-            # Regular numeric slicing
+            # Handle integer index or regular slicing
             return FootprintData(
                 bar_timestamps=self.bar_timestamps[key],
                 price_levels=self.price_levels[key],
@@ -120,15 +186,29 @@ class FootprintData:
                 buy_imbalances_sum=self.buy_imbalances_sum[key] if self.buy_imbalances_sum is not None else None
             )
         else:
-            raise TypeError("Invalid argument type. Expected a slice.")
+            raise TypeError("Invalid argument type. Expected a slice or integer index.")
 
     @classmethod
     def from_numba(cls, data: Tuple, price_tick: float) -> 'FootprintData':
         """
-        Initialize the FootprintData data container from the output of the comp_bar_footprint function.
-        Args:
-            data: Output of the comp_bar_footprint function, containing NumbaList of numpy arrays.
-            price_tick: The price tick size.
+        Create a FootprintData instance from the output of the `comp_bar_footprint` function.
+
+        Parameters
+        ----------
+        data : tuple
+            Output of the `comp_bar_footprint` function, containing NumbaList of numpy arrays.
+        price_tick : float
+            The price tick size.
+
+        Returns
+        -------
+        FootprintData
+            A new instance of FootprintData initialized with the given data.
+
+        Raises
+        ------
+        ValueError
+            If the data is invalid or inconsistent.
         """
         instance = cls(
             bar_timestamps=np.array(data[0], dtype=np.int64),
@@ -154,11 +234,24 @@ class FootprintData:
     @classmethod
     def from_dict(cls, data: Dict) -> 'FootprintData':
         """
-        Initialize the FootprintData data container from a dictionary.
-        Args:
-            data: Dictionary containing the footprint data;
-                    keys: bar_timestamps, price_levels, buy_volumes, sell_volumes,
-                          buy_ticks, sell_ticks, buy_imbalances, sell_imbalances, price_tick
+        Create a FootprintData instance from a dictionary.
+
+        Parameters
+        ----------
+        data : dict
+            Dictionary containing the footprint data with keys:
+            'bar_timestamps', 'price_levels', 'buy_volumes', 'sell_volumes',
+            'buy_ticks', 'sell_ticks', 'buy_imbalances', 'sell_imbalances', 'price_tick'
+
+        Returns
+        -------
+        FootprintData
+            A new instance of FootprintData initialized with the given data.
+
+        Raises
+        ------
+        ValueError
+            If the data is invalid or inconsistent.
         """
         instance = cls(
             bar_timestamps=data['bar_timestamps'],
@@ -180,18 +273,33 @@ class FootprintData:
 
     def get_df(self):
         """
-        Convert the footprint data to a pandas DataFrame format.
-        Returns: footprint dataframe
+        Convert the footprint data to a pandas DataFrame.
+
+        Returns
+        -------
+        DataFrame
+            A pandas DataFrame containing the footprint data.
         """
-        df = footprint_to_dataframe(self.bar_timestamps, self.price_levels, self.buy_volumes,
-                                    self.sell_volumes, self.buy_ticks, self.sell_ticks,
-                                    self.buy_imbalances, self.sell_imbalances, self.price_tick)
+        df = footprint_to_dataframe(
+            self.bar_timestamps,
+            self.price_levels,
+            self.buy_volumes,
+            self.sell_volumes,
+            self.buy_ticks,
+            self.sell_ticks,
+            self.buy_imbalances,
+            self.sell_imbalances,
+            self.price_tick
+        )
         return df
 
     def cast_to_numba_list(self):
         """
-        Cast the footprint data in-place to a numba list for numba calculations.
-        (Numba does not support numpy arrays with dtype=object, we have to cast them to numba lists.)
+        Cast the footprint data in-place to NumbaList for Numba calculations.
+
+        Notes
+        -----
+        Numba does not support numpy arrays with dtype=object; we have to cast them to NumbaLists.
         """
         self.price_levels = NumbaList(self.price_levels)
         self.buy_volumes = NumbaList(self.buy_volumes)
@@ -215,7 +323,12 @@ class FootprintData:
 
     def memory_usage(self) -> float:
         """
-        Calculate total memory usage of the FootprintData object by iterating through its elements.
+        Calculate the total memory usage of the FootprintData object.
+
+        Returns
+        -------
+        float
+            Total memory usage in megabytes (MB).
         """
         from pympler import asizeof  # memory profiler
 
@@ -236,7 +349,14 @@ class FootprintData:
         return total_memory / (1024 ** 2)  # Convert to MB
 
     def is_valid(self) -> bool:
-        # Check for consistent lengths and types of all attributes
+        """
+        Check for consistent lengths and types of all attributes.
+
+        Returns
+        -------
+        bool
+            True if the data is valid, False otherwise.
+        """
         expected_length = len(self.bar_timestamps)
         attributes = [
             self.price_levels, self.buy_volumes, self.sell_volumes,
@@ -586,14 +706,242 @@ def comp_bar_directional_features(
     )
 
 
-@njit(nopython=True, nogil=True)
+@njit(nopython=True, nogil=True, parallel=False)
 def comp_bar_footprints(
     prices: NDArray[np.float64],
-    volumes: NDArray[np.float64],
+    amounts: NDArray[np.float64],
     bar_open_indices: NDArray[np.int64],
     price_tick_size: float,
     bar_lows: NDArray[np.float64],
     bar_highs: NDArray[np.float64],
     imbalance_factor: float
-):
-    pass
+) -> tuple[
+    NumbaList[NDArray[np.int32]],
+    NumbaList[NDArray[np.float32]], NumbaList[NDArray[np.float32]],
+    NumbaList[NDArray[np.int32]], NumbaList[NDArray[np.int32]],
+    NumbaList[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]],
+    NDArray[np.uint16], NDArray[np.uint16], NDArray[np.int32]
+]:
+    """
+    Compute the footprint data and features for each bar.
+
+    Parameters
+    ----------
+    prices : np.array(np.float64)
+        prices of raw trades data
+    amounts : np.array(np.float64)
+        amounts of raw trades data
+    bar_open_indices : np.array(np.int64)
+        bar open indices in the raw trades timestamps
+    price_tick_size : float
+        price tick size
+    bar_lows : np.array(np.float64)
+        lows of the bars
+    bar_highs : np.array(np.float64)
+        highs of the bars
+    imbalance_factor : float
+        the multiplier factor for the imbalance calculation
+
+    Returns
+    -------
+    tuple
+        - price_levels : NumbaList[np.ndarray]
+        - buy_volumes : NumbaList[np.ndarray]
+        - sell_volumes : NumbaList[np.ndarray]
+        - buy_ticks : NumbaList[np.ndarray]
+        - sell_ticks : NumbaList[np.ndarray]
+        - buy_imbalances : NumbaList[np.ndarray]
+        - sell_imbalances : NumbaList[np.ndarray]
+        - buy_imbalances_sum : np.ndarray
+        - sell_imbalances_sum : np.ndarray
+        - cot_price_levels : np.ndarray
+    Notes
+    -----
+    The price levels are calculated in (integer) price tick units to eliminate floating point errors.
+
+    """
+    n_bars = len(bar_open_indices) - 1
+
+    # TODO:  New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+    # Define dynamic lists
+    price_levels = NumbaList()
+    buy_volumes = NumbaList()
+    sell_volumes = NumbaList()
+    buy_ticks = NumbaList()
+    sell_ticks = NumbaList()
+
+    buy_imbalances = NumbaList()
+    sell_imbalances = NumbaList()
+
+    # Initialize cumulative imbalances
+    buy_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
+    sell_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
+    cot_price_levels = np.zeros(n_bars, dtype=np.int32)
+
+    tick_direction = 0
+    for i in prange(n_bars):
+        start = bar_open_indices[i]
+        end = bar_open_indices[i + 1]
+
+        # Examine current bar price levels
+        low = int(round(bar_lows[i] / price_tick_size))
+        high = int(round(bar_highs[i] / price_tick_size))
+        n_levels = high - low + 1
+
+        # Initialize price levels and volumes
+        price_levels_i = np.arange(low, high + 1, dtype=np.int32)
+        buy_volumes_i = np.zeros(n_levels, dtype=np.float32)
+        sell_volumes_i = np.zeros(n_levels, dtype=np.float32)
+        buy_ticks_i = np.zeros(n_levels, dtype=np.int32)
+        sell_ticks_i = np.zeros(n_levels, dtype=np.int32)
+
+        # Start aggregating the footprint data
+        for j in range(start, end):
+            price = float(prices[j])
+            previous_price = prices[j - 1] if j > 0 else prices
+            tick_direction = comp_trade_side(price, previous_price, tick_direction)
+            price = int(round(price / price_tick_size))
+            amount = amounts[j]
+
+            # Update the price levels
+            # price_level_idx = np.searchsorted(price_levels_i, price)
+            price_level_idx = price - low
+
+            # Cumulate the volumes and ticks
+            if 0 <= price_level_idx < n_levels:
+                if tick_direction == 1:
+                    buy_volumes_i[price_level_idx] += amount
+                    buy_ticks_i[price_level_idx] += 1
+                elif tick_direction == -1:
+                    sell_volumes_i[price_level_idx] += amount
+                    sell_ticks_i[price_level_idx] += 1
+            else:
+                raise ValueError("Something went wrong! Invalid price level index!")
+
+        # Append bar's footprint data to the dynamic lists
+        price_levels.append(price_levels_i)
+        buy_volumes.append(buy_volumes_i)
+        sell_volumes.append(sell_volumes_i)
+        buy_ticks.append(buy_ticks_i)
+        sell_ticks.append(sell_ticks_i)
+
+        # Calculate the footprint features: buy imbalances, sell imbalances, COT price level
+        buy_imbalances_i, sell_imbalances_i, cot_price_level = comp_footprint_features(
+            price_levels_i, buy_volumes_i, sell_volumes_i, imbalance_factor
+        )
+        buy_imbalances.append(buy_imbalances_i)
+        sell_imbalances.append(sell_imbalances_i)
+
+        # Update cumulative imbalances and COT price level
+        buy_imbalances_sum[i] = np.sum(buy_imbalances_i, dtype=np.uint16)
+        sell_imbalances_sum[i] = np.sum(sell_imbalances_i, dtype=np.uint16)
+        cot_price_levels[i] = cot_price_level
+
+    return (
+        price_levels,
+        buy_volumes, sell_volumes,
+        buy_ticks, sell_ticks,
+        buy_imbalances, sell_imbalances,
+        buy_imbalances_sum, sell_imbalances_sum, cot_price_levels
+    )
+
+
+@njit(nopython=True, nogil=True)
+def comp_footprint_features(price_levels: NDArray[np.int32],
+                            buy_volumes: NDArray[np.float32], sell_volumes: NDArray[np.float32],
+                            imbalance_multiplier: float):
+    """
+    Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.
+    Note that it is assumed footprint price levels are sorted in ascending order and increments by price_tick_size.
+
+    :param price_levels: price levels of a bar (1D numpy array)
+    :param buy_volumes: buy volumes of a bar (1D numpy array)
+    :param sell_volumes: sell volumes of a bar (1D numpy array)
+    :param imbalance_multiplier: imbalance multiplier
+
+    Returns: buy imbalances (1D bool array), sell imbalances (1D bool array), COT price level (float)
+
+    """
+    n_levels = len(price_levels)
+    buy_imbalances = np.zeros((n_levels,), dtype=np.bool_)
+    sell_imbalances = np.zeros((n_levels,), dtype=np.bool_)
+    highest_cot_vol = 0.
+    highest_cot_idx = 0
+
+    # Ascending Bid-Ask Table         Descending Bid-Ask Table (Conventional)
+    # -----------------                 -----------------
+    # | L | Sell| Buy |                 | L | Sell| Buy |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 0 |   0 |   1 |                 | 3 |  10 |   0 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 1 |   2 |  56 |                 | 2 | 181 |  15 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 2 | 181 |  15 |                 | 1 |   2 |  56 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 3 |  10 |   0 |                 | 0 |   0 |   1 |
+    # -----------------                 -----------------
+    # In the conventional table the l-th sell (bid) level corresponds to the (l-1)-th buy (ask) level;
+    # the l-th buy (ask) level corresponds to the (l+1)-th sell (bid) level
+    #
+    # In the ascending table it is reversed and the l-th sell (bid) level corresponds to the (l+1)-th buy (ask) level;
+    # the l-th buy (ask) level corresponds to the (l-1)-th sell (bid) level
+
+    for level in range(n_levels):
+        # Find sell (bid) imbalances (ascending price levels)
+        if level < n_levels - 1:
+            sell_imbalances[level] = 1 if sell_volumes[level] > (buy_volumes[level + 1] * imbalance_multiplier) else 0
+
+        # Find buy (ask) imbalances (ascending price levels)
+        if level > 0:
+            buy_imbalances[level] = 1 if buy_volumes[level] > (sell_volumes[level - 1] * imbalance_multiplier) else 0
+
+        # Find Commitment of Traders (COT) price level
+        sum_level_volume = buy_volumes[level] + sell_volumes[level]
+        if sum_level_volume > highest_cot_vol:
+            highest_cot_vol = sum_level_volume
+            highest_cot_idx = level
+
+    cot_price_level = price_levels[highest_cot_idx]
+
+    return buy_imbalances, sell_imbalances, cot_price_level
+
+
+@njit(nopython=True, nogil=True)
+def comp_footprint_features_new(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
+    """
+    Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.
+
+    Parameters
+    ----------
+    price_levels : np.ndarray
+        Price levels of a bar (1D numpy array).
+    buy_volumes : np.ndarray
+        Buy volumes of a bar (1D numpy array).
+    sell_volumes : np.ndarray
+        Sell volumes of a bar (1D numpy array).
+    imbalance_multiplier : float
+        Imbalance multiplier.
+
+    Returns
+    -------
+    buy_imbalances : np.ndarray
+        1D boolean array of buy imbalances.
+    sell_imbalances : np.ndarray
+        1D boolean array of sell imbalances.
+    cot_price_level : int
+        Commitment of Traders (COT) price level.
+    """
+    # TODO: Test this function
+    n_levels = len(price_levels)
+    buy_imbalances = np.zeros(n_levels, dtype=np.bool_)
+    sell_imbalances = np.zeros(n_levels, dtype=np.bool_)
+
+    if n_levels > 1:
+        sell_imbalances[:-1] = sell_volumes[:-1] > (buy_volumes[1:] * imbalance_multiplier)
+        buy_imbalances[1:] = buy_volumes[1:] > (sell_volumes[:-1] * imbalance_multiplier)
+
+    sum_level_volume = buy_volumes + sell_volumes
+    highest_cot_idx = np.argmax(sum_level_volume)
+    cot_price_level = price_levels[highest_cot_idx]
+
+    return buy_imbalances, sell_imbalances, cot_price_level
