@@ -47,7 +47,7 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
 
         # One-sided tests, abs(dyn) split into positive and negative parts
         s_n_t_up = max(0, dyn) / denominator
-        s_n_t_down = -min(0, dyn) / denominator  # Mane it positive
+        s_n_t_down = -min(0, dyn) / denominator  # Make it positive
 
         if s_n_t_up > max_s_n_value_up:
             max_s_n_value_up = s_n_t_up
