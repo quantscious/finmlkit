@@ -1,3 +1,6 @@
+"""
+Implementation of Chu-Stinchcombe-White CUSUM Test on Levels based on  Homm and Breitung (2011).
+"""
 import numpy as np
 from numba import njit
 from numba import prange
@@ -33,8 +36,8 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
     """
     y = np.asarray(y, dtype=np.float64)
 
-    max_s_n_value_up = -np.inf
-    max_s_n_value_down = -np.inf
+    max_s_n_value_up = np.nan
+    max_s_n_value_down = np.nan
     max_s_n_critical_value_up = np.nan
     max_s_n_critical_value_down = np.nan
 
@@ -43,7 +46,7 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
     for n in range(1, t - 1):
         dyn = y[t] - y[n]
 
-        denominator = sigma_sq_t * np.sqrt(t - n) + 1e-12
+        denominator = sigma_sq_t * np.sqrt(t - n) + 1e-16
 
         # One-sided tests, abs(dyn) split into positive and negative parts
         s_n_t_up = max(0, dyn) / denominator

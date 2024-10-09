@@ -50,7 +50,7 @@ def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
     return ewma
 
 
-@njit(nopython=True, nogil=True, fastmath=True)
+@njit(nopython=True, nogil=True)
 def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     """
     Calculates the Exponentially Weighted Moving Standard Deviation (EWM_STD) of a one-dimensional numpy array.
@@ -96,18 +96,23 @@ def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     S_w2 = 0.0  # Cumulative sum of squared weights
 
     for i in range(n):
-        w_i = beta ** (n - i - 1)
-        S_w += w_i
-        S_w2 += w_i ** 2
-        S_y += w_i * y[i]
-        S_y2 += w_i * y[i] ** 2
+        y_i = y[i]
+        if not np.isnan(y_i):
+            w_i = beta ** (n - i - 1)
+            S_w += w_i
+            S_w2 += w_i ** 2
+            S_y += w_i * y_i
+            S_y2 += w_i * y_i ** 2
 
-        if S_w > 0.0 and (S_w - S_w2 / S_w) > 0.0:
-            mean = S_y / S_w
-            variance = (S_y2 / S_w - mean ** 2) * S_w / (S_w - S_w2 / S_w)
-            variance = max(variance, 0.0)
-            ewm_std[i] = np.sqrt(variance)
+            if S_w > 0.0 and (S_w - S_w2 / S_w) > 0.0:
+                mean = S_y / S_w
+                variance = (S_y2 / S_w - mean ** 2) * S_w / (S_w - S_w2 / S_w)
+                variance = max(variance, 0.0)
+                ewm_std[i] = np.sqrt(variance)
+            else:
+                ewm_std[i] = np.nan
         else:
-            ewm_std[i] = np.nan
+            # If y_i is NaN, carry forward the previous values of cumulative sums
+            ewm_std[i] = ewm_std[i - 1] if i > 0 else np.nan
 
     return ewm_std

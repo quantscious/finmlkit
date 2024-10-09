@@ -30,7 +30,7 @@ We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s
 
 # Project Structure
 ## Bars
-Bars are the primary data structure in FinMLKit – constructed from raw trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data). Bars are used as input for indicators, strategies, and other components of the library.
+Bars are the primary data structure in FinMLKit – constructed from raw trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data). Bars are used as input for indicators, strategies, and other components of the library. In summary, **the bars module is responsible for processing unstructured raw trades data into structured bars data that can be used for further analysis**.
 
 [x] - OHLCV bars
 [x] - Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
