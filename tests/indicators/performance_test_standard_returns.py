@@ -20,10 +20,9 @@ def get_vol(close: pd.Series, lookback: int = 100,
     returns = returns.ewm(span=lookback, adjust=True).std(bias=False)  # EWM standard deviation
     return returns
 
-def generate_large_dataset(n_points=1000000):
-    # [As defined above]
-    np.random.seed(42)
-    inter_arrival_times = np.random.exponential(scale=30, size=n_points)
+def generate_large_dataset(n_points=1_000_000, inter_arrival_time=15, seed=42):
+    np.random.seed(seed)
+    inter_arrival_times = np.random.exponential(scale=inter_arrival_time, size=n_points)
     timestamps_sec = np.cumsum(inter_arrival_times)
     start_time = pd.Timestamp('2021-01-01')
     timestamps = start_time + pd.to_timedelta(timestamps_sec, unit='s')
