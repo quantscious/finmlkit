@@ -27,6 +27,16 @@ def test_ewm_std_with_known_values():
     pandas_ewm_std = pd.Series(arr_in).ewm(span=window, adjust=True).std(bias=False).to_numpy()
     assert_allclose(our_ewm_std, pandas_ewm_std, rtol=1e-5, atol=1e-8)
 
+def test_ewm_std_with_known_values_and_nans():
+    """
+    Test the ewm_std function with known input and output.
+    """
+    arr_in = np.array([1, 2, 3, np.nan, np.nan, 4, 5], dtype=np.float64)
+    window = 2
+    our_ewm_std = ewms(arr_in, window)
+    pandas_ewm_std = pd.Series(arr_in).ewm(span=window, adjust=True).std(bias=False).to_numpy()
+    assert_allclose(our_ewm_std, pandas_ewm_std, rtol=1e-5, atol=1e-8)
+
 def test_ewm_std_empty_array():
     """
     Test the ewm_std function with an empty array.

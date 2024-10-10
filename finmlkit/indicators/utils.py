@@ -2,11 +2,11 @@
 General utility functions not exclusively for OHLCV bars data.
 """
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from numpy.typing import NDArray
 
 
-@njit(nopython=True, nogil=True, fastmath=True)
+@njit(nogil=True, fastmath=True)
 def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
     """
     Exponentially weighted moving average (EWMA) of a one-dimensional numpy array.
@@ -50,7 +50,7 @@ def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
     return ewma
 
 
-@njit(nopython=True, nogil=True)
+@njit(nogil=True)
 def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     """
     Calculates the Exponentially Weighted Moving Standard Deviation (EWM_STD) of a one-dimensional numpy array.
@@ -116,3 +116,56 @@ def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
             ewm_std[i] = ewm_std[i - 1] if i > 0 else np.nan
 
     return ewm_std
+
+
+@njit(nogil=True, parallel=True)
+def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.float64], return_window_sec: float):
+    """
+    Calculate the lagged returns on the given time window.
+    This function works for arbitrary time series data and does not require a fixed frequency.
+
+    Parameters
+    ----------
+    timestamps : np.array(np.int64)
+        Timestamps series
+    close : np.array(np.float64)
+        Close price series
+    return_window_sec : float
+        Time window in seconds for lagged return calculation. Set it to a small value (e.g. 1e-6) for 1 sample lag.
+
+
+    Returns
+    -------
+    np.array(np.float64)
+        The lagged returns series
+
+    """
+    # return window should be greater than zero
+    if return_window_sec <= 0:
+        raise ValueError("The return window must be greater than zero.")
+
+    n = len(close)
+    returns = np.empty(n, dtype=np.float64)
+    returns.fill(np.nan)
+    ret_window_ns = return_window_sec * 1e9
+
+    # Find the first index where the lookback window is fully contained
+    start_idx = np.searchsorted(timestamps, timestamps[0] + ret_window_ns, side='left')
+
+    for i in prange(start_idx, n):
+        target_time = timestamps[i] - ret_window_ns
+        lag_idx = np.searchsorted(timestamps, target_time, side='right') - 1
+        if 0 <= lag_idx < i:
+            if close[lag_idx] != 0.0:
+                ret = close[i] / close[lag_idx] - 1.0
+                returns[i] = ret
+            else:
+                print("WARNING! Encountered a zero in price data while calculating lagged return.\n"
+                      "Division by zero. Setting return value to inf.")
+                returns[i] = np.inf
+        else:
+            # If we cannot find a valid lagged index, set the return to NaN
+            returns[i] = np.nan
+
+    return returns
+
