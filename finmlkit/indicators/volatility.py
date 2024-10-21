@@ -27,6 +27,8 @@ def standard_volatility_estimator(
         The window size in seconds for the lagged return calculation.
     lookback : int, optional
         The number of observations to look back for the volatility estimate (span for the EWM_STD), by default 100
+    adjusted : bool, optional
+        Whether to use the adjusted EWM standard deviation, by default False
 
     Returns
     -------

@@ -6,11 +6,11 @@ from numba import njit, prange
 from numpy.typing import NDArray
 
 
-@njit(nogil=True, fastmath=True)
-def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
+@njit(nogil=True)
+def ewma(y: NDArray, span: int) -> NDArray[np.float64]:
     """
     Exponentially weighted moving average (EWMA) of a one-dimensional numpy array.
-    Calculates https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html with adjust=True.
+    Calculates https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html with adjust=True (default).
     By using this weighting scheme, the function provides a more accurate and unbiased estimate of the EWMA,
     especially in the early stages of the data series.
 
@@ -18,7 +18,7 @@ def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
     ----------
     y : np.ndarray
         A one-dimensional numpy array of floats.
-    window : int
+    span : int
         The decay window, or 'span'. Determines how many past points meaningfully impact the given EWMA value.
 
     Returns
@@ -28,40 +28,42 @@ def ewma(y: NDArray, window: int) -> NDArray[np.float64]:
 
     Notes
     -----
-    This function adjusts for small sample sizes by dividing by the cumulative weight.
+    This function adjusts for small sample sizes by dividing by the cumulative weight. For more information, see:
+    https://terbe.dev/blog/posts/exponentially-weighted-moving-average
     """
     n = y.shape[0]
-    ewma = np.empty(n, dtype=np.float64)
+    ewma = np.empty(n, dtype=np.float64)  # Container for the EWMA values
 
-    # If window is less than 1, raise an error
-    if window < 1:
-        raise ValueError("Window size is less than or equal to 1. Please provide a window size greater than 1.")
+    # If span is less than 1, raise an error
+    if span < 1:
+        raise ValueError("span size is less than or equal to 1. Please provide a span size greater than 1.")
 
-    alpha = 2.0 / (window + 1.0)
-    ewma_prev = y[0]
-    ewma[0] = ewma_prev
-    weight = 1.0
+    alpha = 2.0 / (span + 1.0)
+    u_t = y[0]  # Initial value for numerator
+    v_t = 1.0   # Initial value for denominator
+    ewma[0] = u_t / v_t
 
-    for i in range(1, n):
-        ewma_prev = ewma_prev * (1.0 - alpha) + y[i]
-        weight = weight * (1.0 - alpha) + 1.0
-        ewma[i] = ewma_prev / weight
+    for t in range(1, n):
+        # Update the numerator and denominator
+        u_t = y[t] + (1.0 - alpha) * u_t
+        v_t = 1.0 + (1.0 - alpha) * v_t
+        # Calculate the EWMA
+        ewma[t] = u_t / v_t
 
     return ewma
 
 
 @njit(nogil=True)
-def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
+def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
     """
     Calculates the Exponentially Weighted Moving Standard Deviation (EWM_STD) of a one-dimensional numpy array.
-    Similar to pandas' ewm.std with adjust=True.
-
+    Similar to pandas' ewm.std with adjust=True (default) and bias=False (default).
 
     Parameters
     ----------
     y : np.ndarray
         A one-dimensional numpy array of floats.
-    window : int
+    span : int
         The decay window, or 'span'.
 
     Returns
@@ -73,47 +75,52 @@ def ewms(y: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     -----
     This function adjusts for small sample sizes by dividing by the cumulative weight minus the sum of squared weights
     divided by the cumulative weight, matching the behavior of adjust=True and bias=False in pandas' ewm.std.
-
     """
     n = y.shape[0]
     ewm_std = np.empty(n, dtype=np.float64)
 
-    # If window is less equal to 1, return NaNs (to mimic pandas behavior)
-    if window == 1:
+    if span <= 1:
         ewm_std[:] = np.nan
-        print("WARNING! Window size is equal to 1. Returning NaNs.")
+        print("WARNING! Span size is less than or equal to 1. Returning NaNs.")
         return ewm_std
-    elif window < 1:
-        raise ValueError("Window size is less than 1. Please provide a window size greater than 1.")
 
-    alpha = 2.0 / (window + 1.0)
-    beta = 1.0 - alpha
+    alpha = 2.0 / (span + 1.0)
+    one_minus_alpha = 1.0 - alpha
 
     # Initialize cumulative sums and weights
-    S_y = 0.0  # Cumulative sum of weighted y
-    S_y2 = 0.0  # Cumulative sum of weighted y^2
-    S_w = 0.0  # Cumulative sum of weights
-    S_w2 = 0.0  # Cumulative sum of squared weights
+    S_w = 0.0    # Cumulative sum of weights
+    S_w2 = 0.0   # Cumulative sum of squared weights
+    S_y = 0.0    # Cumulative sum of weighted y
+    S_y2 = 0.0   # Cumulative sum of weighted y^2
 
-    for i in range(n):
-        y_i = y[i]
-        if not np.isnan(y_i):
-            w_i = beta ** (n - i - 1)
-            S_w += w_i
-            S_w2 += w_i ** 2
-            S_y += w_i * y_i
-            S_y2 += w_i * y_i ** 2
+    for t in range(n):
+        y_t = y[t]
 
-            if S_w > 0.0 and (S_w - S_w2 / S_w) > 0.0:
-                mean = S_y / S_w
-                variance = (S_y2 / S_w - mean ** 2) * S_w / (S_w - S_w2 / S_w)
-                variance = max(variance, 0.0)
-                ewm_std[i] = np.sqrt(variance)
-            else:
-                ewm_std[i] = np.nan
+        # Update cumulative weights regardless of NaN
+        S_w = one_minus_alpha * S_w + (0.0 if np.isnan(y_t) else 1.0)
+        S_w2 = (one_minus_alpha ** 2) * S_w2 + (0.0 if np.isnan(y_t) else 1.0)
+
+        # Update cumulative sums
+        if not np.isnan(y_t):
+            S_y = one_minus_alpha * S_y + y_t
+            S_y2 = one_minus_alpha * S_y2 + y_t ** 2
         else:
-            # If y_i is NaN, carry forward the previous values of cumulative sums
-            ewm_std[i] = ewm_std[i - 1] if i > 0 else np.nan
+            # Decay the cumulative sums without adding new data
+            S_y = one_minus_alpha * S_y
+            S_y2 = one_minus_alpha * S_y2
+
+        # Calculate mean and variance if cumulative weight is positive
+        if S_w > 0.0:
+            mean = S_y / S_w
+            denominator = S_w - (S_w2 / S_w)
+            if denominator > 0.0:
+                variance = (S_y2 / S_w - mean ** 2) * S_w / denominator
+                variance = max(variance, 0.0)  # Ensure non-negative variance
+                ewm_std[t] = np.sqrt(variance)
+            else:
+                ewm_std[t] = np.nan
+        else:
+            ewm_std[t] = np.nan
 
     return ewm_std
 
@@ -168,4 +175,3 @@ def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.floa
             returns[i] = np.nan
 
     return returns
-

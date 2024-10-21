@@ -136,7 +136,7 @@ def test_standard_volatility_estimator_various_windows(return_window_sec, minute
     assert_allclose(vol_numba_clean.values, vol_pandas_clean.values, rtol=1e-5, atol=1e-8)
 
 
-@pytest.mark.parametrize("lookback", [10, 20, 50])
+@pytest.mark.parametrize("lookback", [2, 5, 10, 20, 50])
 def test_standard_volatility_estimator_various_lookbacks(lookback):
     # Generate sample data
     timestamps, close_array, close_series = generate_sample_data()

@@ -101,7 +101,8 @@ if __name__ == "__main__":
     performance_test()
 
     """
-    Average execution time of get_vol: 0.1608 seconds
-    Average execution time of standard_volatility_estimator: 0.0218 seconds
-    Speedup of standard_volatility_estimator over pandas: 7.39x
+    Average execution time of get_vol: 0.1350 seconds
+    Average execution time of standard_volatility_estimator: 0.0166 seconds
+    Speedup of standard_volatility_estimator over get_vol: 8.12x
+    Outputs are consistent between get_vol and standard_volatility_estimator.
     """

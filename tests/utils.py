@@ -4,7 +4,7 @@ import time
 from typing import Any, Callable
 
 
-def measure_execution_time(func: Callable, *args, n_runs=10, **kwargs):
+def measure_execution_time(func: Callable, *args, n_runs=11, **kwargs) -> float:
     """
     Measure the execution time of a function by running it multiple times and averaging the time taken.
 
@@ -57,7 +57,7 @@ def generate_price_series(n_points=1_000_000, inter_arrival_time=15, seed=42) ->
     # Generate irregular timestamps
     inter_arrival_times = np.random.exponential(scale=inter_arrival_time, size=n_points)
     timestamps_sec = np.cumsum(inter_arrival_times)
-    start_time = pd.Timestamp('2021-01-01')
+    start_time = pd.Timestamp('1994-01-01')
     timestamps = start_time + pd.to_timedelta(timestamps_sec, unit='s')
 
     # Generate synthetic closing prices
