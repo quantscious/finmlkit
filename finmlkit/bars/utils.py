@@ -4,6 +4,7 @@ from numpy.typing import NDArray
 import numpy as np
 import pandas as pd
 
+
 @njit(nopython=True, nogil=True, fastmath=True)
 def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[-1, 1]:
     """
