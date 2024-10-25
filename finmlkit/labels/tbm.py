@@ -43,8 +43,8 @@ def triple_barrier(
     Returns
     -------
     tuple(np.array(np.int8), np.array(np.int32), np.array(np.float64))
-        The labels (-1, 0, 1), the first barrier touch index, the return, maximum d/D ratio during the search
-        where d is the return calculated from the starting point and D is the corresponding target return.
+        The labels (-1, 0, 1), the first barrier touch index, the return, maximum return to target ratio during the search
+        describing how close the path came to a horizontal barrier.
         The latter can be used later to calculate weights for 0 labels.
     """
 
@@ -160,7 +160,7 @@ def label_concurrency_weights(timestamps: NDArray[np.int64], event_idxs: NDArray
 @njit(nogil=True, parallel=True)
 def vertical_barrier_weights(max_return_ratios: NDArray[np.float64]) -> NDArray[np.float64]:
     """
-    Calculate weights for labels corresponding to vertical barrier hits based on the maximum d/D ratio.
+    Calculate weights for labels corresponding to vertical barrier hits based on the maximum return ratio.
     The idea is to assign lower weights to labels that approached a horizontal barrier closely but did not touch it.
 
     Parameters
