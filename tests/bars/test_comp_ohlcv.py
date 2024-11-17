@@ -3,7 +3,7 @@ import pytest
 import os
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.bars.build import comp_bar_ohlcv
+from finmlkit.bars.base import comp_bar_ohlcv
 
 def test_comp_ohlcv():
     # Sample input data

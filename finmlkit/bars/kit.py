@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, Any
 from numpy.typing import NDArray
-from .build import BarBuilderBase
+from .base import BarBuilderBase
 from .logic import _time_bar_indexer, _tick_bar_indexer, _volume_bar_indexer, _dollar_bar_indexer, _imbalance_bar_indexer, _run_bar_indexer
 from finmlkit.utils.log import logger
 
