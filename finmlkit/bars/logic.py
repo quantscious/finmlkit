@@ -39,7 +39,7 @@ def _time_bar_indexer(
     last_ts = timestamps[-1]
 
     # create the array of bar open timestamps
-    bar_open_ts = np.arange(bar_start_ts, last_ts, bar_interval_ns, dtype=np.int64)
+    bar_open_ts = np.arange(bar_start_ts, last_ts + 1, bar_interval_ns, dtype=np.int64)
 
     # find the indices of the bar open timestamps in the raw trades timestamps
     # side='left' ensures that the index returned is the first index where the value is greater than or equal to the bar open timestamp

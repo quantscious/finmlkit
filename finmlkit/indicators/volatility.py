@@ -4,7 +4,6 @@ Implements various volatility estimators.
 import numpy as np
 from numpy.typing import NDArray
 from numba import njit
-
 from .utils import ewms, compute_lagged_returns
 
 @njit(nogil=True, parallel=True)

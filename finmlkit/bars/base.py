@@ -494,6 +494,7 @@ class BarBuilderBase(ABC):
         FootprintData
             A FootprintData object containing the footprint data.
         """
+        # TODO: Implement the footprint data builder
         pass
 
 
@@ -762,7 +763,8 @@ def comp_bar_footprints(
     """
     n_bars = len(bar_open_indices) - 1
 
-    # TODO:  New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+    # TODO IDEA:  New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+
     # Define dynamic lists
     price_levels = NumbaList()
     buy_volumes = NumbaList()
@@ -798,7 +800,7 @@ def comp_bar_footprints(
         # Start aggregating the footprint data
         for j in range(start, end):
             price = float(prices[j])
-            previous_price = prices[j - 1] if j > 0 else prices
+            previous_price = prices[j - 1] if j > 0 else price
             tick_direction = comp_trade_side(price, previous_price, tick_direction)
             price = int(round(price / price_tick_size))
             amount = amounts[j]
@@ -847,67 +849,7 @@ def comp_bar_footprints(
 
 
 @njit(nopython=True, nogil=True)
-def comp_footprint_features(price_levels: NDArray[np.int32],
-                            buy_volumes: NDArray[np.float32], sell_volumes: NDArray[np.float32],
-                            imbalance_multiplier: float):
-    """
-    Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.
-    Note that it is assumed footprint price levels are sorted in ascending order and increments by price_tick_size.
-
-    :param price_levels: price levels of a bar (1D numpy array)
-    :param buy_volumes: buy volumes of a bar (1D numpy array)
-    :param sell_volumes: sell volumes of a bar (1D numpy array)
-    :param imbalance_multiplier: imbalance multiplier
-
-    Returns: buy imbalances (1D bool array), sell imbalances (1D bool array), COT price level (float)
-
-    """
-    n_levels = len(price_levels)
-    buy_imbalances = np.zeros((n_levels,), dtype=np.bool_)
-    sell_imbalances = np.zeros((n_levels,), dtype=np.bool_)
-    highest_cot_vol = 0.
-    highest_cot_idx = 0
-
-    # Ascending Bid-Ask Table         Descending Bid-Ask Table (Conventional)
-    # -----------------                 -----------------
-    # | L | Sell| Buy |                 | L | Sell| Buy |
-    # |---|-----|-----|                 |---|-----|-----|
-    # | 0 |   0 |   1 |                 | 3 |  10 |   0 |
-    # |---|-----|-----|                 |---|-----|-----|
-    # | 1 |   2 |  56 |                 | 2 | 181 |  15 |
-    # |---|-----|-----|                 |---|-----|-----|
-    # | 2 | 181 |  15 |                 | 1 |   2 |  56 |
-    # |---|-----|-----|                 |---|-----|-----|
-    # | 3 |  10 |   0 |                 | 0 |   0 |   1 |
-    # -----------------                 -----------------
-    # In the conventional table the l-th sell (bid) level corresponds to the (l-1)-th buy (ask) level;
-    # the l-th buy (ask) level corresponds to the (l+1)-th sell (bid) level
-    #
-    # In the ascending table it is reversed and the l-th sell (bid) level corresponds to the (l+1)-th buy (ask) level;
-    # the l-th buy (ask) level corresponds to the (l-1)-th sell (bid) level
-
-    for level in range(n_levels):
-        # Find sell (bid) imbalances (ascending price levels)
-        if level < n_levels - 1:
-            sell_imbalances[level] = 1 if sell_volumes[level] > (buy_volumes[level + 1] * imbalance_multiplier) else 0
-
-        # Find buy (ask) imbalances (ascending price levels)
-        if level > 0:
-            buy_imbalances[level] = 1 if buy_volumes[level] > (sell_volumes[level - 1] * imbalance_multiplier) else 0
-
-        # Find Commitment of Traders (COT) price level
-        sum_level_volume = buy_volumes[level] + sell_volumes[level]
-        if sum_level_volume > highest_cot_vol:
-            highest_cot_vol = sum_level_volume
-            highest_cot_idx = level
-
-    cot_price_level = price_levels[highest_cot_idx]
-
-    return buy_imbalances, sell_imbalances, cot_price_level
-
-
-@njit(nopython=True, nogil=True)
-def comp_footprint_features_new(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
+def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
     """
     Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.
 
@@ -931,10 +873,27 @@ def comp_footprint_features_new(price_levels, buy_volumes, sell_volumes, imbalan
     cot_price_level : int
         Commitment of Traders (COT) price level.
     """
-    # TODO: Test this function
     n_levels = len(price_levels)
     buy_imbalances = np.zeros(n_levels, dtype=np.bool_)
     sell_imbalances = np.zeros(n_levels, dtype=np.bool_)
+
+    # Ascending Bid-Ask Table         Descending Bid-Ask Table (Conventional)
+    # -----------------                 -----------------
+    # | L | Sell| Buy |                 | L | Sell| Buy |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 0 |   0 |   1 |                 | 3 |  10 |   0 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 1 |   2 |  56 |                 | 2 | 181 |  15 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 2 | 181 |  15 |                 | 1 |   2 |  56 |
+    # |---|-----|-----|                 |---|-----|-----|
+    # | 3 |  10 |   0 |                 | 0 |   0 |   1 |
+    # -----------------                 -----------------
+    # In the conventional table the l-th sell (bid) level corresponds to the (l-1)-th buy (ask) level;
+    # the l-th buy (ask) level corresponds to the (l+1)-th sell (bid) level
+    #
+    # In the ascending table it is reversed and the l-th sell (bid) level corresponds to the (l+1)-th buy (ask) level;
+    # the l-th buy (ask) level corresponds to the (l-1)-th sell (bid) level
 
     if n_levels > 1:
         sell_imbalances[:-1] = sell_volumes[:-1] > (buy_volumes[1:] * imbalance_multiplier)

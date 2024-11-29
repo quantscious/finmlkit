@@ -30,19 +30,45 @@ We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s
 
 # Project Structure
 ## Bars
-Bars are the primary data structure in FinMLKit – constructed from raw trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data). Bars are used as input for indicators, strategies, and other components of the library. In summary, **the bars module is responsible for processing unstructured raw trades data into structured bars data that can be used for further analysis**.
+Bars are the primary data structure in FinMLKit – constructed from raw trades data –, 
+representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) 
+or any other format that includes the necessary information for analysis (e.g. footprint data, directional features). 
+Bars are used as input for indicators, strategies, and other components of the library. In summary, **the bars module 
+is responsible for processing unstructured raw trades data into structured data that can be used for further analysis**.
 
-[x] - OHLCV bars
-[x] - Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
-[x] - Bar footprints
+**Data Structures:**
+- [x] OHLCV bars
+- [x] Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
+- [x] Bar footprints
 
-[x] - Time bars
-[x] - Tick bars
-[x] - Volume bars
-[x] - Dollar bars
-[] - Imbalance bars
-[] - Run bars
+**Bar Types:**
+- [x] Time bars
+- [x] Tick bars
+- [x] Volume bars
+- [x] Dollar bars
+- [ ] Imbalance bars
+- [ ] Run bars
 
 
 ## Indicators
-Everything that processes bars data (candlestick/OHLCV) and calculates derived values/features from it is considered an indicator. This includes moving averages, RSI, MACD, etc. Indicators are the building blocks of trading strategies and are used to generate signals for buying or selling assets. 
+Everything that processes bars data (candlestick/OHLCV, directional features, or footprints) and calculates derived values/features from it is considered an indicator. 
+This includes moving averages, RSI, MACD, etc. Here we are focusing on more unconventional indicators that are not commonly 
+found in other libraries and builds on our advanced data structures like footprints -> volume profile indicators.
+Indicators are the building blocks of trading strategies and are used to generate signals for buying or selling assets. 
+
+- [x] Adjusted Exponential Moving Average
+- [x] Standard Volatility Estimators
+- [x] Volume Profile Indicators
+
+## Labels
+Labels are the target values that we want to predict in a supervised learning problem.
+- [x] Triple Barrier Method
+- [ ] Meta-Labeling
+- [x] Label Concurrency weights
+- [x] Class Imbalance weights
+
+## Sampling
+- [x] CUSUM Filter
+
+## Structural Breaks
+- [x] CUSUM monitoring for structural breaks _(Chu-Stinchcombe-White CUSUM Test on Levels based on  Homm and Breitung (2011).)_
