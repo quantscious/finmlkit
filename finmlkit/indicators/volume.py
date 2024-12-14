@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from finmlkit.bars.base import FootprintData
-from typing import Tuple
 
 
 class VolumePro:

@@ -9,7 +9,7 @@ from numba.typed import List as NumbaList
 from numpy.typing import NDArray
 
 
-@njit(nopython=True, nogil=True)
+@njit(nogil=True)
 def _time_bar_indexer(
         timestamps: NDArray[np.int64],
         interval_seconds: int

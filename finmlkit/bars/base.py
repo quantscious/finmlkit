@@ -436,7 +436,7 @@ class BarBuilderBase(ABC):
         logger.info("OHLCV bars calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
-            'timestamp': self._open_ts,
+            'timestamp': self._open_ts[:-1],
             'open': ohlcv_tuple[0],
             'high': ohlcv_tuple[1],
             'low': ohlcv_tuple[2],
@@ -473,7 +473,7 @@ class BarBuilderBase(ABC):
         logger.info("Directional features calculated successfully.")
 
         directional_df = pd.DataFrame({
-            'timestamp': self._open_ts,
+            'timestamp': self._open_ts[:-1],
             'ticks_buy': directional_tuple[0],
             'ticks_sell': directional_tuple[1],
             'volume_buy': directional_tuple[2],
@@ -494,7 +494,7 @@ class BarBuilderBase(ABC):
 
         return directional_df
 
-    def build_footprints(self, imbalance_factor=3.0) -> FootprintData:
+    def build_footprints(self, price_tick_size=None, imbalance_factor=3.0) -> FootprintData:
         """
         Build the footprint data using the generated indices and raw trades data.
         Returns
@@ -508,8 +508,9 @@ class BarBuilderBase(ABC):
             # We need the bar highs and lows for the footprint calculation
             self.build_ohlcv()
 
-        # Anticipate price tick size
-        price_tick_size = comp_price_tick_size(self._raw_data['price'].values)
+        if price_tick_size is None:
+            # Anticipate price tick size
+            price_tick_size = comp_price_tick_size(self._raw_data['price'].values)
         logger.info(f"Price tick size: {price_tick_size}")
 
         # Compute the footprint data
@@ -517,6 +518,7 @@ class BarBuilderBase(ABC):
             self._raw_data['price'].values,
             self._raw_data['amount'].values,
             self._open_indices,
+            self._open_ts,
             price_tick_size,
             self._lows,
             self._highs,
@@ -535,7 +537,7 @@ class BarBuilderBase(ABC):
 # --------------------------------------------------------------------------------------------
 # CORE FUNCTIONS
 # --------------------------------------------------------------------------------------------
-@njit(nopython=True, nogil=True, parallel=True)
+@njit(nogil=True, parallel=True)
 def comp_bar_ohlcv(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
@@ -613,7 +615,7 @@ def comp_bar_ohlcv(
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
 
 
-@njit(nopython=True, nogil=True, parallel=True)
+@njit(nogil=True, parallel=True)
 def comp_bar_directional_features(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
@@ -744,7 +746,7 @@ def comp_bar_directional_features(
     )
 
 
-@njit(nopython=True, nogil=True, parallel=False)
+@njit(nogil=True, parallel=False)
 def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
@@ -891,7 +893,7 @@ def comp_bar_footprints(
     )
 
 
-@njit(nopython=True, nogil=True)
+@njit(nogil=True)
 def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
     """
     Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.

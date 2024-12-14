@@ -17,14 +17,9 @@ def configure_logger():
     """
     # Check for LOGGER_DIR from .env or environment variables
     log_dir = os.getenv('LOGGER_DIR')
-    disable_logger = os.getenv('DISABLE_LOGGER', 'false').lower() == 'true'
 
-    if disable_logger:
-        # Disable logging by setting the level to CRITICAL
-        logger.setLevel(logging.CRITICAL)
-    else:
-        # Set the logger's level based on whether logging to a file is enabled
-        logger.setLevel(logging.DEBUG if log_dir else logging.INFO)
+    # Set the logger's level based on whether logging to a file is enabled
+    logger.setLevel(logging.DEBUG if log_dir else logging.CRITICAL)
 
     # 1. Console logging
     # Create a console handler for logging to the terminal

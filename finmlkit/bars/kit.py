@@ -12,7 +12,7 @@ class TimeBarKit(BarBuilderBase):
     Time bar builder class.
     """
 
-    def __init__(self, trades: pd.DataFrame, interval: int):
+    def __init__(self, trades: pd.DataFrame, interval_sec: int):
         """
         Initialize the time bar builder with raw trades data and time interval.
 
@@ -24,9 +24,9 @@ class TimeBarKit(BarBuilderBase):
             The time interval in seconds for the time bars.
         """
         super().__init__(trades)
-        self.interval = interval
+        self.interval = interval_sec
 
-        logger.info(f"Time bar builder initialized with interval: {interval} seconds.")
+        logger.info(f"Time bar builder initialized with interval: {interval_sec} seconds.")
 
     def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """

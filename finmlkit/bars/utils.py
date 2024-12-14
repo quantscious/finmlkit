@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-@njit(nopython=True, nogil=True, fastmath=True)
+@njit(nogil=True, fastmath=True)
 def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[-1, 1]:
     """
     Implements the tick rule defined on page 29 of "Advances in Financial Machine Learning". It classifies the
@@ -31,7 +31,7 @@ def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[
     return np.sign(dp) if abs(dp) > epsilon else prev_tick
 
 
-@njit(nopython=True, nogil=True)
+@njit(nogil=True)
 def comp_trade_side_vector(prices: NDArray[np.float64]) -> NDArray[np.int8]:
     """
     Calculate the trade side for a sequence of raw trades prices.
@@ -61,8 +61,42 @@ def comp_trade_side_vector(prices: NDArray[np.float64]) -> NDArray[np.int8]:
     return trade_sides
 
 
-@njit(nopython=True, nogil=True)
+@njit(nogil=True)
 def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
+    if len(prices) == 0:
+        raise ValueError("Empty prices array")
+
+    # Limit sample size and round to mitigate floating-point errors
+    price_sample = np.round(prices[:min(10000, len(prices))], decimals=12)
+    unique_prices = np.unique(price_sample)
+
+    if len(unique_prices) <= 1:
+        return 0.0
+
+    # Compute all differences between consecutive unique prices
+    diffs = np.diff(unique_prices)
+
+    # Get the smallest nonzero difference
+    min_diff = np.min(diffs[diffs > 0]) if np.any(diffs > 0) else 0.0
+
+    if min_diff == 0.0:
+        # Avoid computing log10(0)
+        return 0.0
+
+    # Determine the exponent for adaptive rounding
+    exponent = np.floor(np.log10(abs(min_diff)))
+    # Specify the desired number of significant digits
+    desired_significant_digits = 2
+    # Calculate the number of decimal places to round to
+    ndigits = int(desired_significant_digits - 1 - exponent)
+    # Round the tick size adaptively based on the exponent
+    rounded_tick_size = round(min_diff, ndigits)
+
+    return rounded_tick_size
+
+
+@njit(nogil=True)
+def comp_price_tick_size_old(prices: NDArray[np.float64]) -> float:
     """
     Compute the price tick size from raw trades prices data.
 
@@ -103,13 +137,10 @@ def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
 
     # Determine the exponent for adaptive rounding
     exponent = np.floor(np.log10(abs(price_tick_size)))
-
     # Specify the desired number of significant digits
     desired_significant_digits = 2
-
     # Calculate the number of decimal places to round to
     ndigits = int(desired_significant_digits - 1 - exponent)
-
     # Round the tick size adaptively based on the exponent
     rounded_tick_size = round(price_tick_size, ndigits)
 
