@@ -54,7 +54,7 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
 
         if s_n_t_up > max_s_n_value_up:
             max_s_n_value_up = s_n_t_up
-            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t / n))
+            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t / n))  # Note: De Prado uses log(t-n) in his book adv. fin. ml book. If you know the reason, please let me know.
 
         if s_n_t_down > max_s_n_value_down:
             max_s_n_value_down = s_n_t_down

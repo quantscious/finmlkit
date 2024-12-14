@@ -134,7 +134,7 @@ def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.floa
     Parameters
     ----------
     timestamps : np.array(np.int64)
-        Timestamps series
+        Timestamps series in nanoseconds
     close : np.array(np.float64)
         Close price series
     return_window_sec : float
