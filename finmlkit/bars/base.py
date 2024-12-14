@@ -14,6 +14,7 @@ import pandas as pd
 import datetime as dt
 from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
+from finmlkit.utils.log import logger
 
 
 @dataclass
@@ -390,6 +391,7 @@ class BarBuilderBase(ABC):
         self._raw_data.sort_values('timestamp', inplace=True)
 
         self._open_ts = self._open_indices = None
+        self._highs = self._lows = None
     
     def __str__(self):
         return (f"Class: {self.__class__.__name__} with members:\n"
@@ -407,11 +409,12 @@ class BarBuilderBase(ABC):
         """
         pass
 
-    def _set_bar_open_values(self):
+    def _calc_bar_open_values(self):
         """
         Calculate and sets the open timestamps and indices if not already calculated.
         """
         if self._open_indices is None:
+            logger.info("Calculating bar open tick indices and timestamps...")
             self._open_ts, self._open_indices = self._generate_bar_opens()
 
     def build_ohlcv(self) -> pd.DataFrame:
@@ -420,15 +423,17 @@ class BarBuilderBase(ABC):
         Returns
         -------
         pd.DataFrame
-            A dataframe containing the OHLCV + VWAP features with datetime index.
+            A dataframe containing the OHLCV + VWAP features with datetime index corresponding to the bar open timestamps.
         """
-        self._set_bar_open_values()
+        self._calc_bar_open_values()
 
         ohlcv_tuple = comp_bar_ohlcv(
             self._raw_data['price'].values,
             self._raw_data['amount'].values,
             self._open_indices
         )
+        self._highs, self._lows = ohlcv_tuple[1], ohlcv_tuple[2]
+        logger.info("OHLCV bars calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
             'timestamp': self._open_ts,
@@ -439,6 +444,7 @@ class BarBuilderBase(ABC):
             'volume': ohlcv_tuple[4],
             'vwap': ohlcv_tuple[5]
         })
+        logger.info("OHLCV bars converted to DataFrame.")
 
         # Convert timestamps to datetime index
         ohlcv_df['timestamp'] = pd.to_datetime(ohlcv_df['timestamp'], unit='ns')
@@ -457,13 +463,14 @@ class BarBuilderBase(ABC):
             ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread,
             cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
         """
-        self._set_bar_open_values()
+        self._calc_bar_open_values()
 
         directional_tuple = comp_bar_directional_features(
             self._raw_data['price'].values,
             self._raw_data['amount'].values,
             self._open_indices
         )
+        logger.info("Directional features calculated successfully.")
 
         directional_df = pd.DataFrame({
             'timestamp': self._open_ts,
@@ -479,6 +486,7 @@ class BarBuilderBase(ABC):
             'cum_dollars_min': directional_tuple[9],
             'cum_dollars_max': directional_tuple[10]
         })
+        logger.info("Directional features converted to DataFrame.")
 
         # Convert timestamps to datetime index
         directional_df['timestamp'] = pd.to_datetime(directional_df['timestamp'], unit='ns')
@@ -486,7 +494,7 @@ class BarBuilderBase(ABC):
 
         return directional_df
 
-    def build_footprints(self) -> FootprintData:
+    def build_footprints(self, imbalance_factor=3.0) -> FootprintData:
         """
         Build the footprint data using the generated indices and raw trades data.
         Returns
@@ -494,10 +502,39 @@ class BarBuilderBase(ABC):
         FootprintData
             A FootprintData object containing the footprint data.
         """
-        # TODO: Implement the footprint data builder
-        pass
+
+        self._calc_bar_open_values()
+        if self._highs is None or self._lows is None:
+            # We need the bar highs and lows for the footprint calculation
+            self.build_ohlcv()
+
+        # Anticipate price tick size
+        price_tick_size = comp_price_tick_size(self._raw_data['price'].values)
+        logger.info(f"Price tick size: {price_tick_size}")
+
+        # Compute the footprint data
+        footprint_data = comp_bar_footprints(
+            self._raw_data['price'].values,
+            self._raw_data['amount'].values,
+            self._open_indices,
+            price_tick_size,
+            self._lows,
+            self._highs,
+            imbalance_factor
+        )
+        logger.info("Footprint data calculated successfully.")
+
+        # Create a FootprintData object
+        footprint = FootprintData.from_numba(footprint_data, price_tick_size)
+        footprint.cast_to_numba_list()
+        logger.info("Footprint data converted to FootprintData object.")
+
+        return footprint
 
 
+# --------------------------------------------------------------------------------------------
+# CORE FUNCTIONS
+# --------------------------------------------------------------------------------------------
 @njit(nopython=True, nogil=True, parallel=True)
 def comp_bar_ohlcv(
     prices: NDArray[np.float64],
@@ -712,11 +749,13 @@ def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
     bar_open_indices: NDArray[np.int64],
+    bar_open_timestamps: NDArray[np.int64],
     price_tick_size: float,
     bar_lows: NDArray[np.float64],
     bar_highs: NDArray[np.float64],
     imbalance_factor: float
 ) -> tuple[
+    NDArray[np.int64],
     NumbaList[NDArray[np.int32]],
     NumbaList[NDArray[np.float32]], NumbaList[NDArray[np.float32]],
     NumbaList[NDArray[np.int32]], NumbaList[NDArray[np.int32]],
@@ -734,6 +773,8 @@ def comp_bar_footprints(
         amounts of raw trades data
     bar_open_indices : np.array(np.int64)
         bar open indices in the raw trades timestamps
+    bar_open_timestamps : np.array(np.int64)
+        bar open timestamps in nanoseconds
     price_tick_size : float
         price tick size
     bar_lows : np.array(np.float64)
@@ -746,6 +787,7 @@ def comp_bar_footprints(
     Returns
     -------
     tuple
+        - open_timestamps : np.ndarray
         - price_levels : NumbaList[np.ndarray]
         - buy_volumes : NumbaList[np.ndarray]
         - sell_volumes : NumbaList[np.ndarray]
@@ -761,9 +803,9 @@ def comp_bar_footprints(
     The price levels are calculated in (integer) price tick units to eliminate floating point errors.
 
     """
-    n_bars = len(bar_open_indices) - 1
+    # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
 
-    # TODO IDEA:  New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+    n_bars = len(bar_open_indices) - 1
 
     # Define dynamic lists
     price_levels = NumbaList()
@@ -840,6 +882,7 @@ def comp_bar_footprints(
         cot_price_levels[i] = cot_price_level
 
     return (
+        bar_open_timestamps[:n_bars],
         price_levels,
         buy_volumes, sell_volumes,
         buy_ticks, sell_ticks,

@@ -1,4 +1,5 @@
 .venv
+.env
 .cadence
 .idea
 __pycache__
