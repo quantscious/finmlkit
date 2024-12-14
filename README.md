@@ -7,9 +7,9 @@ FinMLKit is an **open-source, lightweight** alternative to the well-known MLFinL
 FinMLKit uses Numba over Pandas for complex financial algorithms to ensure speed and precision. Numba’s **Just-In-Time (JIT)** compilation allows it to convert Python code into machine code, significantly improving performance, especially in iterative tasks where parallelization can be utilized. In contrast, Pandas, while great for structuring and managing data, is slow and cumbersome for such operations. Therefore, we use Pandas only as a wrapper for handling data, allowing it to shine where it excels, while Numba powers the core algorithmic computations for efficiency and clarity. This way, we can avoid relying on slow and elusive pandas operations and focus on efficient, more explicit codes in the core functions.
 
 Key principles are **Simplicity**, **Speed**, and **Accessibility** (SSA):
-- 🧩 **Simplicity**: No complex frameworks, no elusive pandas operations, just efficient, explicit, well-documented algorithms.
-- ⚡ **Speed**: Core functions built with Numba for high-performance computation and parallelization in mind.
-- 🌍 **Accessibility:** The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
+- **Simplicity** 🧩 No complex frameworks, no elusive pandas operations, just efficient, explicit, well-documented algorithms.
+- **Speed** ⚡ Core functions built with Numba for high-performance computation and parallelization in mind.
+- **Accessibility** 🌍 The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
 
 # 📑 Trusted Methodologies
 FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. We avoid experimental techniques and instead focus on proven methods. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
