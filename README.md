@@ -60,10 +60,8 @@ Indicators are the building blocks of trading strategies and are used to generat
 
 - [x] Adjusted Exponential Moving Average
 - [x] Standard Volatility Estimators
-- [x] Volume Profile Indicators
+- [x] Volume Profile Indicators: Commitment of Traders (COT), Buy/Sell Imbalance price levels, High Volume Nodes (HVN), Low Volume Nodes (LVN), Point of Control (POC)
 
-### Volume Profile Indicators
-Calculates POC, H
 
 ## Labels
 Labels are the target values that we want to predict in a supervised learning problem.
