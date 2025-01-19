@@ -5,13 +5,7 @@
 
 FinMLKit documentation
 ======================
-
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
-Documentation generated with `sphinx-apidoc -o source ../finmlkit` and `make html`.
-
+Welcome to FinMLKit's documentation! This is a Python package for financial machine learning and more broadly quantitative finance.
 
 .. toctree::
    :maxdepth: 2
