@@ -10,11 +10,20 @@ Add your content using ``reStructuredText`` syntax. See the
 `reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
 documentation for details.
 
+Documentation generated with `sphinx-apidoc -o source ../finmlkit` and `make html`.
+
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-Bars
-====
+   modules
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
+
 
