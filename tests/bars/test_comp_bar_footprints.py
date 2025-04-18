@@ -3,7 +3,7 @@ import os
 
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 from numba.typed import List as NumbaList
-from finmlkit.bars.base import comp_bar_footprints
+from finmlkit.bar.base import comp_bar_footprints
 
 
 def test_comp_bar_footprints():
@@ -13,7 +13,7 @@ def test_comp_bar_footprints():
     # Sample data
     prices = np.array([100.0, 100.5, 101.0, 100.5, 100.0], dtype=np.float64)
     amounts = np.array([1.0, 2.0, 1.5, 1.0, 2.0], dtype=np.float64)
-    bar_open_indices = np.array([0, 3, 5], dtype=np.int64)  # Two bars: indices 0-3, 3-5
+    bar_open_indices = np.array([0, 3, 5], dtype=np.int64)  # Two bar: indices 0-3, 3-5
     price_tick_size = 0.5
     bar_lows = np.array([100.0, 100.0], dtype=np.float64)
     bar_highs = np.array([101.0, 100.5], dtype=np.float64)
@@ -32,16 +32,16 @@ def test_comp_bar_footprints():
 
     # Assertions to check lengths
     n_bars = len(bar_open_indices) - 1
-    assert len(price_levels) == n_bars, "Length of price_levels should match number of bars"
-    assert len(buy_volumes) == n_bars, "Length of buy_volumes should match number of bars"
-    assert len(sell_volumes) == n_bars, "Length of sell_volumes should match number of bars"
-    assert len(buy_ticks) == n_bars, "Length of buy_ticks should match number of bars"
-    assert len(sell_ticks) == n_bars, "Length of sell_ticks should match number of bars"
-    assert len(buy_imbalances) == n_bars, "Length of buy_imbalances should match number of bars"
-    assert len(sell_imbalances) == n_bars, "Length of sell_imbalances should match number of bars"
-    assert len(buy_imbalances_sum) == n_bars, "Length of buy_imbalances_sum should match number of bars"
-    assert len(sell_imbalances_sum) == n_bars, "Length of sell_imbalances_sum should match number of bars"
-    assert len(cot_price_levels) == n_bars, "Length of cot_price_levels should match number of bars"
+    assert len(price_levels) == n_bars, "Length of price_levels should match number of bar"
+    assert len(buy_volumes) == n_bars, "Length of buy_volumes should match number of bar"
+    assert len(sell_volumes) == n_bars, "Length of sell_volumes should match number of bar"
+    assert len(buy_ticks) == n_bars, "Length of buy_ticks should match number of bar"
+    assert len(sell_ticks) == n_bars, "Length of sell_ticks should match number of bar"
+    assert len(buy_imbalances) == n_bars, "Length of buy_imbalances should match number of bar"
+    assert len(sell_imbalances) == n_bars, "Length of sell_imbalances should match number of bar"
+    assert len(buy_imbalances_sum) == n_bars, "Length of buy_imbalances_sum should match number of bar"
+    assert len(sell_imbalances_sum) == n_bars, "Length of sell_imbalances_sum should match number of bar"
+    assert len(cot_price_levels) == n_bars, "Length of cot_price_levels should match number of bar"
 
     # Detailed checks for bar 0
     # Expected price levels for bar 0 (price in ticks)

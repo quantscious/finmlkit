@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from finmlkit.structural_breaks.cusum import cusum_test_rolling
+from finmlkit.structural_break.cusum import cusum_test_rolling
 
 def csw_rolling_perf_test():
     for _ in range(10):

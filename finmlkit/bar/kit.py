@@ -21,7 +21,7 @@ class TimeBarKit(BarBuilderBase):
         trades : pd.DataFrame
             A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
         interval : int
-            The time interval in seconds for the time bars.
+            The time interval in seconds for the time bar.
         """
         super().__init__(trades)
         self.interval = interval_sec
@@ -54,7 +54,7 @@ class TickBarKit(BarBuilderBase):
         trades : pd.DataFrame
             A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
         tick_count : int
-            The tick count for the tick bars.
+            The tick count for the tick bar.
         """
         super().__init__(trades)
         self.tick_count_thrs = tick_count_thrs
@@ -87,7 +87,7 @@ class VolumeBarKit(BarBuilderBase):
         trades : pd.DataFrame
             A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
         volume : float
-            The volume for the volume bars.
+            The volume for the volume bar.
         """
         super().__init__(trades)
         self.volume_thrs = volume_thrs
@@ -121,7 +121,7 @@ class DollarBarKit(BarBuilderBase):
         trades : pd.DataFrame
             A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
         dollar : float
-            The dollar amount for the dollar bars.
+            The dollar amount for the dollar bar.
         """
         super().__init__(trades)
         self.dollar_thrs = dollar_thrs

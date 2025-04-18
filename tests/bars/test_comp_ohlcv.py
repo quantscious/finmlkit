@@ -3,13 +3,13 @@ import pytest
 import os
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.bars.base import comp_bar_ohlcv
+from finmlkit.bar.base import comp_bar_ohlcv
 
 def test_comp_ohlcv():
     # Sample input data
     prices = np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 150.0, 100.0, 50.0, 25.0], dtype=np.float64)
-    bar_open_indices = np.array([0, 3, 6], dtype=np.int64)  # Defines two bars
+    bar_open_indices = np.array([0, 3, 6], dtype=np.int64)  # Defines two bar
 
     # Expected outputs
     expected_bar_open = np.array([10.0, 13.0], dtype=np.float64)
@@ -38,7 +38,7 @@ def test_single_trade_per_bar():
     # Each bar has exactly one trade
     prices = np.array([10.0, 12.0, 14.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 300.0], dtype=np.float64)
-    bar_open_indices = np.array([0, 1, 2, 3], dtype=np.int64)  # Three bars, each with one trade
+    bar_open_indices = np.array([0, 1, 2, 3], dtype=np.int64)  # Three bar, each with one trade
 
     # Expected outputs: for a single trade, OHLCV should all be the trade itself
     expected_bar_open = prices
@@ -90,7 +90,7 @@ def test_zero_volume():
 
 def test_empty_bars():
     """
-    In case of time bars, there can be empty bars with no trades.
+    In case of time bar, there can be empty bar with no trades.
     Returns
     -------
 

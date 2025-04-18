@@ -4,7 +4,7 @@ import pytest
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.indicators.utils import compute_lagged_returns
+from finmlkit.indicator.utils import compute_lagged_returns
 from numpy.testing import assert_allclose
 
 
@@ -204,7 +204,7 @@ def test_returns_data_with_nans():
 # Test with truly irregular data
 def test_returns_equivalence_irregular_data():
     """
-    Test the functions with truly irregular data, simulating volume bars or tick data.
+    Test the functions with truly irregular data, simulating volume bar or tick data.
     """
     # Generate truly irregular timestamps
     np.random.seed(42)

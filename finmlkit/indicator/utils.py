@@ -1,5 +1,5 @@
 """
-General utility functions not exclusively for OHLCV bars data.
+General utility functions not exclusively for OHLCV bar data.
 """
 import numpy as np
 from numba import njit, prange

@@ -1,6 +1,6 @@
 """
-This module contains the logic for generating time, tick, volume, and dollar bars.
-These functions return the open indices of the bars in the raw trades data.
+This module contains the logic for generating time, tick, volume, and dollar bar.
+These functions return the open indices of the bar in the raw trades data.
 """
 from typing import Tuple
 import numpy as np

@@ -4,7 +4,7 @@ import pytest
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.indicators.volatility import standard_volatility_estimator
+from finmlkit.indicator.volatility import standard_volatility_estimator
 
 from numpy.testing import assert_allclose
 

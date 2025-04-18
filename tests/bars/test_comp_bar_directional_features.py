@@ -3,7 +3,7 @@ import numpy as np
 import os
 os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.bars.base import comp_bar_directional_features
+from finmlkit.bar.base import comp_bar_directional_features
 
 def test_comp_bar_directional_features_simple_case():
     prices = np.array([100.0, 101.0, 102.0], dtype=np.float64)
@@ -137,7 +137,7 @@ def test_comp_bar_directional_features_empty_bar():
     dollars_buy_expected = np.array([0.0, 0.0, 101.0 * 15.0], dtype=np.float32)
     dollars_sell_expected = np.array([0.0, 0.0, 0.0], dtype=np.float32)
     max_spread_expected = np.array([0.0, 0.0, 0.0], dtype=np.float32)
-    cum_ticks_min_expected = np.array([1e9, 1e9, 1.0])  # First two bars have no cumulative ticks
+    cum_ticks_min_expected = np.array([1e9, 1e9, 1.0])  # First two bar have no cumulative ticks
     cum_ticks_max_expected = np.array([-1e9, -1e9, 1.0])
     cum_volumes_min_expected = np.array([1e9, 1e9, 15.0])
     cum_volumes_max_expected = np.array([-1e9, -1e9, 15.0])

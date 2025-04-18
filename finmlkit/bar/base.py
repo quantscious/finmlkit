@@ -1,5 +1,5 @@
 """
-This module contains the functions to build candlestick bars and other intra-bar features
+This module contains the functions to build candlestick bar and other intra-bar features
 (i.e. directional features, footprints) from raw trades data using the indexer functions outputs
 defined in the logic module.
 """
@@ -52,7 +52,7 @@ class FootprintData:
     Attributes
     ----------
     bar_timestamps : NDArray[np.int64]
-        Timestamps of the bars.
+        Timestamps of the bar.
     price_levels : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
         Price levels in price tick units.
     price_tick : float
@@ -371,7 +371,7 @@ class FootprintData:
 
 class BarBuilderBase(ABC):
     """
-    This class provides a template for generating bars from raw trades data.
+    This class provides a template for generating bar from raw trades data.
     """
 
     def __init__(self, trades: pd.DataFrame):
@@ -435,7 +435,7 @@ class BarBuilderBase(ABC):
             self._open_indices
         )
         self._highs, self._lows = ohlcv_tuple[1], ohlcv_tuple[2]
-        logger.info("OHLCV bars calculated successfully.")
+        logger.info("OHLCV bar calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
             'timestamp': self._open_ts[:-1],
@@ -446,7 +446,7 @@ class BarBuilderBase(ABC):
             'volume': ohlcv_tuple[4],
             'vwap': ohlcv_tuple[5]
         })
-        logger.info("OHLCV bars converted to DataFrame.")
+        logger.info("OHLCV bar converted to DataFrame.")
 
         # Convert timestamps to datetime index
         ohlcv_df['timestamp'] = pd.to_datetime(ohlcv_df['timestamp'], unit='ns')
@@ -546,7 +546,7 @@ def comp_bar_ohlcv(
     bar_open_indices: NDArray[np.int64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[np.float64]]:
     """
-    Build the candlestick bars from raw trades data based in bar open indices.
+    Build the candlestick bar from raw trades data based in bar open indices.
 
     Parameters
     ----------
@@ -560,9 +560,9 @@ def comp_bar_ohlcv(
     Returns
     -------
     tuple (np.array(np.float64), np.array(np.float64), np.array(np.float64), np.array(np.float64), np.array(np.float32), np.array(np.float64))
-        A tuple containing the bars' open, high, low, close prices, volumes and vwap. OHLCV + VWAP.
+        A tuple containing the bar' open, high, low, close prices, volumes and vwap. OHLCV + VWAP.
     """
-    n_bars = len(bar_open_indices) - 1  # The last open index determines the last bars' close
+    n_bars = len(bar_open_indices) - 1  # The last open index determines the last bar' close
     bar_high = np.zeros(n_bars, dtype=np.float64)
     bar_low = np.zeros(n_bars, dtype=np.float64)
     bar_open = np.zeros(n_bars, dtype=np.float64)
@@ -575,7 +575,7 @@ def comp_bar_ohlcv(
         start = bar_open_indices[i]
         end = bar_open_indices[i + 1]
 
-        # Handle empty bars
+        # Handle empty bar
         if start == end:
             last_price = prices[start - 1]
             bar_open[i] = last_price
@@ -646,7 +646,7 @@ def comp_bar_directional_features(
     Returns
     -------
     tuple
-        A tuple containing the bars' ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread, cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
+        A tuple containing the bar' ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread, cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
     """
     n_bars = len(bar_open_indices) - 1
     ticks_buy = np.zeros(n_bars, dtype=np.int64)
@@ -782,9 +782,9 @@ def comp_bar_footprints(
     price_tick_size : float
         price tick size
     bar_lows : np.array(np.float64)
-        lows of the bars
+        lows of the bar
     bar_highs : np.array(np.float64)
-        highs of the bars
+        highs of the bar
     imbalance_factor : float
         the multiplier factor for the imbalance calculation
 

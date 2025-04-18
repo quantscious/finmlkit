@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from numba import njit
-from finmlkit.bars.base import FootprintData
+from finmlkit.bar.base import FootprintData
 
 
 class VolumePro:
@@ -50,7 +50,7 @@ class VolumePro:
         Parameters
         ----------
         bars : pandas.DataFrame
-            Dataframe containing dynamic bars (columns `high` and `low` required for calculations).
+            Dataframe containing dynamic bar (columns `high` and `low` required for calculations).
         fp_data : FootprintData
             Container for footprint data, including price levels and buy/sell volumes.
 
@@ -59,7 +59,7 @@ class VolumePro:
         tuple of numpy.ndarray
             POC prices, HVA prices, and LVA prices, respectively.
         """
-        # assert that bars length and footprint data length are the same
+        # assert that bar length and footprint data length are the same
         assert len(bars) == len(fp_data.bar_timestamps), "Bars and footprint data should have the same length."
 
         # Cast the footprint data to a numba list for numba calculations
@@ -91,7 +91,7 @@ class VolumePro:
         Parameters
         ----------
         bars : pandas.DataFrame
-            Dataframe containing dynamic bars (columns `high` and `low` required for calculations).
+            Dataframe containing dynamic bar (columns `high` and `low` required for calculations).
         fp_data : FootprintData
             Container for footprint data, including price levels and buy/sell volumes.
         start : str, int, or pandas.Timestamp
@@ -118,10 +118,10 @@ class VolumePro:
         # Use FootprintBT's slicing to get the range
         fp_data_subset = fp_data[adjusted_start:end]
 
-        # Convert bar_timestamps to DatetimeIndex to match bars index format
+        # Convert bar_timestamps to DatetimeIndex to match bar index format
         fp_datetime_index = pd.to_datetime(fp_data_subset.bar_timestamps, unit='ns')
 
-        # Align bars with the footprint data using the datetime index
+        # Align bar with the footprint data using the datetime index
         bars_subset = bars.loc[fp_datetime_index]
 
         # Call the compute method for the subset
@@ -402,7 +402,7 @@ def volume_profile_rolling(ts: np.array, highs: np.array, lows: np.array,
     Parameters
     ----------
     ts : numpy.ndarray
-        1D array of int64 containing timestamps of the bars in nanoseconds.
+        1D array of int64 containing timestamps of the bar in nanoseconds.
     highs : numpy.ndarray
         1D array of float64 containing high prices for each bar timestamp.
     lows : numpy.ndarray
@@ -532,7 +532,7 @@ def volume_profile_developing(ts: np.array, highs: np.array, lows: np.array,
     Parameters
     ----------
     ts : numpy.ndarray
-        1D array of int64 containing timestamps of the bars in nanoseconds.
+        1D array of int64 containing timestamps of the bar in nanoseconds.
     highs : numpy.ndarray
         1D array of float64 containing high prices for each bar timestamp.
     lows : numpy.ndarray
