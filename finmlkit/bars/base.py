@@ -386,6 +386,8 @@ class BarBuilderBase(ABC):
         assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
         assert 'price' in trades.columns, "Missing 'price' column in trades data!"
         assert 'amount' in trades.columns, "Missing 'amount' column in trades data!"
+        # TODO: support trade side information
+        # TODO: Handle Trade splitting on same price level
 
         self._raw_data = trades
         self._raw_data.sort_values('timestamp', inplace=True)
