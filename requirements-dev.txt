@@ -1,0 +1,3 @@
+sphinx==8.1.3  # Documentation
+furo  # Documentation theme
+sphinx-autodoc-typehints # Type hints

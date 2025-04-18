@@ -5,3 +5,4 @@
 __pycache__
 docs/build
 logs
+finmlkit.egg-info
