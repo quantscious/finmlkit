@@ -37,6 +37,8 @@ class BarBuilderBase(ABC):
         :param proc_res: Optional processing resolution for timestamps
         :param inplace: If True, modifies the trades DataFrame in place.
         """
+        if not inplace:
+            trades = trades.copy()
         if 'qty' in trades.columns:
             trades.rename(columns={'qty': 'amount'}, inplace=True)
         if 'time' in trades.columns:
@@ -50,11 +52,8 @@ class BarBuilderBase(ABC):
 
         # Sort trades data by timestamp to ensure correct order
         logger.info('Input trades data OK. Sorting by timestamp...')
-        if inplace:
-            trades.sort_values(by='timestamp', inplace=True)
-            trades.reset_index(drop=True, inplace=True)
-        else:
-            trades = trades.sort_values(by='timestamp').reset_index(drop=True)
+        trades.sort_values(by='timestamp', inplace=True)
+        trades.reset_index(drop=True, inplace=True)
 
         # Handle Trade splitting on same price level TODO -> Fast Numba Implementation
         logger.info('Merging split trades (same timestamps) on same price level...')
