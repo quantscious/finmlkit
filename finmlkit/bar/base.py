@@ -25,7 +25,9 @@ class BarBuilderBase(ABC):
     def __init__(self,
                  trades: pd.DataFrame,
                  timestamp_unit: str = None,
-                 proc_res: str = None):
+                 proc_res: str = None,
+                 inplace: bool = False
+                 ):
         """
         Initialize the bar builder with raw trades data.
 
@@ -33,6 +35,7 @@ class BarBuilderBase(ABC):
             If 'is_buyer_maker' is present, it indicates the trade side otherwise it is inferred.
         :param timestamp_unit: Optional timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
         :param proc_res: Optional processing resolution for timestamps
+        :param inplace: If True, modifies the trades DataFrame in place.
         """
         if 'qty' in trades.columns:
             trades.rename(columns={'qty': 'amount'}, inplace=True)
@@ -47,9 +50,13 @@ class BarBuilderBase(ABC):
 
         # Sort trades data by timestamp to ensure correct order
         logger.info('Input trades data OK. Sorting by timestamp...')
-        trades = trades.sort_values('timestamp')
+        if inplace:
+            trades.sort_values(by='timestamp', inplace=True)
+            trades.reset_index(drop=True, inplace=True)
+        else:
+            trades = trades.sort_values(by='timestamp').reset_index(drop=True)
 
-        # Handle Trade splitting on same price level TODO -> Numba implementation
+        # Handle Trade splitting on same price level TODO -> Fast Numba Implementation
         logger.info('Merging split trades (same timestamps) on same price level...')
         if self.is_side:
             trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'], as_index=False).agg({'amount': 'sum'})
@@ -206,7 +213,7 @@ class BarBuilderBase(ABC):
         if price_tick_size is None:
             # Anticipate price tick size
             price_tick_size = comp_price_tick_size(self._raw_data['price'].values)
-        logger.info(f"Price tick size: {price_tick_size}")
+        logger.info(f"Price tick size is set to: {price_tick_size}")
 
         # Compute the footprint data
         footprint_data = comp_bar_footprints(
