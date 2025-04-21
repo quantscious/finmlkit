@@ -30,7 +30,7 @@ class BarBuilderBase(ABC):
         Initialize the bar builder with raw trades data.
         :param trades: Raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
         :param timestamp_unit: Optional timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
-        :param proc_res: Optional processing resolution for timestamps.
+        :param proc_res: Optional processing resolution for timestamps
         """
         if 'qty' in trades.columns:
             trades.rename(columns={'qty': 'amount'}, inplace=True)
@@ -40,32 +40,37 @@ class BarBuilderBase(ABC):
         assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
         assert 'price' in trades.columns, "Missing 'price' column in trades data!"
         assert 'amount' in trades.columns, "Missing 'amount' column in trades data!"
-        assert timestamp_unit in ['s', 'ms', 'us', 'ns'], "Invalid timestamp format! Must be one of: s, ms, us, ns."
 
         # Sort trades data by timestamp to ensure correct order
-        trades.sort_values('timestamp', inplace=True)
+        logger.info('Input trades data OK. Sorting by timestamp...')
+        trades = trades.sort_values('timestamp')
 
         # Handle Trade splitting on same price level TODO -> Numba implementation
+        logger.info('Merging split trades (same timestamps) on same price level...')
         trades = trades.groupby(['timestamp', 'price'], as_index=False).agg({'amount': 'sum'})
 
         # Convert timestamp to nanoseconds
         timestamp_unit = self.infer_ts_unit(timestamp_unit, trades)
+        assert timestamp_unit in ['s', 'ms', 'us', 'ns'], "Invalid timestamp format! Must be one of: s, ms, us, ns."
+        logger.info('Converting timestamp to nanoseconds units for processing...')
         trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
         # Apply resolution to the timestamp
         if proc_res and proc_res != timestamp_unit:
-            ts_resolution_ns = int(proc_res * 1e9)
-            trades.timestamp = (trades.timestamp.values // ts_resolution_ns) * ts_resolution_ns
+            logger.info(f"Processing resolution: {proc_res} -> converting to nanoseconds...")
+            raise NotImplementedError("Processing resolution not implemented yet.")
+            #ts_resolution_ns = int(proc_res * 1e9)
+            #trades.timestamp = (trades.timestamp.values // ts_resolution_ns) * ts_resolution_ns
 
         # Extract trade side information
         self.is_side = "is_maker_buyer" in trades.columns
         if self.is_side:
-            trades['side'] = trades['is_maker_buyer'].astype(np.int8)
-            trades['side'] = trades['side'].replace({1: -1, 0: 1})  # market order side
+            logger.info("Trade side information found. Using 'is_maker_buyer' to determine trade side.")
+            trades['side'] = np.where(trades['is_maker_buyer'] == 1, -1, 1)
         else:
-            trades['side'] = comp_trade_side_vector(trades['price'].values, trades['amount'].values)
+            logger.info("No trade side information found. Inferring trade side from raw trades data.")
+            trades['side'] = comp_trade_side_vector(trades['price'].values)
 
         self._raw_data = trades
-        self._raw_data.sort_values('timestamp', inplace=True)
 
         self._open_ts = self._open_indices = None
         self._highs = self._lows = None

@@ -29,8 +29,7 @@ def configure_logger():
     console_handler.setLevel(console_logger_level)  # Only show INFO-level and above on the console
 
     # Create formatter for the console handler
-    console_format = logging.Formatter(
-        '%(filename)s:%(lineno)d | %(levelname)s | %(message)s')
+    console_format = logging.Formatter('FMK | %(filename)s:%(lineno)d | %(levelname)s | %(message)s')
     console_handler.setFormatter(console_format)
 
     # Add the console handler to the logger
@@ -39,7 +38,7 @@ def configure_logger():
     # 2. File logging if LOGGER_DIR is set
     if log_dir:
         # Use LOGGER_DIR for file logging
-        log_dir = os.path.abspath(log_dir) if log_dir != '.' else os.path.dirname(os.path.dirname(__file__))
+        log_dir = os.path.abspath(log_dir)
 
         # Create the log directory if it doesn't exist
         if not os.path.exists(log_dir):
@@ -53,10 +52,8 @@ def configure_logger():
             log_file_path, when='midnight', backupCount=7, delay=True)
         file_handler.suffix = "%Y-%m-%d"  # Adds the date to the log file name
         file_handler.setLevel(file_logger_level)
-
-        # Create formatter for the file handler
-        file_format = logging.Formatter(
-            '%(asctime)s | %(filename)s:%(lineno)d | %(levelname)s | %(message)s')
+        # Create formatter for the console handler
+        file_format = logging.Formatter('%(asctime)s | %(pathname)s:%(lineno)d | %(levelname)s | %(message)s')
         file_handler.setFormatter(file_format)
 
         # Add file handler to the logger
