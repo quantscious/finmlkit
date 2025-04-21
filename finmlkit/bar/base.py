@@ -28,15 +28,9 @@ class BarBuilderBase(ABC):
                  proc_res: str = None):
         """
         Initialize the bar builder with raw trades data.
-
-        Parameters
-        ----------
-        trades : pd.DataFrame
-            A dataframe containing raw trades data with columns 'timestamp'/'time', 'price', and 'amount'/'qty'.
-        timestamp_unit : str, optional
-            The unit of the timestamp in the trades data (ms, us, ns). If None, the function will infer the format.
-        proc_res : str, optional
-            The processing resolution for the bar. Default is None.
+        :param trades: Raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
+        :param timestamp_unit: Optional timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
+        :param proc_res: Optional processing resolution for timestamps.
         """
         if 'qty' in trades.columns:
             trades.rename(columns={'qty': 'amount'}, inplace=True)
@@ -88,6 +82,7 @@ class BarBuilderBase(ABC):
                 timestamp_unit = 'ms'
             else:  # Likely in seconds
                 timestamp_unit = 's'
+                logger.warning(f"Timestamp unit is set to seconds. Please verify the data.")
             logger.info(f"Inferred timestamp format: {timestamp_unit}")
 
         return timestamp_unit
@@ -100,11 +95,8 @@ class BarBuilderBase(ABC):
     @abstractmethod
     def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
-        Abstract method to generate bar indices using the appropriate bar indexer.
-        Returns
-        -------
-        tuple(np.array(np.int64), np.array(np.int64))
-            Open timestamps and corresponding open indices in the raw trades data.
+        Abstract method to generate bar open timestamps and indices.
+        :returns: Tuple of open timestamps and their corresponding indices.
         """
         pass
 
@@ -119,10 +111,7 @@ class BarBuilderBase(ABC):
     def build_ohlcv(self) -> pd.DataFrame:
         """
         Build the bar features using the generated indices and raw trades data.
-        Returns
-        -------
-        pd.DataFrame
-            A dataframe containing the OHLCV + VWAP features with datetime index corresponding to the bar open timestamps.
+        :returns: A dataframe containing the OHLCV + VWAP features with datetime index corresponding to the bar open timestamps.
         """
         self._calc_bar_open_values()
 
@@ -154,10 +143,7 @@ class BarBuilderBase(ABC):
     def build_directional_features(self) -> pd.DataFrame:
         """
         Build the directional features using the generated indices and raw trades data.
-        Returns
-        -------
-        pd.DataFrame
-            A dataframe containing the directional features:
+        :returns: A dataframe containing the directional features:
             ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread,
             cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
         """
@@ -196,10 +182,9 @@ class BarBuilderBase(ABC):
     def build_footprints(self, price_tick_size=None, imbalance_factor=3.0) -> FootprintData:
         """
         Build the footprint data using the generated indices and raw trades data.
-        Returns
-        -------
-        FootprintData
-            A FootprintData object containing the footprint data.
+        :param price_tick_size: Optional tick size; inferred if None.
+        :param imbalance_factor: Multiplier for detecting imbalances. Default is 3.0.
+        :returns: A FootprintData object containing the footprint data.
         """
 
         self._calc_bar_open_values()
@@ -244,20 +229,16 @@ def comp_bar_ohlcv(
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[np.float64]]:
     """
     Build the candlestick bar from raw trades data based in bar open indices.
-
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-        Raw sorted **trades data** prices.
-    volumes : np.array(np.float64)
-        Raw sorted **trades data** volumes.
-    bar_open_indices : np.array(np.int64)
-        Bar open indices calculated with a bar indexer function.
-
-    Returns
-    -------
-    tuple (np.array(np.float64), np.array(np.float64), np.array(np.float64), np.array(np.float64), np.array(np.float32), np.array(np.float64))
-        A tuple containing the bar' open, high, low, close prices, volumes and vwap. OHLCV + VWAP.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param bar_open_indices: Indices marking the start of each bar.
+    :returns: Tuple containing:
+        - open: Opening price of each bar.
+        - high: Highest price of each bar.
+        - low: Lowest price of each bar.
+        - close: Closing price of each bar.
+        - volume: Total traded volume in each bar.
+        - vwap: Volume-weighted average price of each bar.
     """
     n_bars = len(bar_open_indices) - 1  # The last open index determines the last bar' close
     bar_high = np.zeros(n_bars, dtype=np.float64)
@@ -330,23 +311,26 @@ def comp_bar_directional_features(
     NDArray[np.float32], NDArray[np.float32]
 ]:
     """
-    Compute directional bar features like sell/buy volumes etc... for each bar.
+    Compute directional bar features such as tick counts, volumes, dollars, spreads, and cumulative flows.
 
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-        Raw trades prices.
-    volumes : np.array(np.float64)
-        Raw trades volumes.
-    bar_open_indices : np.array(np.int64)
-        Bar open indices in the raw trades timestamps.
-    trade_sides : np.array(np.int8)
-        Trade side information (1 for market buy, -1 for market sell).
-
-    Returns
-    -------
-    tuple
-        A tuple containing the bar' ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread, cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param bar_open_indices: Indices marking the start of each bar.
+    :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
+    :returns: Tuple containing:
+        - **ticks_buy**: Number of buy trades per bar.
+        - ticks_sell: Number of sell trades per bar.
+        - volume_buy: Volume of buy trades per bar.
+        - volume_sell: Volume of sell trades per bar.
+        - dollars_buy: Dollar value of buy trades per bar.
+        - dollars_sell: Dollar value of sell trades per bar.
+        - max_spread: Maximum spread within each bar.
+        - cum_ticks_min: Minimum cumulative tick imbalance.
+        - cum_ticks_max: Maximum cumulative tick imbalance.
+        - cum_volumes_min: Minimum cumulative volume imbalance.
+        - cum_volumes_max: Maximum cumulative volume imbalance.
+        - cum_dollars_min: Minimum cumulative dollar imbalance.
+        - cum_dollars_max: Maximum cumulative dollar imbalance.
     """
     n_bars = len(bar_open_indices) - 1
     ticks_buy = np.zeros(n_bars, dtype=np.int64)
@@ -463,45 +447,29 @@ def comp_bar_footprints(
     NDArray[np.uint16], NDArray[np.uint16], NDArray[np.int32]
 ]:
     """
-    Compute the footprint data and features for each bar.
-
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-        prices of raw trades data
-    amounts : np.array(np.float64)
-        amounts of raw trades data
-    bar_open_indices : np.array(np.int64)
-        bar open indices in the raw trades timestamps
-    bar_open_timestamps : np.array(np.int64)
-        bar open timestamps in nanoseconds
-    price_tick_size : float
-        price tick size
-    bar_lows : np.array(np.float64)
-        lows of the bar
-    bar_highs : np.array(np.float64)
-        highs of the bar
-    imbalance_factor : float
-        the multiplier factor for the imbalance calculation
-
-    Returns
-    -------
-    tuple
-        - open_timestamps : np.ndarray
-        - price_levels : NumbaList[np.ndarray]
-        - buy_volumes : NumbaList[np.ndarray]
-        - sell_volumes : NumbaList[np.ndarray]
-        - buy_ticks : NumbaList[np.ndarray]
-        - sell_ticks : NumbaList[np.ndarray]
-        - buy_imbalances : NumbaList[np.ndarray]
-        - sell_imbalances : NumbaList[np.ndarray]
-        - buy_imbalances_sum : np.ndarray
-        - sell_imbalances_sum : np.ndarray
-        - cot_price_levels : np.ndarray
-    Notes
-    -----
+    Compute the footprint features for each bar, including buy/sell volumes and imbalances per price level.
     The price levels are calculated in (integer) price tick units to eliminate floating point errors.
 
+    :param prices: Trade prices.
+    :param amounts: Trade amounts.
+    :param bar_open_indices: Indices marking the start of each bar.
+    :param bar_open_timestamps: Nanosecond timestamps marking bar openings.
+    :param price_tick_size: Tick size used for price level quantization.
+    :param bar_lows: Lowest price per bar.
+    :param bar_highs: Highest price per bar.
+    :param imbalance_factor: Multiplier threshold for detecting imbalance.
+    :returns: Tuple containing:
+        - bar_open_timestamps: Timestamps for each bar.
+        - price_levels: List of price level arrays per bar.
+        - buy_volumes: List of buy volumes per price level.
+        - sell_volumes: List of sell volumes per price level.
+        - buy_ticks: List of buy ticks per price level.
+        - sell_ticks: List of sell ticks per price level.
+        - buy_imbalances: List of boolean arrays indicating buy imbalances.
+        - sell_imbalances: List of boolean arrays indicating sell imbalances.
+        - buy_imbalances_sum: Total number of buy imbalances per bar.
+        - sell_imbalances_sum: Total number of sell imbalances per bar.
+        - cot_price_levels: Price level with highest total volume per bar.
     """
     # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
 
@@ -594,27 +562,16 @@ def comp_bar_footprints(
 @njit(nogil=True)
 def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
     """
-    Calculate bar's footprint features: COT price level, buy imbalances, sell imbalances.
+    Calculate footprint statistics such as buy/sell imbalances and Commitment of Traders (COT) level.
 
-    Parameters
-    ----------
-    price_levels : np.ndarray
-        Price levels of a bar (1D numpy array).
-    buy_volumes : np.ndarray
-        Buy volumes of a bar (1D numpy array).
-    sell_volumes : np.ndarray
-        Sell volumes of a bar (1D numpy array).
-    imbalance_multiplier : float
-        Imbalance multiplier.
-
-    Returns
-    -------
-    buy_imbalances : np.ndarray
-        1D boolean array of buy imbalances.
-    sell_imbalances : np.ndarray
-        1D boolean array of sell imbalances.
-    cot_price_level : int
-        Commitment of Traders (COT) price level.
+    :param price_levels: Array of price levels.
+    :param buy_volumes: Array of buy volumes at each price level.
+    :param sell_volumes: Array of sell volumes at each price level.
+    :param imbalance_multiplier: Threshold multiplier to detect imbalance.
+    :returns: Tuple containing:
+        - buy_imbalances: Boolean array where True indicates buy imbalance at the level.
+        - sell_imbalances: Boolean array where True indicates sell imbalance at the level.
+        - cot_price_level: Price level with the highest total volume.
     """
     n_levels = len(price_levels)
     buy_imbalances = np.zeros(n_levels, dtype=np.bool_)
