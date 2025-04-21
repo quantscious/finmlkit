@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import os
-# os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
+#os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
 from finmlkit.bar.utils import comp_price_tick_size
 

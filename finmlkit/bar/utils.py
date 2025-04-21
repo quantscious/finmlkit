@@ -3,6 +3,7 @@ from numba import njit
 from numpy.typing import NDArray
 import numpy as np
 import pandas as pd
+from math import gcd
 
 
 @njit(nogil=True, fastmath=True)
@@ -63,6 +64,18 @@ def comp_trade_side_vector(prices: NDArray[np.float64]) -> NDArray[np.int8]:
 
 @njit(nogil=True)
 def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
+    """
+    Calculate the asset's tick size from a sequence of raw trades prices.
+
+    Parameters
+    ----------
+    prices : np.array(np.float64)
+
+    Returns
+    -------
+    tick_size: float
+
+    """
     if len(prices) == 0:
         raise ValueError("Empty prices array")
 
@@ -73,26 +86,20 @@ def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
     if len(unique_prices) <= 1:
         return 0.0
 
-    # Compute all differences between consecutive unique prices
     diffs = np.diff(unique_prices)
+    scale = 10.0 ** (-np.floor(np.log10(np.min(diffs[diffs > 0]))))
+    int_px = np.round(unique_prices * scale).astype(np.int64)
 
-    # Get the smallest nonzero difference
-    min_diff = np.min(diffs[diffs > 0]) if np.any(diffs > 0) else 0.0
+    # Calculate greatest common divisor
+    # tick_int = np.gcd.reduce(np.diff(int_px))  # numba does not support it
+    tick_int = 0
+    for diff_int in np.diff(int_px):
+        if diff_int > 0:
+            tick_int = diff_int if tick_int == 0 else gcd(tick_int, diff_int)
+            if tick_int == 1:
+                break
 
-    if min_diff == 0.0:
-        # Avoid computing log10(0)
-        return 0.0
-
-    # Determine the exponent for adaptive rounding
-    exponent = np.floor(np.log10(abs(min_diff)))
-    # Specify the desired number of significant digits
-    desired_significant_digits = 2
-    # Calculate the number of decimal places to round to
-    ndigits = int(desired_significant_digits - 1 - exponent)
-    # Round the tick size adaptively based on the exponent
-    rounded_tick_size = round(min_diff, ndigits)
-
-    return rounded_tick_size
+    return tick_int / scale
 
 
 @njit(nogil=True)

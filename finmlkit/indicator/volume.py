@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from numba import njit
-from finmlkit.bar.base import FootprintData
+from finmlkit.bar.data_model import FootprintData
 
 
 class VolumePro:
