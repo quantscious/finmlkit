@@ -16,7 +16,9 @@ class TimeBarKit(BarBuilderBase):
                  trades: pd.DataFrame,
                  interval_sec: int,
                  timestamp_unit: str = None,
-                 proc_res: str = None):
+                 proc_res: str = None,
+                 inplace: bool = False
+                 ):
         """
         Initialize the time bar builder with raw trades data and time interval.
 
@@ -24,8 +26,9 @@ class TimeBarKit(BarBuilderBase):
         :param interval_sec: Time interval (in seconds) for the time bar.
         :param timestamp_unit: Optional timestamp unit; inferred if None.
         :param proc_res: Optional processing resolution.
+        :param inplace: If True, modifies the original DataFrame; otherwise, creates a new one.
         """
-        super().__init__(trades, timestamp_unit, proc_res)
+        super().__init__(trades, timestamp_unit, proc_res, inplace)
         self.interval = interval_sec
 
         logger.info(f"Time bar builder initialized with interval: {interval_sec} seconds.")
@@ -48,7 +51,8 @@ class TickBarKit(BarBuilderBase):
                  trades: pd.DataFrame,
                  tick_count_thrs: int,
                  timestamp_unit: str = None,
-                 proc_res: str = None):
+                 proc_res: str = None,
+                 inplace: bool = False):
         """
         Initialize the tick bar builder with raw trades data and tick count.
 
@@ -56,8 +60,9 @@ class TickBarKit(BarBuilderBase):
         :param tick_count_thrs: Tick count threshold for the tick bar.
         :param timestamp_unit: Optional timestamp unit; inferred if None.
         :param proc_res: Optional processing resolution.
+        :param inplace: If True, modifies the original DataFrame; otherwise, creates a new one.
         """
-        super().__init__(trades, timestamp_unit, proc_res)
+        super().__init__(trades, timestamp_unit, proc_res, inplace)
         self.tick_count_thrs = tick_count_thrs
 
         logger.info(f"Tick bar builder initialized with tick count: {tick_count_thrs}.")
@@ -80,7 +85,8 @@ class VolumeBarKit(BarBuilderBase):
                  trades: pd.DataFrame,
                  volume_thrs: float,
                  timestamp_unit: str = None,
-                 proc_res: str = None):
+                 proc_res: str = None,
+                 inplace: bool = False):
         """
         Initialize the volume bar builder with raw trades data and volume.
 
@@ -88,6 +94,7 @@ class VolumeBarKit(BarBuilderBase):
         :param volume_thrs: Volume threshold for the volume bar.
         :param timestamp_unit: Optional timestamp unit; inferred if None.
         :param proc_res: Optional processing resolution.
+        :param inplace: If True, modifies the original DataFrame; otherwise, creates a new one.
         """
         super().__init__(trades, timestamp_unit, proc_res)
         self.volume_thrs = volume_thrs
@@ -113,7 +120,8 @@ class DollarBarKit(BarBuilderBase):
                  trades: pd.DataFrame,
                  dollar_thrs: float,
                  timestamp_unit: str = None,
-                 proc_res: str = None):
+                 proc_res: str = None,
+                 inplace: bool = False):
         """
         Initialize the dollar bar builder with raw trades data and dollar amount.
 
@@ -121,8 +129,9 @@ class DollarBarKit(BarBuilderBase):
         :param dollar_thrs: Dollar amount threshold for the dollar bar.
         :param timestamp_unit: Optional timestamp unit; inferred if None.
         :param proc_res: Optional processing resolution.
+        :param inplace: If True, modifies the original DataFrame; otherwise, creates a new one.
         """
-        super().__init__(trades, timestamp_unit, proc_res)
+        super().__init__(trades, timestamp_unit, proc_res, inplace)
         self.dollar_thrs = dollar_thrs
 
         logger.info(f"Dollar bar builder initialized with dollar amount: {dollar_thrs}.")
