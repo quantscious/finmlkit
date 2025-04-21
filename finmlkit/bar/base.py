@@ -28,7 +28,9 @@ class BarBuilderBase(ABC):
                  proc_res: str = None):
         """
         Initialize the bar builder with raw trades data.
-        :param trades: Raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
+
+        :param trades: DataFrame containing raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
+            If 'is_buyer_maker' is present, it indicates the trade side otherwise it is inferred.
         :param timestamp_unit: Optional timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
         :param proc_res: Optional processing resolution for timestamps
         """
@@ -36,6 +38,8 @@ class BarBuilderBase(ABC):
             trades.rename(columns={'qty': 'amount'}, inplace=True)
         if 'time' in trades.columns:
             trades.rename(columns={'time': 'timestamp'}, inplace=True)
+
+        self.is_side = "is_buyer_maker" in trades.columns
 
         assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
         assert 'price' in trades.columns, "Missing 'price' column in trades data!"
@@ -47,7 +51,10 @@ class BarBuilderBase(ABC):
 
         # Handle Trade splitting on same price level TODO -> Numba implementation
         logger.info('Merging split trades (same timestamps) on same price level...')
-        trades = trades.groupby(['timestamp', 'price'], as_index=False).agg({'amount': 'sum'})
+        if self.is_side:
+            trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'], as_index=False).agg({'amount': 'sum'})
+        else:
+            trades = trades.groupby(['timestamp', 'price'], as_index=False).agg({'amount': 'sum'})
 
         # Convert timestamp to nanoseconds
         timestamp_unit = self.infer_ts_unit(timestamp_unit, trades)
@@ -62,10 +69,9 @@ class BarBuilderBase(ABC):
             #trades.timestamp = (trades.timestamp.values // ts_resolution_ns) * ts_resolution_ns
 
         # Extract trade side information
-        self.is_side = "is_maker_buyer" in trades.columns
         if self.is_side:
-            logger.info("Trade side information found. Using 'is_maker_buyer' to determine trade side.")
-            trades['side'] = np.where(trades['is_maker_buyer'] == 1, -1, 1)
+            logger.info("Trade side information found. Using 'is_buyer_maker' to determine trade side.")
+            trades['side'] = np.where(trades['is_buyer_maker'] == 1, -1, 1).astype(np.int8)
         else:
             logger.info("No trade side information found. Inferring trade side from raw trades data.")
             trades['side'] = comp_trade_side_vector(trades['price'].values)
@@ -158,7 +164,7 @@ class BarBuilderBase(ABC):
             self._raw_data['price'].values,
             self._raw_data['amount'].values,
             self._open_indices,
-            self._raw_data['side'].values
+            self._raw_data['side'].values.astype(np.int8),
         )
         logger.info("Directional features calculated successfully.")
 
