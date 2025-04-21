@@ -22,27 +22,76 @@ class BarBuilderBase(ABC):
     This class provides a template for generating bar from raw trades data.
     """
 
-    def __init__(self, trades: pd.DataFrame):
+    def __init__(self,
+                 trades: pd.DataFrame,
+                 timestamp_unit: str = None,
+                 proc_res: str = None):
         """
         Initialize the bar builder with raw trades data.
 
         Parameters
         ----------
         trades : pd.DataFrame
-            A dataframe containing raw trades data with columns 'timestamp', 'price', and 'amount'.
+            A dataframe containing raw trades data with columns 'timestamp'/'time', 'price', and 'amount'/'qty'.
+        timestamp_unit : str, optional
+            The unit of the timestamp in the trades data (ms, us, ns). If None, the function will infer the format.
+        proc_res : str, optional
+            The processing resolution for the bar. Default is None.
         """
+        if 'qty' in trades.columns:
+            trades.rename(columns={'qty': 'amount'}, inplace=True)
+        if 'time' in trades.columns:
+            trades.rename(columns={'time': 'timestamp'}, inplace=True)
+
         assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
         assert 'price' in trades.columns, "Missing 'price' column in trades data!"
         assert 'amount' in trades.columns, "Missing 'amount' column in trades data!"
-        # TODO: support trade side information
-        # TODO: Handle Trade splitting on same price level
+        assert timestamp_unit in ['s', 'ms', 'us', 'ns'], "Invalid timestamp format! Must be one of: s, ms, us, ns."
+
+        # Sort trades data by timestamp to ensure correct order
+        trades.sort_values('timestamp', inplace=True)
+
+        # Handle Trade splitting on same price level TODO -> Numba implementation
+        trades = trades.groupby(['timestamp', 'price'], as_index=False).agg({'amount': 'sum'})
+
+        # Convert timestamp to nanoseconds
+        timestamp_unit = self.infer_ts_unit(timestamp_unit, trades)
+        trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
+        # Apply resolution to the timestamp
+        if proc_res and proc_res != timestamp_unit:
+            ts_resolution_ns = int(proc_res * 1e9)
+            trades.timestamp = (trades.timestamp.values // ts_resolution_ns) * ts_resolution_ns
+
+        # Extract trade side information
+        self.is_side = "is_maker_buyer" in trades.columns
+        if self.is_side:
+            trades['side'] = trades['is_maker_buyer'].astype(np.int8)
+            trades['side'] = trades['side'].replace({1: -1, 0: 1})  # market order side
+        else:
+            trades['side'] = comp_trade_side_vector(trades['price'].values, trades['amount'].values)
 
         self._raw_data = trades
         self._raw_data.sort_values('timestamp', inplace=True)
 
         self._open_ts = self._open_indices = None
         self._highs = self._lows = None
-    
+
+    @staticmethod
+    def infer_ts_unit(timestamp_unit, trades):
+        if timestamp_unit is None:
+            max_ts = trades['timestamp'].values[-1]
+            if max_ts > 1e18:  # Likely in nanoseconds
+                timestamp_unit = 'ns'
+            elif max_ts > 1e15:  # Likely in microseconds
+                timestamp_unit = 'us'
+            elif max_ts > 1e12:  # Likely in milliseconds
+                timestamp_unit = 'ms'
+            else:  # Likely in seconds
+                timestamp_unit = 's'
+            logger.info(f"Inferred timestamp format: {timestamp_unit}")
+
+        return timestamp_unit
+
     def __str__(self):
         return (f"Class: {self.__class__.__name__} with members:\n"
                 f"{[f"{key}: {value}\n" for key, value in self.__dict__.items()]} "
@@ -102,7 +151,6 @@ class BarBuilderBase(ABC):
 
         return ohlcv_df
 
-
     def build_directional_features(self) -> pd.DataFrame:
         """
         Build the directional features using the generated indices and raw trades data.
@@ -118,7 +166,8 @@ class BarBuilderBase(ABC):
         directional_tuple = comp_bar_directional_features(
             self._raw_data['price'].values,
             self._raw_data['amount'].values,
-            self._open_indices
+            self._open_indices,
+            self._raw_data['side'].values
         )
         logger.info("Directional features calculated successfully.")
 
@@ -269,7 +318,8 @@ def comp_bar_ohlcv(
 def comp_bar_directional_features(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
-    bar_open_indices: NDArray[np.int64]
+    bar_open_indices: NDArray[np.int64],
+    trade_sides: NDArray[np.int8]
 ) -> tuple[
     NDArray[np.int64], NDArray[np.int64],
     NDArray[np.float32], NDArray[np.float32],
@@ -290,6 +340,8 @@ def comp_bar_directional_features(
         Raw trades volumes.
     bar_open_indices : np.array(np.int64)
         Bar open indices in the raw trades timestamps.
+    trade_sides : np.array(np.int8)
+        Trade side information (1 for market buy, -1 for market sell).
 
     Returns
     -------
@@ -313,11 +365,7 @@ def comp_bar_directional_features(
     cum_dollars_min = np.full(n_bars, 1e9, dtype=np.float32)
     cum_dollars_max = np.full(n_bars, -1e9, dtype=np.float32)
 
-    # 1.) Obtaining direction information
-    # Calculate trade side for each trade
-    trade_sides = comp_trade_side_vector(prices)
-
-    # 2.) Compute the bar directional features
+    # Compute the bar directional features
     for i in prange(n_bars):
         start = bar_open_indices[i]
         end = bar_open_indices[i + 1]

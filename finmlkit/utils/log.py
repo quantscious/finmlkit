@@ -17,14 +17,16 @@ def configure_logger():
     """
     # Check for LOGGER_DIR from .env or environment variables
     log_dir = os.getenv('LOGGER_DIR')
+    file_logger_level = os.getenv('FILE_LOGGER_LEVEL', 'DEBUG').upper()
+    console_logger_level = os.getenv('CONSOLE_LOGGER_LEVEL', 'WARNING').upper()
 
-    # Set the logger's level based on whether logging to a file is enabled
-    logger.setLevel(logging.DEBUG if log_dir else logging.CRITICAL)
+    # Set the logger's level to the most permissive level between file and console logging
+    logger.setLevel(min(logging.getLevelName(file_logger_level), logging.getLevelName(console_logger_level)))
 
     # 1. Console logging
     # Create a console handler for logging to the terminal
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)  # Only show INFO-level and above on the console
+    console_handler.setLevel(console_logger_level)  # Only show INFO-level and above on the console
 
     # Create formatter for the console handler
     console_format = logging.Formatter(
@@ -37,7 +39,7 @@ def configure_logger():
     # 2. File logging if LOGGER_DIR is set
     if log_dir:
         # Use LOGGER_DIR for file logging
-        log_dir = os.path.join(log_dir, 'logs')
+        log_dir = os.path.abspath(log_dir) if log_dir != '.' else os.path.dirname(os.path.dirname(__file__))
 
         # Create the log directory if it doesn't exist
         if not os.path.exists(log_dir):
@@ -50,7 +52,7 @@ def configure_logger():
         file_handler = TimedRotatingFileHandler(
             log_file_path, when='midnight', backupCount=7, delay=True)
         file_handler.suffix = "%Y-%m-%d"  # Adds the date to the log file name
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(file_logger_level)
 
         # Create formatter for the file handler
         file_format = logging.Formatter(

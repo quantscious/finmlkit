@@ -1,3 +1,4 @@
+tests/test_resources
 .venv
 .env
 .cadence
