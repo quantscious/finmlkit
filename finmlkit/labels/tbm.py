@@ -22,30 +22,21 @@ def triple_barrier(
     Implements the Triple Barrier Method (TBM) for labeling financial data based on
     Advances in Financial Machine Learning, Chapter 3.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        The timestamps in nanoseconds for the close prices series.
-    close : np.array(np.float64)
-        The close prices of the asset.
-    event_idxs : np.array(np.int64)
-        The indices of the events, e.g. acquired from the cusum filter. (subset of timestamps)
-    targets : np.array(np.float64)
-        The target returns for the events, e.g. acquired from a moving volatility estimator.
-    min_ret : float
-        The minimum target return required for running the triple barrier search.
-    horizontal_barriers : tuple(float, float)
-        The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
+    :param timestamps: The timestamps in nanoseconds for the close prices series.
+    :param close: The close prices of the asset.
+    :param event_idxs: The indices of the events, e.g. acquired from the cusum filter. (subset of timestamps)
+    :param targets: The target returns for the events, e.g. acquired from a moving volatility estimator.
+    :param min_ret: The minimum target return required for running the triple barrier search.
+    :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable one of the barriers, set it to np.inf.
-    vertical_barrier : int
-        The temporal barrier in seconds.
+    :param vertical_barrier: The temporal barrier in seconds.
 
-    Returns
-    -------
-    tuple(np.array(np.int8), np.array(np.int32), np.array(np.float64))
-        The labels (-1, 0, 1), the first barrier touch index, the return, maximum return to target ratio during the search
-        describing how close the path came to a horizontal barrier.
-        The latter can be used later to calculate weights for 0 labels.
+    :returns: A tuple of 4 elements containing:
+        - The labels (-1, 0, 1),
+        - The first barrier touch index,
+        - The return,
+        - Maximum return to target ratio during the search describing how close the path came to a horizontal barrier.
+        This can be used later to calculate weights for 0 labels.
     """
 
     n_samples = len(close)  # Number of samples in the close price array

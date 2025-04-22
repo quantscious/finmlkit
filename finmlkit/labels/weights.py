@@ -14,19 +14,11 @@ def label_concurrency_weights(
     Calculate the uniqueness weights for the overlapping labels.
     Based on Advances in Financial Machine Learning, Chapter 4. page 61.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        The timestamps in nanoseconds for the close prices series.
-    event_idxs : np.array(np.int64)
-        The indices of the labeled event_idxs, e.g. acquired from the cusum filter. (subset of timestamps)
-    lookahead_idxs : np.array(np.int64)
-        The lookahead indices for the given labels.
-
-    Returns
-    -------
-    np.array(np.float64)
-        The uniqueness weights [0, 1] for the labels.
+    :param timestamps: The timestamps in nanoseconds for the close prices series.
+    :param event_idxs: The indices of the labeled events, e.g. acquired from the cusum filter. (subset of timestamps)
+    :param lookahead_idxs: The lookahead indices for the given labels.
+    :returns: The uniqueness weights [0, 1] for the labels.
+    :raises ValueError: If timestamps and lookahead indices are of different lengths.
     """
     if len(event_idxs) != len(lookahead_idxs):
         raise ValueError("Timestamps and lookahead indices must have the same length.")
@@ -60,18 +52,14 @@ def vertical_barrier_weights(
         max_return_ratios: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """
-    Calculate weights for TBM (triple barrier) labels corresponding to vertical barrier hits based on the maximum return ratio.
+    Calculate weights for TBM (triple barrier) labels corresponding to vertical barrier hits
+    based on the maximum return ratio.
+
     The idea is to assign lower weights to labels that approached a horizontal barrier closely but did not touch it.
 
-    Parameters
-    ----------
-    max_return_ratios : np.array(np.float64)
-        The maximum d/D ratio for the given labels.
-
-    Returns
-    -------
-    np.array(np.float64)
-        The vertical barrier weights [0, 1] for the labels.
+    :param max_return_ratios: The maximum d/D ratio for the given labels.
+    :returns: The vertical barrier weights [0, 1] for the labels.
+    :raises ValueError: If `max_return_ratios` contains values outside the range [0, 1].
     """
     if min(max_return_ratios) < 0.0 or max(max_return_ratios) > 1.0:
         raise ValueError("The max_return_ratios must be in the range [0, 1].")
@@ -97,18 +85,14 @@ def class_balance_weights(
     """
     Calculate the class balance weights for the given labels and weights.
 
-    Parameters
-    ----------
-    labels : np.array(np.int8)
-        The labels (eg.: -1, 0, 1) for the given events.
-    weights : np.array(np.float64)
-        Additional weights for the given labels (eg.: uniqueness weights or vertical barrier weights).
+    :param labels: The labels (e.g., -1, 0, 1) for the given events.
+    :param weights: Additional weights for the given labels (e.g., uniqueness weights or vertical barrier weights).
         Number of class elements will be calculated as a weighted sum.
-
-    Returns
-    -------
-    tuple(np.array(np.int8), np.array(np.float64)), np.array(np.float64)
-        The identified classes and corresponding weights; the number of class elements; and the final weights.
+    :returns: A tuple containing:
+        - The identified classes.
+        - Corresponding class weights.
+        - Number of class elements per label.
+        - Final weights array per sample.
     """
 
     n_samples = len(labels)

@@ -4,6 +4,9 @@ from numba import njit
 from finmlkit.bar.data_model import FootprintData
 from typing import Union
 
+from finmlkit.utils.log import get_logger
+logger = get_logger(__name__)
+
 
 class VolumePro:
     """
@@ -229,7 +232,7 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
     # Ensure that there is at least one bin
     if len(bin_edges) < 2:
         bin_edges = np.array([min_price, max_price + 1], dtype=np.int32)
-        print("WARNING! There is only one bin at price level bucketing...")
+        logger.warning("Not enough price levels to compute volume buckets. There is only one bin.")
 
     # Digitize the price levels into price level buckets
     bin_indices = np.digitize(all_price_levels, bin_edges) - 1
@@ -260,7 +263,7 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
             # We have a leftover price level
             binned_volumes[n_bins] += total_volumes[i]
         else:
-            raise ValueError("BUG: Bin index is out of bounds while bucketing price levels...")
+            logger.error("BUG: Bin index is out of bounds while bucketing price levels...")
 
     return binned_price_levels, binned_volumes
 
@@ -349,7 +352,7 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
                 if down_idx - 1 >= 0:
                     current_down_volume += volumes[down_idx - 1]
         else:
-            print("BUG: Stuck in loop while calculating POC, HVA, and LVA.")
+            logger.error("Stuck in loop while calculating POC, HVA, and LVA.")
             break
 
     return poc_price, hva_price, lva_price

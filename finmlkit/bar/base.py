@@ -14,7 +14,9 @@ from abc import ABC, abstractmethod
 
 from .data_model import FootprintData
 from .utils import comp_trade_side_vector, comp_price_tick_size, comp_trade_side
-from finmlkit.utils.log import logger
+
+from finmlkit.utils.log import get_logger
+logger = get_logger(__name__)
 
 
 class BarBuilderBase(ABC):

@@ -14,25 +14,14 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
     """
     Compute the maximum S_n values and critical values for upward and downward movements.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        Array of log price series.
-    t : int
-        Current time index.
-    sigma_sq_t : float
-        Estimated variance at time t.
-
-    Returns
-    -------
-    max_s_n_value_up : float
-        Maximum test statistic for upward movements.
-    max_s_n_value_down : float
-        Maximum test statistic for downward movements.
-    max_s_n_critical_value_up : float
-        Critical value for the upward test statistic.
-    max_s_n_critical_value_down : float
-        Critical value for the downward test statistic.
+    :param y: Array of log price series.
+    :param t: Current time index.
+    :param sigma_sq_t: Estimated variance at time t.
+    :returns: A tuple containing:
+        - max_s_n_value_up: Maximum test statistic for upward movements.
+        - max_s_n_value_down: Maximum test statistic for downward movements.
+        - max_s_n_critical_value_up: Critical value for the upward test statistic.
+        - max_s_n_critical_value_down: Critical value for the downward test statistic.
     """
     y = np.asarray(y, dtype=np.float64)
 
@@ -83,28 +72,17 @@ def cusum_test_developing(
     This implementation follows Homm and Breitung (2011), but the one-sided tests
     are used to detect upward or downward structural breaks, providing directionality.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        Array of price series (log prices).
-    warmup_period : int, optional
-        Number of initial observations kept for std warmup, by default 30.
+    :param y: Array of price series (log prices).
+    :param warmup_period: Number of initial observations kept for std warmup, by default 30.
+    :returns: A tuple containing:
+        - s_n_t_values_up: Test statistic values for upward movements (one-sided test).
+        - s_n_t_values_down: Test statistic values for downward movements (one-sided test).
+        - critical_values_up: Critical values for the upward test statistics.
+        - critical_values_down: Critical values for the downward test statistics.
 
-    Returns
-    -------
-    s_n_t_values_up : np.ndarray
-        Test statistic values for upward movements (one-sided test).
-    s_n_t_values_down : np.ndarray
-        Test statistic values for downward movements (one-sided test).
-    critical_values_up : np.ndarray
-        Critical values for the upward test statistics.
-    critical_values_down : np.ndarray
-        Critical values for the downward test statistics.
-
-    Notes
-    -----
-    The test detects deviations from the random walk hypothesis in the time series.
-    A significant test statistic indicates a structural break in the time series.
+    .. note::
+        The test detects deviations from the random walk hypothesis in the time series.
+        A significant test statistic indicates a structural break in the time series.
     """
     y = np.asarray(y, dtype=np.float64)
     y = np.log(y)
@@ -154,26 +132,16 @@ def cusum_test_last(y: NDArray) -> Tuple[float, float, float, float]:
     This implementation follows Homm and Breitung (2011), but the one-sided tests
     are used to detect upward or downward structural breaks, providing directionality.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        Array of price series (log prices).
+    :param y: Array of price series (log prices).
+    :returns: A tuple containing:
+        - max_s_n_value_up: Test statistic value for upward movement (one-sided test) at the last observation.
+        - max_s_n_value_down: Test statistic value for downward movement (one-sided test) at the last observation.
+        - max_s_n_critical_value_up: Critical value for the upward test statistic at the last observation.
+        - max_s_n_critical_value_down: Critical value for the downward test statistic at the last observation.
 
-    Returns
-    -------
-    max_s_n_value_up : float
-        Test statistic value for upward movement (one-sided test) at the last observation.
-    max_s_n_value_down : float
-        Test statistic value for downward movement (one-sided test) at the last observation.
-    max_s_n_critical_value_up : float
-        Critical value for the upward test statistic at the last observation.
-    max_s_n_critical_value_down : float
-        Critical value for the downward test statistic at the last observation.
-
-    Notes
-    -----
-    A significant test statistic at the last observation indicates a recent structural break
-    in the time series.
+    .. note::
+        A significant test statistic at the last observation indicates a recent structural break
+        in the time series.
     """
     y = np.asarray(y, dtype=np.float64)
     y = np.log(y)
@@ -214,30 +182,18 @@ def cusum_test_rolling(
     This implementation follows Homm and Breitung (2011), where the one-sided tests
     are used to detect upward or downward structural breaks, providing directionality.
 
-    Parameters
-    ----------
-    close_prices : np.ndarray
-        Array of close price series.
-    window_size : int, optional
-        Size of the rolling window, by default 1000.
-    warmup_period : int, optional
-        Minimum number of observations before the first statistic is calculated, by default 30.
+    :param close_prices: Array of close price series.
+    :param window_size: Size of the rolling window, by default 1000.
+    :param warmup_period: Minimum number of observations before the first statistic is calculated, by default 30.
+    :returns: A tuple containing:
+        - snt_up: Test statistic values for upward movements (one-sided test) over the rolling window.
+        - snt_down: Test statistic values for downward movements (one-sided test) over the rolling window.
+        - critical_values_up: Critical values for the upward test statistics over the rolling window.
+        - critical_values_down: Critical values for the downward test statistics over the rolling window.
 
-    Returns
-    -------
-    snt_up : np.ndarray
-        Test statistic values for upward movements (one-sided test) over the rolling window.
-    snt_down : np.ndarray
-        Test statistic values for downward movements (one-sided test) over the rolling window.
-    critical_values_up : np.ndarray
-        Critical values for the upward test statistics over the rolling window.
-    critical_values_down : np.ndarray
-        Critical values for the downward test statistics over the rolling window.
-
-    Notes
-    -----
-    This test detects deviations from the random walk hypothesis in the time series over a moving window.
-    It helps identify periods of structural breaks in the time series.
+    .. note::
+        This test detects deviations from the random walk hypothesis in the time series over a moving window.
+        It helps identify periods of structural breaks in the time series.
     """
     close_prices = np.asarray(close_prices, dtype=np.float64)
 
