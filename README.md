@@ -87,5 +87,6 @@ more explicit codes in the core functions. This way, we can ensure that the libr
 Some results are collected below to demonstrate the effectiveness of the numba framework:
 - Exponentially Weighted Moving Average (EWMA) calculation: __4x speedup__ compared to Pandas function
 - Standard Volatility Estimator: __8.12x speedup__ compared to Pandas implementation
-- CUSUM monitoring for structural breaks: __6.25x speedup__ with parallelization.
+- CUSUM monitoring for structural breaks: __6.25x speedup__ with parallelization compared to non-parallelized implementation.
+- OHLCV Time Bar generation: **100x speedup** compared to Pandas implementation.
 

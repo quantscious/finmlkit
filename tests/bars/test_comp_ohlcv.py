@@ -121,14 +121,6 @@ def test_empty_bars():
     np.testing.assert_array_equal(bar_volume, expected_bar_volume)
     np.testing.assert_allclose(bar_vwap, expected_bar_vwap, rtol=1e-6)
 
-def test_on_real_data():
-    import pandas as pd
-
-    path = "../test_resources/BTCUSDT-trades-2025-03.csv"
-    df = pd.read_csv(path)
-    df.head()
-
-
 
 if __name__ == "__main__":
     pytest.main([__file__])
