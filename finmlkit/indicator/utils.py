@@ -10,26 +10,19 @@ from numpy.typing import NDArray
 def ewma(y: NDArray, span: int) -> NDArray[np.float64]:
     """
     Exponentially weighted moving average (EWMA) of a one-dimensional numpy array.
-    Calculates https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.ewm.html with adjust=True (default).
+    Calculates the equivalent of `pandas.DataFrame.ewm(...).mean()` with `adjust=True`.
+
     By using this weighting scheme, the function provides a more accurate and unbiased estimate of the EWMA,
     especially in the early stages of the data series.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        A one-dimensional numpy array of floats.
-    span : int
-        The decay window, or 'span'. Determines how many past points meaningfully impact the given EWMA value.
+    :param y: A one-dimensional numpy array of floats.
+    :param span: The decay window, or 'span'. Determines how many past points meaningfully impact the EWMA value.
+    :returns: The EWMA vector, same length and shape as `y`.
+    :raises ValueError: If `span` is less than 1.
 
-    Returns
-    -------
-    ewma_y : np.ndarray(np.float64)
-        The EWMA vector, same length and shape as `y`.
-
-    Notes
-    -----
-    This function adjusts for small sample sizes by dividing by the cumulative weight. For more information, see:
-    https://terbe.dev/blog/posts/exponentially-weighted-moving-average
+    .. note::
+        This function adjusts for small sample sizes by dividing by the cumulative weight.
+        For more information, see: https://terbe.dev/blog/posts/exponentially-weighted-moving-average
     """
     n = y.shape[0]
     ewma = np.empty(n, dtype=np.float64)  # Container for the EWMA values
@@ -57,24 +50,15 @@ def ewma(y: NDArray, span: int) -> NDArray[np.float64]:
 def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
     """
     Calculates the Exponentially Weighted Moving Standard Deviation (EWM_STD) of a one-dimensional numpy array.
-    Similar to pandas' ewm.std with adjust=True (default) and bias=False (default).
+    Equivalent to `pandas.Series.ewm(...).std()` with `adjust=True` and `bias=False`.
 
-    Parameters
-    ----------
-    y : np.ndarray
-        A one-dimensional numpy array of floats.
-    span : int
-        The decay window, or 'span'.
+    :param y: A one-dimensional numpy array of floats.
+    :param span: The decay window, or 'span'.
+    :returns: The EWM standard deviation vector, same length and shape as `y`.
 
-    Returns
-    -------
-    ewm_std_y : np.ndarray(np.float64)
-        The EWM standard deviation vector, same length and shape as `y`.
-
-    Notes
-    -----
-    This function adjusts for small sample sizes by dividing by the cumulative weight minus the sum of squared weights
-    divided by the cumulative weight, matching the behavior of adjust=True and bias=False in pandas' ewm.std.
+    .. note::
+        This function adjusts for small sample sizes by dividing by the cumulative weight minus the sum of squared weights
+        divided by the cumulative weight, matching the behavior of `adjust=True` and `bias=False` in pandas.
     """
     n = y.shape[0]
     ewm_std = np.empty(n, dtype=np.float64)
@@ -129,23 +113,20 @@ def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
 def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.float64], return_window_sec: float):
     """
     Calculate the lagged returns on the given time window.
+
     This function works for arbitrary time series data and does not require a fixed frequency.
+    It computes the percentage change in price over a time lag window, aligned to timestamp precision.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Timestamps series in nanoseconds
-    close : np.array(np.float64)
-        Close price series
-    return_window_sec : float
-        Time window in seconds for lagged return calculation. Set it to a small value (e.g. 1e-6) for 1 sample lag.
+    :param timestamps: Timestamps series in nanoseconds.
+    :param close: Close price series.
+    :param return_window_sec: Time window in seconds for lagged return calculation. Set it to a small value (e.g. 1e-6) for 1 sample lag.
+    :returns: The lagged returns series as a float64 array.
+    :raises ValueError: If return_window_sec is less than or equal to zero.
 
-
-    Returns
-    -------
-    np.array(np.float64)
-        The lagged returns series
-
+    .. note::
+        The function searches the closest earlier timestamp matching the lag time difference and computes
+        percentage return as `close[i] / close[lag_idx] - 1`. Gaps and irregular timestamps are handled.
+        Division by zero results in `inf`. If no valid lagged index is found, the return is `NaN`.
     """
     # return window should be greater than zero
     if return_window_sec <= 0:

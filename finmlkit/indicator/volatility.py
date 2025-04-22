@@ -14,29 +14,24 @@ def standard_volatility_estimator(
         lookback: int = 100
 ) -> NDArray[np.float64]:
     """
-    Implements a simple volatility estimator using an exponentially weighted rolling window standard deviation on returns.
+    Implements a simple volatility estimator using an exponentially weighted rolling window
+    standard deviation on lagged returns.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Raw trade timestamps in nanoseconds, sorted in ascending order.
-    close : np.array(np.float64)
-        Raw trade prices corresponding to the timestamps.
-    return_window_sec : float
-        The window size in seconds for the lagged return calculation.
-    lookback : int, optional
-        The number of observations to look back for the volatility estimate (span for the EWM_STD), by default 100
-    adjusted : bool, optional
-        Whether to use the adjusted EWM standard deviation, by default False
+    This function works for arbitrary time series data and does not require a fixed frequency.
+    It first computes time-lagged returns over a fixed horizon, and then applies
+    an exponentially weighted moving standard deviation (EWM Std) over a specified lookback window.
 
-    Returns
-    -------
-    np.array(np.float64)
-        The simple volatility estimate.
+    :param timestamps: Raw trade timestamps in nanoseconds, sorted in ascending order.
+    :param close: Raw trade prices corresponding to the timestamps.
+    :param return_window_sec: The lag window size in seconds to compute returns.
+    :param lookback: The number of points to use for EWM Std lookback. Defaults to 100.
+    :returns: The exponentially weighted rolling volatility estimate as a NumPy array.
+    :raises ValueError: If `timestamps` and `close` are not the same length.
 
-    Notes
-    -----
-    The function works for arbitrary time series data and does not require a fixed frequency.
+    .. note::
+        This estimator does not assume uniform sampling. It is suitable for event-driven
+        data such as trades or tick-level bars. The EWM standard deviation used internally
+        has ``adjust=True``, ``bias=False`` behavior, which provides an unbiased estimate.
     """
     if len(timestamps) != len(close):
         raise ValueError("The length of timestamps and close prices must be the same.")

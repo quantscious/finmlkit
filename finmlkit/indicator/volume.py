@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from numba import njit
 from finmlkit.bar.data_model import FootprintData
+from typing import Union
 
 
 class VolumePro:
@@ -9,55 +10,50 @@ class VolumePro:
     Encapsulates numba functions for smoother calling and parameter setting.
     """
 
-    def __init__(self, window_size_sec=1800, bin_size=5, va_pct=68.34):
+    def __init__(self, window_size_sec: int=1800, bin_size: int=5, va_pct: float=68.34):
         """
         Initialize the Volume Profile calculator with the given parameters.
 
-        Parameters
-        ----------
-        window_size_sec : int, optional
-            Size of the rolling window in seconds (default is 1800).
-        bin_size : int, optional
-            Size of the price level bins (default is 5).
-        va_pct : float, optional
-            Value area percentage (default is 68.34).
+        :param window_size_sec: Size of the rolling window in seconds.
+        :param bin_size: Size of the price level bins.
+        :param va_pct: Value area percentage.
+        :note:
+            This sets the rolling window size, the bin size for price level bucketing, and the value area percentage
+            used for determining the high and low value areas (HVA and LVA).
+            Default values are window_size_sec=1800, bin_size=5, va_pct=68.34.
         """
         self.window_size_sec = window_size_sec
         self.bin_size = bin_size
         self.va_pct = va_pct
 
-    def reset_parameters(self, window_size_sec=None, bin_size=None, va_pct=None):
+    def reset_parameters(self, window_size_sec: int=None, bin_size: int=None, va_pct: float=None):
         """
         Reset the parameters of the Volume Profile calculator.
 
-        Parameters
-        ----------
-        window_size_sec : int, optional
-            Size of the rolling window in seconds. If None, the existing value is retained.
-        bin_size : int, optional
-            Size of the price level bins. If None, the existing value is retained.
-        va_pct : float, optional
-            Value area percentage. If None, the existing value is retained.
+        :param window_size_sec: Optional new window size in seconds. If None, the existing value is retained.
+        :param bin_size: Optional new bin size for price level bucketing. If None, the existing value is retained.
+        :param va_pct: Optional new value area percentage. If None, the existing value is retained.
+        :note:
+            This method allows dynamic reconfiguration of the rolling window size, price bin size, or value area percentage
+            for the Volume Profile calculations. Any parameter left as None will retain its prior value.
         """
         self.window_size_sec = window_size_sec if window_size_sec is not None else self.window_size_sec
         self.bin_size = bin_size if bin_size is not None else self.bin_size
         self.va_pct = va_pct if va_pct is not None else self.va_pct
 
-    def compute(self, bars, fp_data):
+    def compute(self, bars: pd.DataFrame, fp_data: FootprintData) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute the volume profile parameters (POC, HVA, LVA) in a rolling window fashion.
 
-        Parameters
-        ----------
-        bars : pandas.DataFrame
-            Dataframe containing dynamic bar (columns `high` and `low` required for calculations).
-        fp_data : FootprintData
-            Container for footprint data, including price levels and buy/sell volumes.
-
-        Returns
-        -------
-        tuple of numpy.ndarray
-            POC prices, HVA prices, and LVA prices, respectively.
+        :param bars: DataFrame containing dynamic bars (must include `high` and `low` columns).
+        :param fp_data: FootprintData object with price levels and volume information.
+        :returns: Tuple of POC, HVA, and LVA prices (as NumPy arrays).
+        :raises AssertionError: If `bars` and `fp_data` have different lengths.
+        :note:
+            The computation is performed in a rolling window fashion, using the set window size, bin size, and value area percentage.
+            The bars DataFrame must contain 'high' and 'low' columns, and the footprint data must be aligned in length.
+            Returned arrays represent the Point of Control (POC), High Value Area (HVA), and Low Value Area (LVA) prices for each bar.
+            The computation replaces starting zeros with NaN to indicate insufficient data at the window start.
         """
         # assert that bar length and footprint data length are the same
         assert len(bars) == len(fp_data.bar_timestamps), "Bars and footprint data should have the same length."
@@ -84,25 +80,23 @@ class VolumePro:
 
         return poc_prices, hva_prices, lva_prices
 
-    def compute_range(self, bars, fp_data, start, end):
+    def compute_range(self, bars: pd.DataFrame, fp_data: FootprintData,
+                      start: Union[str, int, pd.Timestamp],
+                      end: Union[str, int, pd.Timestamp]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
-        Compute the volume profile parameters (POC, HVA, LVA) in a rolling window fashion for a specified range.
+        Compute the volume profile (POC, HVA, LVA) in a rolling window fashion for a given time range.
 
-        Parameters
-        ----------
-        bars : pandas.DataFrame
-            Dataframe containing dynamic bar (columns `high` and `low` required for calculations).
-        fp_data : FootprintData
-            Container for footprint data, including price levels and buy/sell volumes.
-        start : str, int, or pandas.Timestamp
-            Start timestamp for the aggregation.
-        end : str, int, or pandas.Timestamp
-            End timestamp for the aggregation.
-
-        Returns
-        -------
-        tuple of numpy.ndarray
-            Bar timestamps, POC prices, HVA prices, and LVA prices within the specified range.
+        :param bars: DataFrame containing dynamic bars with `high` and `low`.
+        :param fp_data: FootprintData object containing volume profiles.
+        :param start: Start timestamp for slicing (str, int, or pd.Timestamp).
+        :param end: End timestamp for slicing (same type as `start`).
+        :returns: Tuple of bar timestamps, POC, HVA, and LVA prices.
+        :raises AssertionError: If `bars` and `fp_data` lengths differ or `start` and `end` are of different types.
+        :note:
+            This method computes the rolling window volume profile (POC, HVA, LVA) for a specified time range.
+            The range is set by the `start` and `end` timestamps, which must be of the same type.
+            The method internally adjusts the start timestamp for window warm-up and aligns bar and footprint data by timestamp.
+            Returns arrays for the bar timestamps and the computed POC, HVA, and LVA prices over the specified range.
         """
         assert len(bars) == len(fp_data.bar_timestamps), "Bars and footprint data should have the same length."
         assert type(start) is type(end), "Start and end should be of the same type."
@@ -132,42 +126,29 @@ class VolumePro:
 
 
 @njit(nogil=True)
-def aggregate_footprint(ts: np.array,
-                        highs: np.array, lows: np.array,
-                        price_levels: list[np.array],
-                        buy_volumes: list[np.array], sell_volumes: list[np.array],
+def aggregate_footprint(ts: np.ndarray,
+                        highs: np.ndarray, lows: np.ndarray,
+                        price_levels: list[np.ndarray],
+                        buy_volumes: list[np.ndarray], sell_volumes: list[np.ndarray],
                         start_ts: int, end_ts: int,
-                        price_tick: float):
+                        price_tick: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Aggregate the volume footprint data within a specified time window to calculate the POC, HVA, and LVA.
 
-    Parameters
-    ----------
-    ts : numpy.ndarray
-        1D array of int64 containing bar timestamps.
-    highs : numpy.ndarray
-        1D array of float64 containing high prices for each bar timestamp.
-    lows : numpy.ndarray
-        1D array of float64 containing low prices for each bar timestamp.
-    price_levels : list of numpy.ndarray
-        List of 1D arrays representing price levels for each timestamp.
-    buy_volumes : list of numpy.ndarray
-        List of 1D arrays representing corresponding buy volumes for each price level.
-    sell_volumes : list of numpy.ndarray
-        List of 1D arrays representing corresponding sell volumes for each price level.
-    start_ts : int
-        Start timestamp for the aggregation.
-    end_ts : int
-        End timestamp for the aggregation.
-    price_tick : float
-        Price tick size.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        - price_levels : 1D array of aggregated price levels.
-        - total_buy_volumes : 1D array of aggregated buy volumes for each price level.
-        - total_sell_volumes : 1D array of aggregated sell volumes for each price level.
+    :param ts: Array of timestamps (int64) for each bar in nanoseconds.
+    :param highs: High prices for each bar.
+    :param lows: Low prices for each bar.
+    :param price_levels: List of arrays of price levels for each bar.
+    :param buy_volumes: List of arrays of buy volumes for each price level.
+    :param sell_volumes: List of arrays of sell volumes for each price level.
+    :param start_ts: Start timestamp of the aggregation window.
+    :param end_ts: End timestamp of the aggregation window.
+    :param price_tick: Tick size used to discretize prices.
+    :returns: Tuple of:
+        - complete_price_levels: Aggregated price levels in integer tick units.
+        - aligned_buy_volumes: Aggregated buy volumes aligned to tick grid.
+        - aligned_sell_volumes: Aggregated sell volumes aligned to tick grid.
+    :raises AssertionError: If input lists/arrays are not aligned in length or empty.
     """
     assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(
         sell_volumes) > 0, "Input arrays should have the same length and be non-empty."
@@ -218,24 +199,18 @@ def aggregate_footprint(ts: np.array,
 
 
 @njit(nogil=True)
-def bucket_price_levels(all_price_levels: np.array, total_volumes: np.array, bin_size: int):
+def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray, bin_size: int) -> tuple[np.ndarray, np.ndarray]:
     """
-    Bucket the price levels into larger bins together with their corresponding volumes to decrease noise.
+    Bucket the price levels and associated volumes using a fixed-size bin to reduce noise.
 
-    Parameters
-    ----------
-    all_price_levels : numpy.ndarray
-        1D array of all price levels.
-    total_volumes : numpy.ndarray
-        1D array of total volumes corresponding to the price levels.
-    bin_size : int
-        The fixed size of each bin (should be an odd number).
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        - binned_price_levels : 1D array of binned price levels.
-        - binned_volumes : 1D array of binned volumes corresponding to the binned price levels.
+    :param all_price_levels: Array of all price levels.
+    :param total_volumes: Corresponding total volumes.
+    :param bin_size: Width of each bin (should be odd).
+    :returns: Tuple of:
+        - binned_price_levels: Midpoints of each bucket.
+        - binned_volumes: Aggregated volumes per bucket.
+    :raises AssertionError: If input arrays are empty or of mismatched length.
+    :raises ValueError: If a price level falls outside defined bins.
     """
     assert bin_size >= 3, "Bin size should be larger than 3"
     assert len(all_price_levels) == len(
@@ -291,29 +266,19 @@ def bucket_price_levels(all_price_levels: np.array, total_volumes: np.array, bin
 
 
 @njit(nogil=True)
-def comp_poc_hva_lva(price_levels: np.array, volumes: np.array, va_pct=68.34):
+def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Calculate the POC (Point of Control), HVA (High Value Area), and LVA (Low Value Area)
-    for the given price levels and volumes.
+    for a given volume profile.
 
-    Parameters
-    ----------
-    price_levels : numpy.ndarray
-        1D array of price levels in ascending order.
-    volumes : numpy.ndarray
-        1D array of volumes at each price level.
-    va_pct : float, optional
-        Volume area percentage to calculate the high and low value areas (default is 68.34).
-
-    Returns
-    -------
-    tuple
-        - POC : float
-            Price level with the highest volume (Point of Control).
-        - HVA : float
-            Price level representing the upper bound of the high-value area.
-        - LVA : float
-            Price level representing the lower bound of the low-value area.
+    :param price_levels: Price levels (sorted ascending).
+    :param volumes: Corresponding volumes.
+    :param va_pct: Value area percentage (default 68.34).
+    :returns: Tuple of:
+        - poc_price: Price with the highest volume.
+        - hva_price: High value area bound.
+        - lva_price: Low value area bound.
+    :raises AssertionError: If inputs are empty or mismatched in length.
     """
     assert len(price_levels) == len(volumes) > 0, "Price levels and volumes must have the same length and be non-empty."
 
@@ -391,51 +356,26 @@ def comp_poc_hva_lva(price_levels: np.array, volumes: np.array, va_pct=68.34):
 
 
 @njit(nogil=True)
-def volume_profile_rolling(ts: np.array, highs: np.array, lows: np.array,
-                           price_levels: list[np.array], buy_volumes: list[np.array],
-                           sell_volumes: list[np.array],
+def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
+                           price_levels: list[np.ndarray], buy_volumes: list[np.ndarray],
+                           sell_volumes: list[np.ndarray],
                            window_size_sec: float, bin_size: int = None, price_tick: float = None,
-                           va_pct: float = 68.34):
+                           va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute the volume profile parameters (POC, HVA, LVA) in a rolling window fashion.
+    Compute rolling volume profiles over a fixed-width time window.
 
-    Parameters
-    ----------
-    ts : numpy.ndarray
-        1D array of int64 containing timestamps of the bar in nanoseconds.
-    highs : numpy.ndarray
-        1D array of float64 containing high prices for each bar timestamp.
-    lows : numpy.ndarray
-        1D array of float64 containing low prices for each bar timestamp.
-    price_levels : list of numpy.ndarray
-        List of 1D arrays containing price levels for each bar timestamp
-        (output of the footprint function).
-    buy_volumes : list of numpy.ndarray
-        List of 1D arrays containing buy volumes corresponding to each price level
-        (output of the footprint function).
-    sell_volumes : list of numpy.ndarray
-        List of 1D arrays containing sell volumes corresponding to each price level
-        (output of the footprint function).
-    window_size_sec : float
-        Rolling window size in seconds on which the volume profile is calculated.
-    bin_size : int, optional
-        The bin size for bucketing the price levels together (should be an odd number).
-        Default is None.
-    price_tick : float, optional
-        The minimum price tick size for bucketing the price levels.
-        Default is None (e.g., 0.1 for ETH and BTC).
-    va_pct : float, optional
-        Volume area percentage for calculating HVA and LVA. Default is 68.34.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        - poc_prices : numpy.ndarray
-            1D array of POC (Point of Control) prices for each bar timestamp.
-        - hva_prices : numpy.ndarray
-            1D array of HVA (High Value Area) prices for each bar timestamp.
-        - lva_prices : numpy.ndarray
-            1D array of LVA (Low Value Area) prices for each bar timestamp.
+    :param ts: Nanosecond timestamps per bar.
+    :param highs: High prices per bar.
+    :param lows: Low prices per bar.
+    :param price_levels: List of price levels per bar.
+    :param buy_volumes: List of buy volumes per bar.
+    :param sell_volumes: List of sell volumes per bar.
+    :param window_size_sec: Width of the rolling time window.
+    :param bin_size: Optional price level binning width.
+    :param price_tick: Price tick size for discretization.
+    :param va_pct: Value area percentage.
+    :returns: Tuple of POC, HVA, LVA price series aligned to input bars.
+    :raises AssertionError: If input arrays are empty or misaligned in length.
     """
     assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(sell_volumes) > 0, "Input arrays should have the same length and be non-empty."
 
@@ -481,24 +421,13 @@ def volume_profile_rolling(ts: np.array, highs: np.array, lows: np.array,
 # Developing Volume Profile Calculations
 # ---------------------------------------
 @njit(nogil=True)
-def trim_trailing_zeros(price_levels: np.array, volumes: np.array):
+def trim_trailing_zeros(price_levels: np.ndarray, volumes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
-    Trim the trailing zeros from the price levels and volumes arrays.
+    Trim trailing zero volumes from a price-level volume profile.
 
-    Parameters
-    ----------
-    price_levels : numpy.ndarray
-        1D array of price levels.
-    volumes : numpy.ndarray
-        1D array of volumes corresponding to the price levels.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        - trimmed_price_levels : numpy.ndarray
-            1D array of price levels with trailing zeros removed.
-        - trimmed_volumes : numpy.ndarray
-            1D array of volumes with trailing zeros removed.
+    :param price_levels: Array of price levels.
+    :param volumes: Corresponding volumes.
+    :returns: Trimmed price levels and volumes.
     """
     # round aggregated volumes to avoid floating point errors
     volumes = np.round(volumes, 8)
@@ -522,52 +451,26 @@ def trim_trailing_zeros(price_levels: np.array, volumes: np.array):
 
 
 @njit(nogil=True)
-def volume_profile_developing(ts: np.array, highs: np.array, lows: np.array,
-                              price_levels: list[np.array], buy_volumes: list[np.array], sell_volumes: list[np.array],
+def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
+                              price_levels: list[np.ndarray], buy_volumes: list[np.ndarray], sell_volumes: list[np.ndarray],
                               start_ts: int, end_ts: int, bin_size: int = None, price_tick: float = None,
-                              va_pct: float = 68.34):
+                              va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
-    Compute the volume profile parameters (POC, HVA, LVA) in a developing fashion between the start and end timestamps.
+    Compute a developing volume profile between two timestamps using cumulative aggregation.
 
-    Parameters
-    ----------
-    ts : numpy.ndarray
-        1D array of int64 containing timestamps of the bar in nanoseconds.
-    highs : numpy.ndarray
-        1D array of float64 containing high prices for each bar timestamp.
-    lows : numpy.ndarray
-        1D array of float64 containing low prices for each bar timestamp.
-    price_levels : list of numpy.ndarray
-        List of 1D arrays containing price levels for each bar timestamp
-        (output of the footprint function).
-    buy_volumes : list of numpy.ndarray
-        List of 1D arrays containing buy volumes corresponding to each price level
-        (output of the footprint function).
-    sell_volumes : list of numpy.ndarray
-        List of 1D arrays containing sell volumes corresponding to each price level
-        (output of the footprint function).
-    start_ts : int
-        Start nanoseconds timestamp for the aggregation.
-    end_ts : int
-        End nanoseconds timestamp for the aggregation.
-    bin_size : int, optional
-        The bin size for bucketing the price levels together (should be an odd number).
-        Default is None.
-    price_tick : float, optional
-        The minimum price tick size for bucketing the price levels.
-        Default is None (e.g., 0.1 for ETH and BTC).
-    va_pct : float, optional
-        Volume area percentage for calculating HVA and LVA. Default is 68.34.
-
-    Returns
-    -------
-    tuple of numpy.ndarray
-        - poc_prices : numpy.ndarray
-            1D array of POC (Point of Control) prices for each bar timestamp.
-        - hva_prices : numpy.ndarray
-            1D array of HVA (High Value Area) prices for each bar timestamp.
-        - lva_prices : numpy.ndarray
-            1D array of LVA (Low Value Area) prices for each bar timestamp.
+    :param ts: Nanosecond timestamps per bar.
+    :param highs: High prices per bar.
+    :param lows: Low prices per bar.
+    :param price_levels: List of price levels per bar.
+    :param buy_volumes: List of buy volumes per bar.
+    :param sell_volumes: List of sell volumes per bar.
+    :param start_ts: Start time in nanoseconds.
+    :param end_ts: End time in nanoseconds.
+    :param bin_size: Optional price level bucketing bin width.
+    :param price_tick: Tick size for price bucketing.
+    :param va_pct: Value area percentage.
+    :returns: Tuple of timestamps, POC, HVA, and LVA series for the range.
+    :raises AssertionError: If input arrays are empty or misaligned in length.
     """
     assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(
         sell_volumes) > 0, "Input arrays should have the same length and be non-empty."

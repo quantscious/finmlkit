@@ -17,18 +17,15 @@ def _time_bar_indexer(
     """
     Determine the time bar open indices in the raw trades timestamp array.
 
+    :param timestamps: Raw sorted trade timestamps in nanoseconds.
+    :param interval_seconds: Length of the time bar in seconds.
+    :returns: A tuple of:
+        - bar_open_ts: Timestamps at which each bar opens.
+        - bar_open_indices: Indices in the trade data corresponding to bar openings.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Raw sorted **trades data** timestamps in nanoseconds.
-    interval_seconds : int
-        Length of the time bar in seconds.
-
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Time bar open timestamps and corresponding open indices in the raw trades timestamps.
+    .. note::
+        The first bar is aligned to the ceiling of the first timestamp, ensuring consistent bar boundaries.
+        Duplicate indices may occur if a bar interval contains no trades (empty bars).
     """
     bar_interval_ns = interval_seconds * 1e9
 
@@ -61,19 +58,17 @@ def _tick_bar_indexer(
         threshold: int
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
-    Determine the tick bar open indices in the raw trades price array.
+    Determine the tick bar open indices in the raw trades timestamp array.
 
-    Parameters
-    ----------
-    timestamps : np.ndarray
-        Raw trades timestamps.
-    threshold : int
-        The tick threshold at which to sample.
+    :param timestamps: Raw trade timestamps.
+    :param threshold: The tick count threshold for opening a new bar.
+    :returns: A tuple of:
+        - open_timestamps: Timestamps at which each bar opens.
+        - result: Indices in the trade data corresponding to bar openings.
 
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Tick bar open timestamps and corresponding open indices in the raw trades timestamps.
+    .. note::
+        The first trade is always the start of a bar.
+        A new bar is opened every time the tick count reaches the specified threshold.
     """
     n = len(timestamps)
 
@@ -96,33 +91,25 @@ def _tick_bar_indexer(
     return open_timestamps, result
 
 
-@njit(nogi=True)
+@njit(nogil=True)
 def _volume_bar_indexer(
         timestamps: NDArray[np.int64],
         volumes: NDArray[np.float64],
         threshold: float
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
-    Determine the volume bar open indices in the raw trades price array.
+    Determine the volume bar open indices using cumulative volume.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Raw trades timestamps.
-    volumes : np.array(np.float64)
-        Raw trades volumes.
-    threshold : float
-        The volume threshold at which to sample.
+    :param timestamps: Raw trade timestamps.
+    :param volumes: Trade volumes.
+    :param threshold: Volume threshold for opening a new bar.
+    :returns: A tuple of:
+        - open_timestamps: Timestamps at which each volume bar opens.
+        - result: Indices in the trade data corresponding to volume bar openings.
 
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Volume bar open timestamps and corresponding open indices in the raw trades timestamps.
-
-    Notes
-    -----
-    The first tick is the first volume bar open index. The function uses a cumulative volume counter to determine the volume bar open indices.
-    When the cumulative volume counter reaches the threshold a new volume bar is opened.
+    .. note::
+        The first trade is always the start of a bar.
+        A new bar is opened when the cumulative trade volume meets or exceeds the threshold.
     """
     n = len(volumes)
 
@@ -152,28 +139,19 @@ def _dollar_bar_indexer(
         threshold: float
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
-    Determine the dollar bar open indices in the raw trades price array.
+    Determine the dollar bar open indices using cumulative dollar value.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Raw trades timestamps.
-    prices : np.array(np.float64)
-        Raw trades prices.
-    volumes : np.array(np.float64)
-        Raw trades volumes.
-    threshold : float
-        The dollar threshold at which to sample.
+    :param timestamps: Raw trade timestamps.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param threshold: Dollar value threshold for opening a new bar.
+    :returns: A tuple of:
+        - open_timestamps: Timestamps at which each dollar bar opens.
+        - result: Indices in the trade data corresponding to dollar bar openings.
 
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Dollar bar open timestamps and corresponding open indices in the raw trades timestamps
-
-    Notes
-    -----
-    The first tick is the first dollar bar open index. The function uses a cumulative dollar counter to determine the dollar bar open indices.
-    When the cumulative dollar counter reaches the threshold a new dollar bar is opened.
+    .. note::
+        The first trade is always the start of a bar.
+        A new bar is opened when the cumulative dollar value (price × volume) meets or exceeds the threshold.
     """
     n = len(prices)
 
@@ -203,28 +181,14 @@ def _imbalance_bar_indexer(
         threshold: float
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
-    Determine the imbalance bar open indices in the raw trades price array.
+    Determine the imbalance bar open indices based on cumulative imbalance.
 
-    Parameters
-    ----------
-    timestamps: np.array(np.int64)
-        Raw trades timestamps.
-    prices : np.array(np.float64)
-        Raw trades prices.
-    volumes : np.array(np.float64)
-        Raw trades volumes.
-    threshold : float
-        The imbalance threshold at which to sample.
-
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Imbalance bar open timestamps and corresponding open indices in the raw trades timestamps.
-
-    Notes
-    -----
-    The first tick is the first imbalance bar open index. The function uses a cumulative imbalance counter to determine the imbalance bar open indices.
-    When the cumulative imbalance counter reaches the threshold a new imbalance bar is opened.
+    :param timestamps: Raw trade timestamps.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param threshold: Imbalance threshold for opening a new bar.
+    :returns: A tuple of open timestamps and indices for imbalance bars.
+    :raises NotImplementedError: Always raised as this function is not yet implemented.
     """
     raise NotImplementedError("Imbalance bar indexer is not implemented yet.")
 
@@ -237,27 +201,13 @@ def _run_bar_indexer(
         threshold: float
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
-    Determine the run bar open indices in the raw trades price array.
+    Determine the run bar open indices using cumulative run activity.
 
-    Parameters
-    ----------
-    timestamps : np.array(np.int64)
-        Raw trades timestamps.
-    prices : np.array(np.float64)
-        Raw trades prices.
-    volumes : np.array(np.float64)
-        Raw trades volumes.
-    threshold : float
-        The run threshold at which to sample.
-
-    Returns
-    -------
-    tuple(np.array(np.int64), np.array(np.int64))
-        Run bar open timestamps and corresponding open indices in the raw trades timestamps.
-
-    Notes
-    -----
-    The first tick is the first run bar open index. The function uses a cumulative run counter to determine the run bar open indices.
-    When the cumulative run counter reaches the threshold a new run bar is opened.
+    :param timestamps: Raw trade timestamps.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param threshold: Run threshold for opening a new bar.
+    :returns: A tuple of open timestamps and indices for run bars.
+    :raises NotImplementedError: Always raised as this function is not yet implemented.
     """
     raise NotImplementedError("Run bar indexer is not implemented yet.")

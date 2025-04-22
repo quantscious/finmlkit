@@ -12,63 +12,20 @@ from finmlkit.bar.utils import footprint_to_dataframe
 @dataclass
 class FootprintData:
     """
-    FootprintData is a container for dynamic memory footprint calculations.
+    Container for dynamic memory footprint calculations including trade volumes, price levels, and imbalance information.
 
-    Parameters
-    ----------
-    bar_timestamps : NDArray[np.int64]
-        1D array of bar timestamps in nanoseconds.
-    price_levels : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Array of 1D int32 arrays representing price levels in price tick units.
-    price_tick : float
-        Price tick size.
-    buy_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
-        Array of 1D float32 arrays representing buy volumes.
-    sell_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
-        Array of 1D float32 arrays representing sell volumes.
-    buy_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Array of 1D int32 arrays representing buy ticks.
-    sell_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Array of 1D int32 arrays representing sell ticks.
-    buy_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
-        Array of 1D bool arrays representing buy imbalances.
-    sell_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
-        Array of 1D bool arrays representing sell imbalances.
-    cot_price_levels : Optional[NDArray[np.int32]], optional
-        1D int32 array of COT price levels, by default None.
-    sell_imbalances_sum : Optional[NDArray[np.uint16]], optional
-        1D uint16 array of summed sell imbalances, by default None.
-    buy_imbalances_sum : Optional[NDArray[np.uint16]], optional
-        1D uint16 array of summed buy imbalances, by default None.
-
-    Attributes
-    ----------
-    bar_timestamps : NDArray[np.int64]
-        Timestamps of the bar.
-    price_levels : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Price levels in price tick units.
-    price_tick : float
-        Price tick size.
-    buy_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
-        Buy volumes.
-    sell_volumes : Union[NDArray[NDArray[np.float32]], NumbaList[NDArray[np.float32]]]
-        Sell volumes.
-    buy_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Buy ticks.
-    sell_ticks : Union[NDArray[NDArray[np.int32]], NumbaList[NDArray[np.int32]]]
-        Sell ticks.
-    buy_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
-        Buy imbalances.
-    sell_imbalances : Union[NDArray[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]]]
-        Sell imbalances.
-    cot_price_levels : Optional[NDArray[np.int32]]
-        COT price levels.
-    sell_imbalances_sum : Optional[NDArray[np.uint16]]
-        Summed sell imbalances.
-    buy_imbalances_sum : Optional[NDArray[np.uint16]]
-        Summed buy imbalances.
-    _datetime_index : pd.DatetimeIndex
-        Datetime index for date time slicing.
+    :param bar_timestamps: Timestamps of each bar in nanoseconds.
+    :param price_tick: Price tick size.
+    :param price_levels: Array of price levels per bar.
+    :param buy_volumes: Buy volumes per price level.
+    :param sell_volumes: Sell volumes per price level.
+    :param buy_ticks: Number of buy ticks per price level.
+    :param sell_ticks: Number of sell ticks per price level.
+    :param buy_imbalances: Buy imbalance flags per price level.
+    :param sell_imbalances: Sell imbalance flags per price level.
+    :param cot_price_levels: Optional Commitment of Traders price levels.
+    :param sell_imbalances_sum: Optional total sell imbalance counts per bar.
+    :param buy_imbalances_sum: Optional total buy imbalance counts per bar.
     """
     # Data attributes
     bar_timestamps: NDArray[np.int64]  # 1D int64 array
@@ -96,13 +53,15 @@ class FootprintData:
 
     def __len__(self) -> int:
         """
-        Returns the number of data points in the FootprintData object.
+        Return the number of bars in the data.
+        :returns: Number of bars.
         """
         return len(self.bar_timestamps)
 
     def __repr__(self) -> str:
         """
-        String representation for debugging and logging.
+        Generate a summary string representation for debugging.
+        :returns: Formatted string summary.
         """
         additional_info = {
             'cot_price_levels': 'present' if self.cot_price_levels is not None else 'missing',
@@ -140,22 +99,10 @@ class FootprintData:
 
     def __getitem__(self, key) -> 'FootprintData':
         """
-        Enable slicing of the FootprintData object.
-
-        Parameters
-        ----------
-        key : slice or int
-            The slice or integer index to access specific data.
-
-        Returns
-        -------
-        FootprintData
-            A new FootprintData object with the sliced data.
-
-        Raises
-        ------
-        TypeError
-            If the key is not a slice or integer.
+        Support slicing or indexing of the footprint data.
+        :param key: Slice, integer index, or datetime range.
+        :returns: New FootprintData object with selected range.
+        :raises TypeError: If key is not a supported type.
         """
         if isinstance(key, (slice, int)):
             if isinstance(key, slice) and isinstance(key.start, (str, dt.datetime)) and isinstance(key.stop, (str, dt.datetime)):
@@ -184,24 +131,11 @@ class FootprintData:
     @classmethod
     def from_numba(cls, data: Tuple, price_tick: float) -> 'FootprintData':
         """
-        Create a FootprintData instance from the output of the `comp_bar_footprint` function.
-
-        Parameters
-        ----------
-        data : tuple
-            Output of the `comp_bar_footprint` function, containing NumbaList of numpy arrays.
-        price_tick : float
-            The price tick size.
-
-        Returns
-        -------
-        FootprintData
-            A new instance of FootprintData initialized with the given data.
-
-        Raises
-        ------
-        ValueError
-            If the data is invalid or inconsistent.
+        Create a FootprintData object from Numba-based output.
+        :param data: Output tuple from comp_bar_footprint.
+        :param price_tick: Tick size for price levels.
+        :returns: A validated FootprintData instance.
+        :raises ValueError: If data length is inconsistent.
         """
         instance = cls(
             bar_timestamps=np.array(data[0], dtype=np.int64),
@@ -227,24 +161,10 @@ class FootprintData:
     @classmethod
     def from_dict(cls, data: Dict) -> 'FootprintData':
         """
-        Create a FootprintData instance from a dictionary.
-
-        Parameters
-        ----------
-        data : dict
-            Dictionary containing the footprint data with keys:
-            'bar_timestamps', 'price_levels', 'buy_volumes', 'sell_volumes',
-            'buy_ticks', 'sell_ticks', 'buy_imbalances', 'sell_imbalances', 'price_tick'
-
-        Returns
-        -------
-        FootprintData
-            A new instance of FootprintData initialized with the given data.
-
-        Raises
-        ------
-        ValueError
-            If the data is invalid or inconsistent.
+        Create a FootprintData object from a dictionary of arrays.
+        :param data: Dictionary with raw footprint arrays.
+        :returns: A validated FootprintData instance.
+        :raises ValueError: If data length is inconsistent.
         """
         instance = cls(
             bar_timestamps=data['bar_timestamps'],
@@ -266,12 +186,8 @@ class FootprintData:
 
     def get_df(self):
         """
-        Convert the footprint data to a pandas DataFrame.
-
-        Returns
-        -------
-        DataFrame
-            A pandas DataFrame containing the footprint data.
+        Convert the footprint data into a pandas DataFrame.
+        :returns: A DataFrame with structured footprint information.
         """
         df = footprint_to_dataframe(
             self.bar_timestamps,
@@ -288,11 +204,7 @@ class FootprintData:
 
     def cast_to_numba_list(self):
         """
-        Cast the footprint data in-place to NumbaList for Numba calculations.
-
-        Notes
-        -----
-        Numba does not support numpy arrays with dtype=object; we have to cast them to NumbaLists.
+        Convert internal arrays to NumbaList for JIT-compatible processing.
         """
         self.price_levels = NumbaList(self.price_levels)
         self.buy_volumes = NumbaList(self.buy_volumes)
@@ -304,7 +216,7 @@ class FootprintData:
 
     def cast_to_numpy(self):
         """
-        Cast the footprint data in-place to numpy arrays object for general processing and serialization.
+        Convert internal lists to NumPy arrays for general-purpose processing.
         """
         self.price_levels = np.array(self.price_levels, dtype=object)
         self.buy_volumes = np.array(self.buy_volumes, dtype=object)
@@ -316,12 +228,8 @@ class FootprintData:
 
     def memory_usage(self) -> float:
         """
-        Calculate the total memory usage of the FootprintData object.
-
-        Returns
-        -------
-        float
-            Total memory usage in megabytes (MB).
+        Estimate memory usage of all internal arrays.
+        :returns: Memory usage in megabytes (MB).
         """
         from pympler import asizeof  # memory profiler
 
@@ -343,12 +251,8 @@ class FootprintData:
 
     def is_valid(self) -> bool:
         """
-        Check for consistent lengths and types of all attributes.
-
-        Returns
-        -------
-        bool
-            True if the data is valid, False otherwise.
+        Check if all internal arrays are consistent.
+        :returns: True if valid, False otherwise.
         """
         expected_length = len(self.bar_timestamps)
         attributes = [

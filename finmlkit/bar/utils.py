@@ -9,22 +9,12 @@ from math import gcd
 @njit(nogil=True, fastmath=True)
 def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[-1, 1]:
     """
-    Implements the tick rule defined on page 29 of "Advances in Financial Machine Learning". It classifies the
-    trade as an aggressive buy or sell based on the direction of price change.
+    Classify a trade as buy or sell using the tick rule from AFML.
 
-    Parameters
-    ----------
-    price : float
-        The current price.
-    prev_price : float
-        The previous price.
-    prev_tick : int
-        The previous tick rule.
-
-    Returns
-    -------
-    int
-        1 for an upward change (buy), -1 for a downward change (sell)
+    :param price: Current trade price.
+    :param prev_price: Previous trade price.
+    :param prev_tick: Previous tick direction.
+    :returns: 1 for an upward move (buy), -1 for a downward move (sell).
     """
     epsilon = 1e-12  # Small value to avoid floating point error
     dp = price - prev_price
@@ -35,17 +25,10 @@ def comp_trade_side(price: float, prev_price: float, prev_tick: int) -> Literal[
 @njit(nogil=True)
 def comp_trade_side_vector(prices: NDArray[np.float64]) -> NDArray[np.int8]:
     """
-    Calculate the trade side for a sequence of raw trades prices.
+    Compute tick rule-based trade sides for a sequence of prices.
 
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-        The raw trades data prices sequence.
-
-    Returns
-    -------
-    np.ndarray(np.int8)
-        The sequence of trade sides (1 for buy, -1 for sell).
+    :param prices: Sequence of trade prices.
+    :returns: Sequence of trade sides (1 for buy, -1 for sell).
     """
     n = len(prices)
     trade_sides = np.zeros(n, dtype=np.int8)
@@ -65,16 +48,11 @@ def comp_trade_side_vector(prices: NDArray[np.float64]) -> NDArray[np.int8]:
 @njit(nogil=True)
 def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
     """
-    Calculate the asset's tick size from a sequence of raw trades prices.
+    Estimate the smallest price increment (tick size) based on trade prices.
 
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-
-    Returns
-    -------
-    tick_size: float
-
+    :param prices: Array of trade prices.
+    :returns: Estimated price tick size. Returns 0.0 if undeterminable.
+    :raises ValueError: If input array is empty.
     """
     if len(prices) == 0:
         raise ValueError("Empty prices array")
@@ -105,18 +83,11 @@ def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
 @njit(nogil=True)
 def comp_price_tick_size_old(prices: NDArray[np.float64]) -> float:
     """
-    Compute the price tick size from raw trades prices data.
+    Legacy method to estimate tick size using median price differences.
 
-    Parameters
-    ----------
-    prices : np.array(np.float64)
-        Raw trades prices.
-
-    Returns
-    -------
-    float
-        The price tick size. Returns 0.0 if not determinable from the input prices.
-
+    :param prices: Array of trade prices.
+    :returns: Rounded tick size estimate.
+    :raises ValueError: If input array is empty.
     """
     # Select first 10000 trades to calculate the price tick size
     n_samples = len(prices)
@@ -157,21 +128,18 @@ def comp_price_tick_size_old(prices: NDArray[np.float64]) -> float:
 def footprint_to_dataframe(bar_timestamps, price_levels, buy_volumes, sell_volumes, buy_ticks, sell_ticks,
                            buy_imbalance, sell_imbalance, price_tick):
     """
-    Convert footprint data to a pandas DataFrame format.
-    The output filters out NaN price levels and sorts them in descending order by price level and ascending order by bar datetime.
+    Convert footprint bar data into a structured pandas DataFrame.
 
-    Args:
-        bar_timestamps: bar timestamps (1d numpy array)
-        price_levels: price levels (list of 1d numpy arrays) in ascending order
-        buy_volumes: aligned buy volumes (list of 1d numpy arrays)
-        sell_volumes: aligned sell volumes (list of 1d numpy arrays)
-        buy_ticks: aligned buy ticks (list of 1d numpy arrays)
-        sell_ticks: aligned sell ticks (list of 1d numpy arrays)
-        buy_imbalance: aligned buy imbalance (list of 1d numpy arrays)
-        sell_imbalance: aligned sell imbalance (list of 1d numpy arrays)
-        price_tick: price tick size (float)
-
-    Returns: footprint dataframe
+    :param bar_timestamps: Bar timestamps as nanosecond integers.
+    :param price_levels: List of price levels per bar (ascending order).
+    :param buy_volumes: List of buy volumes per level.
+    :param sell_volumes: List of sell volumes per level.
+    :param buy_ticks: List of buy ticks per level.
+    :param sell_ticks: List of sell ticks per level.
+    :param buy_imbalance: List of boolean arrays for buy imbalances.
+    :param sell_imbalance: List of boolean arrays for sell imbalances.
+    :param price_tick: Price tick size to scale levels.
+    :returns: DataFrame indexed by bar ID and timestamp with footprint metrics.
     """
     # Convert bar_timestamps to datetime
     bar_dt = pd.to_datetime(bar_timestamps)
