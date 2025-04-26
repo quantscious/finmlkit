@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import time
 
-from finmlkit.indicator.utils import ewma, ewms
+from finmlkit.indicator.volatility import ewms
+from finmlkit.indicator.ma import ewma
+
 
 def ewma_perf_test():
     for _ in range(10):

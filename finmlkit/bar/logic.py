@@ -174,6 +174,53 @@ def _dollar_bar_indexer(
 
 
 @njit(nogil=True)
+def _cusum_bar_indexer(
+        timestamps: NDArray[np.int64],
+        prices: NDArray[np.float64],
+        threshold: float
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """
+    Determine CUSUM bar open indices using a symmetric CUSUM filter
+    on successive price changes (López de Prado, 2018).
+
+    A new bar starts whenever the cumulative sum of price changes
+    exceeds +threshold or –threshold.
+
+    :param timestamps: Raw trade timestamps (ns).
+    :param prices: Trade prices.
+    :param threshold: Absolute CUSUM threshold.
+    :returns: (open_timestamps, open_indices)
+    """
+    n = len(prices)
+
+    # store bar–opening indices
+    cusum_bar_indices = NumbaList()
+    cusum_bar_indices.append(0)         # first trade starts bar
+
+    s_pos = 0.0                         # positive cum-sum
+    s_neg = 0.0                         # negative cum-sum
+
+    for i in range(1, n):
+        price_change = prices[i] - prices[i - 1]
+
+        # update symmetric CUSUMs
+        s_pos = max(0.0, s_pos + price_change)
+        s_neg = min(0.0, s_neg + price_change)
+
+        # open a new bar if either side hits the threshold
+        if s_pos >= threshold or s_neg <= -threshold:
+            cusum_bar_indices.append(i)
+            s_pos = 0.0
+            s_neg = 0.0
+
+    # convert to NumPy arrays
+    result = np.array(cusum_bar_indices, dtype=np.int64)
+    open_timestamps = timestamps[result]
+
+    return open_timestamps, result
+
+
+@njit(nogil=True)
 def _imbalance_bar_indexer(
         timestamps: NDArray[np.int64],
         prices: NDArray[np.float64],
