@@ -221,6 +221,92 @@ def _cusum_bar_indexer(
 
 
 @njit(nogil=True)
+def _adaptive_cusum_bar_indexer(
+        timestamps: NDArray[np.int64],
+        prices: NDArray[np.float64],
+        lambda_mult: float,
+        half_life_sec: float,
+        warmup_ticks: int,
+        sigma_floor: float
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """
+    Event-driven CUSUM bar indexer with *adaptive* λ on raw tick data
+
+    :param timestamps: Raw trade timestamps (ns).
+    :param prices: Trade tick prices.
+    :param lambda_mult: λ multiplier.
+    :param half_life_sec: Half-life for EWMA std-dev in seconds (e.g. 1800s = 30min).
+    :param warmup_ticks: Warmup period for σ.
+    :param sigma_floor: Minimum value for σ for stability.
+
+    .. note::
+    λ_t = lambda_mult · σ_t,  where σ_t is an unbiased EWMA std-dev of tick log-returns
+    whose time-decay half-life = `half_life_sec`.
+    """
+    n = len(prices)
+    warmup_ticks = max(100, warmup_ticks)  # Ensure warmup_ticks is at least 100
+
+    if n <= warmup_ticks:
+        raise ValueError("prices must have more than `warmup_ticks` elements.")
+
+    cusum_bar_indices = NumbaList()
+    cusum_bar_indices.append(warmup_ticks)
+
+    # ----------------- init std ----------------
+    # robust σ0 from first warmup_ticks returns (look-ahead only inside warm-up)
+    tmp = np.empty(warmup_ticks, dtype=np.float64)
+    for k in range(1, warmup_ticks + 1):
+        tmp[k - 1] = np.log(prices[k]) - np.log(prices[k - 1])
+    med = np.median(tmp)
+    tmp = np.abs(tmp - med)
+    mad = np.median(tmp)
+    var = max((1.4826 * mad) ** 2, sigma_floor ** 2)
+    # unbiased accumulators
+    U = var
+    V = 1.0
+
+    s_pos = 0.0
+    s_neg = 0.0
+    last_ts = timestamps[warmup_ticks - 1]
+
+    @njit(inline='always')
+    def _median3(a, b, c):
+        if a > b: a, b = b, a
+        if b > c: b, c = c, b
+        if a > b: a, b = b, a
+        return b
+
+    prev_price = prices[warmup_ticks - 1]
+    # ------------- main loop ------------------------
+    for i in range(warmup_ticks, n):
+        price_i = _median3(prices[i-2], prices[i-1], prices[i])  # 3-tick running median filter
+        r = np.log(price_i) - np.log(prev_price)
+        prev_price = price_i
+
+        dt = (timestamps[i] - last_ts) / 1e9          # ns → s
+        last_ts = timestamps[i]
+
+        # Variance estimator update
+        alpha = 1.0 - np.exp(-dt / half_life_sec)
+        U = alpha * r * r + (1.0 - alpha) * U
+        V = alpha + (1.0 - alpha) * V
+        var = max(U / V, sigma_floor ** 2)
+        lamb = lambda_mult * np.sqrt(var)
+
+        # symmetric CUSUM
+        s_pos = max(0.0, s_pos + r)
+        s_neg = min(0.0, s_neg + r)
+        if s_pos >= lamb or s_neg <= -lamb:
+            cusum_bar_indices.append(i)
+            s_pos = 0.0
+            s_neg = 0.0
+
+    indices = np.array(cusum_bar_indices, dtype=np.int64)
+
+    return timestamps[indices], indices
+
+
+@njit(nogil=True)
 def _imbalance_bar_indexer(
         timestamps: NDArray[np.int64],
         prices: NDArray[np.float64],

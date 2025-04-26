@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Tuple, Any
 from numpy.typing import NDArray
 from .base import BarBuilderBase
-from .logic import _time_bar_indexer, _tick_bar_indexer, _volume_bar_indexer, _dollar_bar_indexer, _imbalance_bar_indexer, _run_bar_indexer
+from .logic import _time_bar_indexer, _tick_bar_indexer, _volume_bar_indexer, _dollar_bar_indexer, _adaptive_cusum_bar_indexer, _imbalance_bar_indexer, _run_bar_indexer
 
 from finmlkit.utils.log import get_logger
 logger = get_logger(__name__)
@@ -146,4 +146,58 @@ class DollarBarKit(BarBuilderBase):
         timestamps = self._raw_data['timestamp'].astype(np.int64).values
         prices = self._raw_data['price'].values
         volumes = self._raw_data['amount'].values
+
         return _dollar_bar_indexer(timestamps, prices, volumes, self.dollar_thrs)
+
+
+class CUSUMBarKit(BarBuilderBase):
+    """
+    CUSUM bar builder class.
+    """
+
+    def __init__(self,
+                 trades: pd.DataFrame,
+                 timestamp_unit: str = None,
+                 proc_res: str = None,
+                 inplace: bool = False,
+
+                 lambda_mult: float = 2.,
+                 half_life_sec: float = 1800.0,
+                 warmup_ticks: int = 1000,
+                 sigma_floor: float = 1e-6
+   ):
+        """
+        Initialize the CUSUM bar builder with raw trades data and threshold.
+
+        :param trades: DataFrame of raw trades with 'timestamp', 'price', and 'amount'.
+        :param lambda_mult: the sigma multiplier for adaptive threshold (lambda_th = lambda_mult * sigma).
+        :param timestamp_unit: Optional timestamp unit; inferred if None.
+        :param proc_res: Optional processing resolution.
+        :param inplace: If True, modifies the original DataFrame; otherwise, creates a new one.
+        :param lambda_mult: Optional lambda multiplier (std multiplier for adaptive threshold).
+        :param half_life_sec: Half-life in seconds for the adaptive CUSUM.
+        :param warmup_ticks: Number of warmup ticks.
+        :param sigma_floor: Minimum value for sigma to stability in calm periods.
+        """
+        super().__init__(trades, timestamp_unit, proc_res, inplace)
+        self.lambda_mult = lambda_mult
+        self.half_life_sec = half_life_sec
+        self.warmup_ticks = warmup_ticks
+        self.sigma_floor = sigma_floor
+
+        logger.info(f"CUSUM Bar builder initialized with threshold.")
+        logger.info(print(self))
+
+    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+        """
+        Generate CUSUM bar indices using the CUSUM bar indexer.
+        :returns: Open timestamps and corresponding open indices in the raw trades data.
+        """
+        timestamps = self._raw_data['timestamp'].astype(np.int64).values
+        prices = self._raw_data['price'].values
+
+        return _adaptive_cusum_bar_indexer(timestamps, prices,
+                                           self.lambda_mult,
+                                           self.half_life_sec,
+                                           self.warmup_ticks,
+                                           self.sigma_floor)
