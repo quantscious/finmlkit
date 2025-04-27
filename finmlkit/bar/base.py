@@ -108,7 +108,7 @@ class BarBuilderBase(ABC):
         logger.info("Directional features calculated successfully.")
 
         directional_df = pd.DataFrame({
-            'timestamp': self._open_ts[:-1],
+            'timestamp': self._open_ts[1:],     # Close bar timestamps convention!!
             'ticks_buy': directional_tuple[0],
             'ticks_sell': directional_tuple[1],
             'volume_buy': directional_tuple[2],
@@ -190,28 +190,32 @@ def comp_bar_ohlcv(
         - volume: Total traded volume in each bar.
         - vwap: Volume-weighted average price of each bar.
     """
-    n_bars = len(bar_open_indices) - 1  # The last open index determines the last bar' close
+    # Check the input arrays match in length
+    if len(prices) != len(volumes):
+        raise ValueError("Prices and volumes arrays must have the same length.")
+    if len(bar_open_indices) < 2:
+        raise ValueError("Bar open indices must contain at least two elements.")
+
+    n_bars = len(bar_open_indices) - 1  # The last open index determines the last bar's close
     bar_high = np.zeros(n_bars, dtype=np.float64)
     bar_low = np.zeros(n_bars, dtype=np.float64)
     bar_open = np.zeros(n_bars, dtype=np.float64)
     bar_close = np.zeros(n_bars, dtype=np.float64)
     bar_volume = np.zeros(n_bars, dtype=np.float64)
-    bar_vwap = np.zeros(n_bars, dtype=np.float32)
-    bar_dollar = np.zeros(n_bars, dtype=np.float64)
+    bar_vwap = np.zeros(n_bars, dtype=np.float64)
 
     for i in prange(n_bars):
-        start = bar_open_indices[i]
+        start = bar_open_indices[i] + 1    # Start from the next trade (start=previous bar close)
         end = bar_open_indices[i + 1]
 
         # Handle empty bar
         if start == end:
-            last_price = prices[start - 1]
+            last_price = prices[min(0, int(start-1))]
             bar_open[i] = last_price
             bar_close[i] = last_price
             bar_high[i] = last_price
             bar_low[i] = last_price
             bar_volume[i] = 0.0
-            bar_dollar[i] = 0.0
             bar_vwap[i] = 0.0
             continue
 
@@ -221,8 +225,8 @@ def comp_bar_ohlcv(
         total_volume = 0.0
         total_dollar = 0.0
 
-        # Iterate over trades in the current bar
-        for j in range(start, end):
+        # Iterate over trades in the current bar, inclusive for the last trade (bar close)
+        for j in range(start, end + 1):
             price = prices[j]
             volume = volumes[j]
 
@@ -234,12 +238,11 @@ def comp_bar_ohlcv(
             total_volume += volume
             total_dollar += price * volume
 
-        bar_open[i] = prices[start]
-        bar_close[i] = prices[end - 1]
+        bar_open[i] = prices[start]  # First trade price in the bar exclusive
+        bar_close[i] = prices[end]   # Last trade price in the bar inclusive
         bar_high[i] = high_price
         bar_low[i] = low_price
         bar_volume[i] = total_volume
-        bar_dollar[i] = total_dollar
         bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
 
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
@@ -301,7 +304,7 @@ def comp_bar_directional_features(
 
     # Compute the bar directional features
     for i in prange(n_bars):
-        start = bar_open_indices[i]
+        start = bar_open_indices[i] + 1  # Start from the next trade (start=previous bar close)
         end = bar_open_indices[i + 1]
 
         current_tics_buy = 0
@@ -322,7 +325,8 @@ def comp_bar_directional_features(
         else:
             prev_tick_sign = 0  # Default value if no trades in bar
 
-        for j in range(start, end):
+        # Iterate over trades in the current bar (start  exclusive, end inclusive)
+        for j in range(start, end + 1):
             current_tick_sign = trade_sides[j]
 
             # Calculate the spread between buy and sell prices
@@ -442,7 +446,7 @@ def comp_bar_footprints(
 
     tick_direction = 0
     for i in prange(n_bars):
-        start = bar_open_indices[i]
+        start = bar_open_indices[i] + 1  # Start from the next trade (start=previous bar close)
         end = bar_open_indices[i + 1]
 
         # Examine current bar price levels
@@ -457,8 +461,8 @@ def comp_bar_footprints(
         buy_ticks_i = np.zeros(n_levels, dtype=np.int32)
         sell_ticks_i = np.zeros(n_levels, dtype=np.int32)
 
-        # Start aggregating the footprint data
-        for j in range(start, end):
+        # Start aggregating the footprint data (start exclusive, end inclusive)
+        for j in range(start, end + 1):
             price = float(prices[j])
             previous_price = prices[j - 1] if j > 0 else price
             tick_direction = comp_trade_side(price, previous_price, tick_direction)
@@ -500,7 +504,7 @@ def comp_bar_footprints(
         cot_price_levels[i] = cot_price_level
 
     return (
-        bar_open_timestamps[:n_bars],
+        bar_open_timestamps[1:],  # Close bar timestamps convention!!
         price_levels,
         buy_volumes, sell_volumes,
         buy_ticks, sell_ticks,

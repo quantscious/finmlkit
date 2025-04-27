@@ -113,6 +113,7 @@ class TradesData:
         :param trades: DataFrame with trades to merge.
         :return: Merged DataFrame.
         """
+        # TODO: Implement a more efficient numba merging strategy if needed
         logger.info('Merging split trades (same timestamps) on same price level...')
         if self.is_side:
             trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'],
@@ -173,6 +174,7 @@ class TradesData:
         Extract trade side information from the trades data.
 
         :param trades: DataFrame to process.
+        :returns: None - modifies the trades DataFrame in place to include a 'side' column.
         """
         if self.is_side:
             logger.info("Trade side information found. Using 'is_buyer_maker' to determine trade side.")

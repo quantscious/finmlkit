@@ -173,7 +173,6 @@ def _cusum_bar_indexer(
     :returns: (open_timestamps, open_indices)
     """
     n = len(prices)
-    threshold = lambda_mult * sigma
 
     # Find first non-NaN index in sigma
     first_non_nan_idx = 0
@@ -183,7 +182,7 @@ def _cusum_bar_indexer(
             break
 
     # Fill NaN values with previous non-NaN value
-    for i in range(first_non_nan_idx + 1, n):
+    for i in range(first_non_nan_idx, n):
         if np.isnan(sigma[i]):
             sigma[i] = sigma[i-1]
 
@@ -201,12 +200,12 @@ def _cusum_bar_indexer(
         s_pos = max(0.0, s_pos + ret)
         s_neg = min(0.0, s_neg + ret)
 
-        ths = max(threshold[i], sigma_floor)
+        lam = max(float(lambda_mult * sigma[i]), sigma_floor)
         # open a new bar if either side hits the threshold
-        if s_pos > ths:
+        if s_pos > lam:
             cusum_bar_indices.append(i)
             s_pos = 0.0
-        elif s_neg < -ths:
+        elif s_neg < -lam:
             cusum_bar_indices.append(i)
             s_neg = 0.0
 
