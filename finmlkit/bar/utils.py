@@ -206,3 +206,18 @@ def footprint_to_dataframe(bar_timestamps, price_levels, buy_volumes, sell_volum
     df = df.sort_values(by=['bar_datetime_idx', 'price_level'], ascending=[True, False])
 
     return df
+
+
+@njit(nogil=True)
+def median3(a, b, c):
+    """
+    Median 3 filter. Find the median of three numbers.
+    :param a: first number
+    :param b: second number
+    :param c: third number
+    :return: median of a, b, c
+    """
+    if a > b: a, b = b, a
+    if b > c: b, c = c, b
+    if a > b: a, b = b, a
+    return b

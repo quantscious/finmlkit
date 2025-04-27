@@ -26,7 +26,7 @@ def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
 
     if span <= 1:
         ewm_std[:] = np.nan
-        logger.warning("Span size is less than or equal to 1. Returning NaNs.")
+        print("Span size is less than or equal to 1. Returning NaNs.")
         return ewm_std
 
     alpha = 2.0 / (span + 1.0)

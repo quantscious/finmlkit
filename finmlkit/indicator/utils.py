@@ -48,7 +48,7 @@ def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.floa
                 ret = close[i] / close[lag_idx] - 1.0
                 returns[i] = ret
             else:
-                logger.warning("Encountered a zero in price data while calculating lagged return.\n"
+                print("Warning: Encountered a zero in price data while calculating lagged return.\n"
                       "Division by zero. Setting return value to inf.")
                 returns[i] = np.inf
         else:

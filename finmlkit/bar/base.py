@@ -13,7 +13,8 @@ from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
 
 from .data_model import FootprintData
-from .utils import comp_trade_side_vector, comp_price_tick_size, comp_trade_side
+from .utils import comp_price_tick_size, comp_trade_side
+from .data_model import TradesData
 
 from finmlkit.utils.log import get_logger
 logger = get_logger(__name__)
@@ -24,92 +25,22 @@ class BarBuilderBase(ABC):
     This class provides a template for generating bar from raw trades data.
     """
 
-    def __init__(self,
-                 trades: pd.DataFrame,
-                 timestamp_unit: str = None,
-                 proc_res: str = None,
-                 inplace: bool = False
-                 ):
+    def __init__(self,trades: TradesData):
         """
         Initialize the bar builder with raw trades data.
 
         :param trades: DataFrame containing raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
             If 'is_buyer_maker' is present, it indicates the trade side otherwise it is inferred.
-        :param timestamp_unit: Optional timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
-        :param proc_res: Optional processing resolution for timestamps
-        :param inplace: If True, modifies the trades DataFrame in place.
         """
-        if not inplace:
-            trades = trades.copy()
-        if 'qty' in trades.columns:
-            trades.rename(columns={'qty': 'amount'}, inplace=True)
-        if 'time' in trades.columns:
-            trades.rename(columns={'time': 'timestamp'}, inplace=True)
-
-        self.is_side = "is_buyer_maker" in trades.columns
-
-        assert 'timestamp' in trades.columns, "Missing 'timestamp' column in trades data!"
-        assert 'price' in trades.columns, "Missing 'price' column in trades data!"
-        assert 'amount' in trades.columns, "Missing 'amount' column in trades data!"
-
-        # Sort trades data by timestamp to ensure correct order
-        logger.info('Input trades data OK. Sorting by timestamp...')
-        trades.sort_values(by='timestamp', inplace=True)
-        trades.reset_index(drop=True, inplace=True)
-
-        # Handle Trade splitting on same price level TODO -> Fast Numba Implementation
-        logger.info('Merging split trades (same timestamps) on same price level...')
-        if self.is_side:
-            trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'], as_index=False).agg({'amount': 'sum'})
-        else:
-            trades = trades.groupby(['timestamp', 'price'], as_index=False).agg({'amount': 'sum'})
-
-        # Convert timestamp to nanoseconds
-        timestamp_unit = self.infer_ts_unit(timestamp_unit, trades)
-        assert timestamp_unit in ['s', 'ms', 'us', 'ns'], "Invalid timestamp format! Must be one of: s, ms, us, ns."
-        logger.info('Converting timestamp to nanoseconds units for processing...')
-        trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
-        # Apply resolution to the timestamp
-        if proc_res and proc_res != timestamp_unit:
-            logger.info(f"Processing resolution: {proc_res} -> converting to nanoseconds...")
-            raise NotImplementedError("Processing resolution not implemented yet.")
-            #ts_resolution_ns = int(proc_res * 1e9)
-            #trades.timestamp = (trades.timestamp.values // ts_resolution_ns) * ts_resolution_ns
-
-        # Extract trade side information
-        if self.is_side:
-            logger.info("Trade side information found. Using 'is_buyer_maker' to determine trade side.")
-            trades['side'] = np.where(trades['is_buyer_maker'] == 1, -1, 1).astype(np.int8)
-        else:
-            logger.info("No trade side information found. Inferring trade side from raw trades data.")
-            trades['side'] = comp_trade_side_vector(trades['price'].values)
-
-        self._raw_data = trades
+        self.trades_df = trades.data
 
         self._open_ts = self._open_indices = None
         self._highs = self._lows = None
 
-    @staticmethod
-    def infer_ts_unit(timestamp_unit, trades):
-        if timestamp_unit is None:
-            max_ts = trades['timestamp'].values[-1]
-            if max_ts > 1e18:  # Likely in nanoseconds
-                timestamp_unit = 'ns'
-            elif max_ts > 1e15:  # Likely in microseconds
-                timestamp_unit = 'us'
-            elif max_ts > 1e12:  # Likely in milliseconds
-                timestamp_unit = 'ms'
-            else:  # Likely in seconds
-                timestamp_unit = 's'
-                logger.warning(f"Timestamp unit is set to seconds. Please verify the data.")
-            logger.info(f"Inferred timestamp format: {timestamp_unit}")
-
-        return timestamp_unit
-
     def __str__(self):
         return (f"Class: {self.__class__.__name__} with members:\n"
                 f"{[f"{key}: {value}\n" for key, value in self.__dict__.items()]} "
-                f"\nRaw trades data:\n{self._raw_data.info()}")
+                f"\nRaw trades data:\n{self.trades_df.info()}")
 
     @abstractmethod
     def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
@@ -135,8 +66,8 @@ class BarBuilderBase(ABC):
         self._calc_bar_open_values()
 
         ohlcv_tuple = comp_bar_ohlcv(
-            self._raw_data['price'].values,
-            self._raw_data['amount'].values,
+            self.trades_df['price'].values,
+            self.trades_df['amount'].values,
             self._open_indices
         )
         self._highs, self._lows = ohlcv_tuple[1], ohlcv_tuple[2]
@@ -169,10 +100,10 @@ class BarBuilderBase(ABC):
         self._calc_bar_open_values()
 
         directional_tuple = comp_bar_directional_features(
-            self._raw_data['price'].values,
-            self._raw_data['amount'].values,
+            self.trades_df['price'].values,
+            self.trades_df['amount'].values,
             self._open_indices,
-            self._raw_data['side'].values.astype(np.int8),
+            self.trades_df['side'].values.astype(np.int8),
         )
         logger.info("Directional features calculated successfully.")
 
@@ -213,13 +144,13 @@ class BarBuilderBase(ABC):
 
         if price_tick_size is None:
             # Anticipate price tick size
-            price_tick_size = comp_price_tick_size(self._raw_data['price'].values)
+            price_tick_size = comp_price_tick_size(self.trades_df['price'].values)
         logger.info(f"Price tick size is set to: {price_tick_size}")
 
         # Compute the footprint data
         footprint_data = comp_bar_footprints(
-            self._raw_data['price'].values,
-            self._raw_data['amount'].values,
+            self.trades_df['price'].values,
+            self.trades_df['amount'].values,
             self._open_indices,
             self._open_ts,
             price_tick_size,

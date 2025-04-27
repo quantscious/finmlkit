@@ -8,6 +8,7 @@ from numba import njit
 from numba.typed import List as NumbaList
 from numpy.typing import NDArray
 
+from .utils import median3
 
 @njit(nogil=True)
 def _time_bar_indexer(
@@ -56,15 +57,13 @@ def _time_bar_indexer(
 def _tick_bar_indexer(
         timestamps: NDArray[np.int64],
         threshold: int
-) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+) -> NumbaList:
     """
     Determine the tick bar open indices in the raw trades timestamp array.
 
     :param timestamps: Raw trade timestamps.
     :param threshold: The tick count threshold for opening a new bar.
-    :returns: A tuple of:
-        - open_timestamps: Timestamps at which each bar opens.
-        - result: Indices in the trade data corresponding to bar openings.
+    :returns: open_timestamps: Timestamps at which each tick bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -84,28 +83,19 @@ def _tick_bar_indexer(
             tick_bar_indices.append(i)
             cum_ticks = 0  # Reset the counter after reaching the threshold
 
-    # Convert the typed list directly to a NumPy array
-    result = np.array(tick_bar_indices, dtype=np.int64)
-    open_timestamps = timestamps[result]
-
-    return open_timestamps, result
+    return tick_bar_indices
 
 
 @njit(nogil=True)
 def _volume_bar_indexer(
-        timestamps: NDArray[np.int64],
         volumes: NDArray[np.float64],
         threshold: float
-) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+) -> NumbaList:
     """
     Determine the volume bar open indices using cumulative volume.
-
-    :param timestamps: Raw trade timestamps.
     :param volumes: Trade volumes.
     :param threshold: Volume threshold for opening a new bar.
-    :returns: A tuple of:
-        - open_timestamps: Timestamps at which each volume bar opens.
-        - result: Indices in the trade data corresponding to volume bar openings.
+    :returns: open_timestamps: Timestamps at which each volume bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -124,30 +114,22 @@ def _volume_bar_indexer(
             volume_bar_indices.append(i)
             cum_volume = 0
 
-    # Convert the typed list directly to a NumPy array
-    result = np.array(volume_bar_indices, dtype=np.int64)
-    open_timestamps = timestamps[result]
-
-    return open_timestamps, result
+    return volume_bar_indices
 
 
 @njit(nogil=True)
 def _dollar_bar_indexer(
-        timestamps: NDArray[np.int64],
         prices: NDArray[np.int64],
         volumes: NDArray[np.float64],
         threshold: float
-) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+) -> NumbaList:
     """
     Determine the dollar bar open indices using cumulative dollar value.
 
-    :param timestamps: Raw trade timestamps.
     :param prices: Trade prices.
     :param volumes: Trade volumes.
     :param threshold: Dollar value threshold for opening a new bar.
-    :returns: A tuple of:
-        - open_timestamps: Timestamps at which each dollar bar opens.
-        - result: Indices in the trade data corresponding to dollar bar openings.
+    :returns: open_timestamps: Timestamps at which each dollar bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -166,144 +148,69 @@ def _dollar_bar_indexer(
             dollar_bar_indices.append(i)
             cum_dollar = 0
 
-    # Convert the typed list directly to a NumPy array
-    result = np.array(dollar_bar_indices, dtype=np.int64)
-    open_timestamps = timestamps[result]
-
-    return open_timestamps, result
+    return dollar_bar_indices
 
 
 @njit(nogil=True)
 def _cusum_bar_indexer(
-        timestamps: NDArray[np.int64],
         prices: NDArray[np.float64],
-        threshold: float
-) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+        sigma: NDArray[np.float64],
+        sigma_floor: float,
+        lambda_mult: float
+) -> NumbaList:
     """
     Determine CUSUM bar open indices using a symmetric CUSUM filter
     on successive price changes (López de Prado, 2018).
 
     A new bar starts whenever the cumulative sum of price changes
-    exceeds +threshold or –threshold.
+    exceeds +sigma*lambda or –sigma*lambda.
 
     :param timestamps: Raw trade timestamps (ns).
     :param prices: Trade prices.
-    :param threshold: Absolute CUSUM threshold.
+    :param sigma: Threshold vector for CUSUM (e.g. calculated EWMS volatility or constant).
+    :param sigma_floor: Minimum value for sigma to avoid division by zero.
+    :param lambda_mult: λ multiplier for the CUSUM filter (threshold will be lambda_mult*sigma).
     :returns: (open_timestamps, open_indices)
     """
     n = len(prices)
+    threshold = lambda_mult * sigma
+
+    # Find first non-NaN index in sigma
+    first_non_nan_idx = 0
+    for i in range(len(sigma)):
+        if not np.isnan(sigma[i]):
+            first_non_nan_idx = i
+            break
+
+    # Fill NaN values with previous non-NaN value
+    for i in range(first_non_nan_idx + 1, n):
+        if np.isnan(sigma[i]):
+            sigma[i] = sigma[i-1]
 
     # store bar–opening indices
     cusum_bar_indices = NumbaList()
-    cusum_bar_indices.append(0)         # first trade starts bar
+    cusum_bar_indices.append(first_non_nan_idx)         # first trade starts bar
 
     s_pos = 0.0                         # positive cum-sum
     s_neg = 0.0                         # negative cum-sum
 
-    for i in range(1, n):
-        price_change = prices[i] - prices[i - 1]
+    for i in range(first_non_nan_idx + 1, n):
+        ret = np.log(prices[i]/prices[i - 1])
 
         # update symmetric CUSUMs
-        s_pos = max(0.0, s_pos + price_change)
-        s_neg = min(0.0, s_neg + price_change)
+        s_pos = max(0.0, s_pos + ret)
+        s_neg = min(0.0, s_neg + ret)
 
+        ths = max(threshold[i], sigma_floor)
         # open a new bar if either side hits the threshold
-        if s_pos >= threshold or s_neg <= -threshold:
+        if s_pos > ths:
             cusum_bar_indices.append(i)
             s_pos = 0.0
-            s_neg = 0.0
-
-    # convert to NumPy arrays
-    result = np.array(cusum_bar_indices, dtype=np.int64)
-    open_timestamps = timestamps[result]
-
-    return open_timestamps, result
-
-
-@njit(nogil=True)
-def _adaptive_cusum_bar_indexer(
-        timestamps: NDArray[np.int64],
-        prices: NDArray[np.float64],
-        lambda_mult: float,
-        half_life_sec: float,
-        warmup_ticks: int,
-        sigma_floor: float
-) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
-    """
-    Event-driven CUSUM bar indexer with *adaptive* λ on raw tick data
-
-    :param timestamps: Raw trade timestamps (ns).
-    :param prices: Trade tick prices.
-    :param lambda_mult: λ multiplier.
-    :param half_life_sec: Half-life for EWMA std-dev in seconds (e.g. 1800s = 30min).
-    :param warmup_ticks: Warmup period for σ.
-    :param sigma_floor: Minimum value for σ for stability.
-
-    .. note::
-    λ_t = lambda_mult · σ_t,  where σ_t is an unbiased EWMA std-dev of tick log-returns
-    whose time-decay half-life = `half_life_sec`.
-    """
-    n = len(prices)
-    warmup_ticks = max(100, warmup_ticks)  # Ensure warmup_ticks is at least 100
-
-    if n <= warmup_ticks:
-        raise ValueError("prices must have more than `warmup_ticks` elements.")
-
-    cusum_bar_indices = NumbaList()
-    cusum_bar_indices.append(warmup_ticks)
-
-    # ----------------- init std ----------------
-    # robust σ0 from first warmup_ticks returns (look-ahead only inside warm-up)
-    tmp = np.empty(warmup_ticks, dtype=np.float64)
-    for k in range(1, warmup_ticks + 1):
-        tmp[k - 1] = np.log(prices[k]) - np.log(prices[k - 1])
-    med = np.median(tmp)
-    tmp = np.abs(tmp - med)
-    mad = np.median(tmp)
-    var = max((1.4826 * mad) ** 2, sigma_floor ** 2)
-    # unbiased accumulators
-    U = var
-    V = 1.0
-
-    s_pos = 0.0
-    s_neg = 0.0
-    last_ts = timestamps[warmup_ticks - 1]
-
-    @njit(inline='always')
-    def _median3(a, b, c):
-        if a > b: a, b = b, a
-        if b > c: b, c = c, b
-        if a > b: a, b = b, a
-        return b
-
-    prev_price = prices[warmup_ticks - 1]
-    # ------------- main loop ------------------------
-    for i in range(warmup_ticks, n):
-        price_i = _median3(prices[i-2], prices[i-1], prices[i])  # 3-tick running median filter
-        r = np.log(price_i) - np.log(prev_price)
-        prev_price = price_i
-
-        dt = (timestamps[i] - last_ts) / 1e9          # ns → s
-        last_ts = timestamps[i]
-
-        # Variance estimator update
-        alpha = 1.0 - np.exp(-dt / half_life_sec)
-        U = alpha * r * r + (1.0 - alpha) * U
-        V = alpha + (1.0 - alpha) * V
-        var = max(U / V, sigma_floor ** 2)
-        lamb = lambda_mult * np.sqrt(var)
-
-        # symmetric CUSUM
-        s_pos = max(0.0, s_pos + r)
-        s_neg = min(0.0, s_neg + r)
-        if s_pos >= lamb or s_neg <= -lamb:
+        elif s_neg < -ths:
             cusum_bar_indices.append(i)
-            s_pos = 0.0
             s_neg = 0.0
 
-    indices = np.array(cusum_bar_indices, dtype=np.int64)
-
-    return timestamps[indices], indices
+    return cusum_bar_indices
 
 
 @njit(nogil=True)
