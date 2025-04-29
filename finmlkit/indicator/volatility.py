@@ -70,12 +70,162 @@ def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
     return ewm_std
 
 
+@njit(nogil=True)
+def ewmst_return(
+    timestamps: NDArray[np.int64],
+    y:          NDArray[np.float64],
+    half_life:  float,
+    sigma_floor: float = 1e-12
+) -> NDArray[np.float64]:
+    """
+    Unbiased EWMA std-dev with time-decay half-life on returns (zero-mean series).
+
+    σ_t² = U_t / V_t  with
+      U_t = α_t * y_t² + (1-α_t) * U_{t-1}
+      V_t = α_t       + (1-α_t) * V_{t-1}
+
+    where α_t = 1 - exp(-Δt / half_life), Δt in seconds
+    and y_t is your return at timestamp[t].
+
+    :param timestamps: 1D array of event times in nanoseconds.
+    :param y:          1D array of floats (e.g. lagged returns).
+    :param half_life:  Decay half-life in seconds.
+    :param sigma_floor: Minimum σ to enforce stability.
+    :returns:          EWMA standard deviation array.
+    """
+    n = y.shape[0]
+    out = np.empty(n, dtype=np.float64)
+    if n == 0:
+        return out
+
+    # initialize
+    U = 0.0
+    V = 0.0
+    last_ts = timestamps[0]
+
+    # first point: can't compute Δt, mark NaN or zero
+    out[0] = np.nan
+
+    for i in range(1, n):
+        # time delta in seconds
+        dt = (timestamps[i] - last_ts) / 1e9
+        last_ts = timestamps[i]
+
+        # decay factor
+        alpha = 1.0 - np.exp(-dt / half_life)
+
+        # update U,V with unbiased recursion
+        y_t = y[i]
+        if np.isnan(y_t):
+            # decay only
+            U = (1.0 - alpha) * U
+            V = (1.0 - alpha) * V
+        else:
+            U = alpha * (y_t * y_t) + (1.0 - alpha) * U
+            V = alpha             + (1.0 - alpha) * V
+
+        # compute variance & floor
+        var = U / V if V > 0.0 else np.nan
+        if var < 0.0:
+            var = 0.0
+        sigma = np.sqrt(var)
+        if sigma < sigma_floor:
+            sigma = sigma_floor
+
+        out[i] = sigma
+
+    return out
+
+
+@njit(nogil=True)
+def ewmst(
+    timestamps: NDArray[np.int64],
+    y:          NDArray[np.float64],
+    half_life:  float,
+    sigma_floor: float = 1e-12
+) -> NDArray[np.float64]:
+    """
+    Unbiased time-decay EWMA std-dev (adjust=True, bias=False semantics).
+
+    Maintains:
+      V  = sum of weights
+      V2 = sum of squared weights
+      Sy = EWMA sum of y
+      Syy = EWMA sum of y^2
+
+    Then
+      mean_t   = Sy / V
+      ewma_y2  = Syy / V
+      var_raw  = ewma_y2 - mean_t^2
+      denom    = V - V2 / V
+      var_t    = var_raw * (V / denom)
+      σ_t      = sqrt(max(var_t, 0))
+    """
+    n = y.shape[0]
+    out = np.empty(n, np.float64)
+    if n == 0:
+        return out
+
+    # Initialize
+    V   = 0.0    # sum of weights
+    V2  = 0.0    # sum of squared weights
+    Sy  = 0.0    # EWMA sum of y
+    Syy = 0.0    # EWMA sum of y^2
+    last_ts = timestamps[0]
+    out[0] = np.nan
+
+    for i in range(1, n):
+        # time delta in seconds
+        dt = (timestamps[i] - last_ts) / 1e9
+        last_ts = timestamps[i]
+
+        # decay factor
+        alpha = 1.0 - np.exp(-dt / half_life)
+        one_minus = 1.0 - alpha
+
+        yi = y[i]
+
+        # update weight sums
+        V  = alpha       + one_minus * V
+        V2 = alpha*alpha + (one_minus*one_minus) * V2
+
+        # update EWMA sums
+        if np.isnan(yi):
+            # decay only
+            Sy  = one_minus * Sy
+            Syy = one_minus * Syy
+        else:
+            Sy  = alpha * yi        + one_minus * Sy
+            Syy = alpha * yi * yi   + one_minus * Syy
+
+        # compute mean & raw variance
+        if V > 0.0:
+            mean   = Sy  / V
+            ewma_y2= Syy / V
+            var_raw= ewma_y2 - mean*mean
+            # bias correction
+            denom = V - (V2 / V) if V > 0.0 else 0.0
+            if denom > 0.0 and var_raw > 0.0:
+                var = var_raw * (V / denom)
+            else:
+                var = 0.0
+
+            sigma = np.sqrt(var)
+            if sigma < sigma_floor:
+                sigma = sigma_floor
+            out[i] = sigma
+        else:
+            out[i] = np.nan
+
+    return out
+
+
 @njit(nogil=True, parallel=True)
 def standard_volatility_estimator(
         timestamps: NDArray[np.int64],
         close: NDArray[np.float64],
         return_window_sec: float,
-        lookback: int = 100
+        half_life_sec: int = 1800
 ) -> NDArray[np.float64]:
     """
     Implements a simple volatility estimator using an exponentially weighted rolling window
@@ -88,7 +238,7 @@ def standard_volatility_estimator(
     :param timestamps: Raw trade timestamps in nanoseconds, sorted in ascending order.
     :param close: Raw trade prices corresponding to the timestamps.
     :param return_window_sec: The lag window size in seconds to compute returns.
-    :param lookback: The number of points to use for EWM Std lookback. Defaults to 100.
+    :param half_life_sec: Half life for the exponentially weighted moving standard deviation in seconds.
     :returns: The exponentially weighted rolling volatility estimate as a NumPy array.
     :raises ValueError: If `timestamps` and `close` are not the same length.
 
@@ -107,7 +257,7 @@ def standard_volatility_estimator(
     # 1. Compute the lagged returns
     returns = compute_lagged_returns(timestamps, close, return_window_sec)
     # 2. Apply EWM standard deviation over the returns
-    vol_estimates = ewms(returns, lookback)
+    vol_estimates = ewmst(returns, half_life_sec)
 
     return vol_estimates
 

@@ -74,7 +74,7 @@ class BarBuilderBase(ABC):
         logger.info("OHLCV bar calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
-            'timestamp': self._open_ts[:-1],
+            'timestamp': self._open_ts[1:],   # Close bar timestamps convention!!
             'open': ohlcv_tuple[0],
             'high': ohlcv_tuple[1],
             'low': ohlcv_tuple[2],
@@ -87,6 +87,10 @@ class BarBuilderBase(ABC):
         # Convert timestamps to datetime index
         ohlcv_df['timestamp'] = pd.to_datetime(ohlcv_df['timestamp'], unit='ns')
         ohlcv_df.set_index('timestamp', inplace=True)
+
+        # if there is a self.interval attribute, set the frequency to the interval
+        if hasattr(self, 'interval'):
+            ohlcv_df.index.freq = pd.Timedelta(seconds=self.interval)
 
         return ohlcv_df
 
@@ -201,16 +205,16 @@ def comp_bar_ohlcv(
     bar_low = np.zeros(n_bars, dtype=np.float64)
     bar_open = np.zeros(n_bars, dtype=np.float64)
     bar_close = np.zeros(n_bars, dtype=np.float64)
-    bar_volume = np.zeros(n_bars, dtype=np.float64)
+    bar_volume = np.zeros(n_bars, dtype=np.float32)
     bar_vwap = np.zeros(n_bars, dtype=np.float64)
 
+    last_price = prices[0]
     for i in prange(n_bars):
-        start = bar_open_indices[i] + 1    # Start from the next trade (start=previous bar close)
+        start = bar_open_indices[i]
         end = bar_open_indices[i + 1]
 
         # Handle empty bar
         if start == end:
-            last_price = prices[min(0, int(start-1))]
             bar_open[i] = last_price
             bar_close[i] = last_price
             bar_high[i] = last_price
@@ -219,6 +223,8 @@ def comp_bar_ohlcv(
             bar_vwap[i] = 0.0
             continue
 
+        # Start from the next trade (start=previous bar close)
+        start += 1
         # Initialize variables for this bar
         high_price = prices[start]
         low_price = prices[start]
@@ -244,6 +250,8 @@ def comp_bar_ohlcv(
         bar_low[i] = low_price
         bar_volume[i] = total_volume
         bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
+
+        last_price = prices[end]
 
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
 
