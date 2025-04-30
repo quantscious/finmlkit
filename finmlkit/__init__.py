@@ -1,5 +1,5 @@
 from . import bar
-from . import indicator
+from . import feature
 from . import labels
 from . import sampling
 from . import structural_break

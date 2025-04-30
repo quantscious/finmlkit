@@ -148,6 +148,7 @@ class CUSUMBarKit(BarBuilderBase):
 
         :param trades: DataFrame of raw trades with 'timestamp', 'price', and 'amount'.
         :param sigma: Standard deviation vector of the price series or a constant value for all ticks.
+        :param sigma_floor: Minimum value for sigma to avoid small events.
         :param lambda_mult: the sigma multiplier for adaptive threshold (lambda_th = lambda_mult * sigma).
         """
         super().__init__(trades)

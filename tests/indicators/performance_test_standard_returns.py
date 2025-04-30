@@ -4,7 +4,7 @@ import time
 from numpy.testing import assert_allclose
 
 # Import the standard_volatility_estimator function
-from finmlkit.indicator.volatility import standard_volatility_estimator
+from finmlkit.feature.volatility import standard_volatility_estimator
 
 # Alternative implementation (as provided)
 def get_vol(close: pd.Series, lookback: int = 100,

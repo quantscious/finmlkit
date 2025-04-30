@@ -4,7 +4,7 @@ import pandas as pd
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.indicator.ma import ewma
+from finmlkit.feature.ma import ewma
 
 
 def test_ewma_against_pandas():
