@@ -4,7 +4,7 @@ import os
 # disable jit
 os.environ['NUMBA_DISABLE_JIT'] = "1"
 
-from finmlkit.labels.tbm import triple_barrier
+from finmlkit.label.tbm import triple_barrier
 
 def test_upper_barrier_hit():
     timestamps = np.array([1e9, 2e9, 3e9, 4e9, 5e9], dtype=np.int64)

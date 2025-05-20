@@ -64,28 +64,28 @@ class FeatureBuilder:
         """Apply EWMA with specified span."""
         return self._add_feature(
             lambda: ewma(self.df[self.current_col].values, span),
-            out_col=out_col or f"{self.current_col}_ewma_{span}"
+            out_col=out_col or f"{self.current_col}_ewma{span}"
         )
 
     def ewms(self, span: int, out_col: str = None) -> 'FeatureBuilder':
         """Apply EWMS with specified span."""
         return self._add_feature(
             lambda: ewms(self.df[self.current_col].values, span),
-            out_col=out_col or f"{self.current_col}_ewms_{span}"
+            out_col=out_col or f"{self.current_col}_ewms{span}"
         )
 
     def ewmst(self, half_life_sec: float, out_col: str = None) -> 'FeatureBuilder':
         """Apply time-decay EWMS."""
         return self._add_feature(
             lambda: ewmst(self.timestamps, self.df[self.current_col].values, half_life_sec),
-            out_col=out_col or f"{self.current_col}_ewmst_{half_life_sec}s"
+            out_col=out_col or f"{self.current_col}_ewmst{half_life_sec}s"
         )
 
     def ret(self, return_window_sec: float, out_col: str = None) -> 'FeatureBuilder':
         """Compute lagged returns over the specified window."""
         return self._add_feature(
             lambda: compute_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec),
-            out_col=out_col or f"{self.current_col}_ret_{return_window_sec}s"
+            out_col=out_col or f"{self.current_col}_ret{return_window_sec}s"
         )
 
     def res(self) -> str:
@@ -113,6 +113,7 @@ class FeatureKit:
     def _get_timestamp(self):
         """Get timestamps as int64 numpy array"""
         if self._ts_col is None:
+            logger.info("Timestamp column not specified. Using DataFrame index as timestamp.")
             return self.df.index.values.astype(np.int64)
         return self.df[self._ts_col].values.astype(np.int64)
 

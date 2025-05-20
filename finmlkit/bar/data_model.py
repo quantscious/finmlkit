@@ -58,6 +58,10 @@ class TradesData:
         # Store the processed data
         self.data = trades
 
+        # Add datetime index
+        self.data.index = pd.to_datetime(self.data['timestamp'], unit='ns')
+        self.data.index.name = 'datetime'
+
         logger.info("TradesData prepared successfully.")
 
     @staticmethod

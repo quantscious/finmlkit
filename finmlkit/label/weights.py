@@ -11,13 +11,13 @@ def label_concurrency_weights(
         lookahead_idxs: NDArray[np.int64]
 ) -> NDArray[np.float64]:
     """
-    Calculate the uniqueness weights for the overlapping labels.
+    Calculate the uniqueness weights for the overlapping label.
     Based on Advances in Financial Machine Learning, Chapter 4. page 61.
 
     :param timestamps: The timestamps in nanoseconds for the close prices series.
     :param event_idxs: The indices of the labeled events, e.g. acquired from the cusum filter. (subset of timestamps)
-    :param lookahead_idxs: The lookahead indices for the given labels.
-    :returns: The uniqueness weights [0, 1] for the labels.
+    :param lookahead_idxs: The lookahead indices for the given label.
+    :returns: The uniqueness weights [0, 1] for the label.
     :raises ValueError: If timestamps and lookahead indices are of different lengths.
     """
     if len(event_idxs) != len(lookahead_idxs):
@@ -52,13 +52,13 @@ def vertical_barrier_weights(
         max_return_ratios: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """
-    Calculate weights for TBM (triple barrier) labels corresponding to vertical barrier hits
+    Calculate weights for TBM (triple barrier) label corresponding to vertical barrier hits
     based on the maximum return ratio.
 
-    The idea is to assign lower weights to labels that approached a horizontal barrier closely but did not touch it.
+    The idea is to assign lower weights to label that approached a horizontal barrier closely but did not touch it.
 
-    :param max_return_ratios: The maximum d/D ratio for the given labels.
-    :returns: The vertical barrier weights [0, 1] for the labels.
+    :param max_return_ratios: The maximum d/D ratio for the given label.
+    :returns: The vertical barrier weights [0, 1] for the label.
     :raises ValueError: If `max_return_ratios` contains values outside the range [0, 1].
     """
     if min(max_return_ratios) < 0.0 or max(max_return_ratios) > 1.0:
@@ -83,10 +83,10 @@ def class_balance_weights(
         weights: NDArray[np.float64]
 ) -> Tuple[NDArray[np.int8], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
-    Calculate the class balance weights for the given labels and weights.
+    Calculate the class balance weights for the given label and weights.
 
-    :param labels: The labels (e.g., -1, 0, 1) for the given events.
-    :param weights: Additional weights for the given labels (e.g., uniqueness weights or vertical barrier weights).
+    :param labels: The label (e.g., -1, 0, 1) for the given events.
+    :param weights: Additional weights for the given label (e.g., uniqueness weights or vertical barrier weights).
         Number of class elements will be calculated as a weighted sum.
     :returns: A tuple containing:
         - The identified classes.

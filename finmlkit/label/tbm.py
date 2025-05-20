@@ -32,11 +32,11 @@ def triple_barrier(
     :param vertical_barrier: The temporal barrier in seconds.
 
     :returns: A tuple of 4 elements containing:
-        - The labels (-1, 0, 1),
+        - The label (-1, 0, 1),
         - The first barrier touch index,
         - The return,
         - Maximum return to target ratio during the search describing how close the path came to a horizontal barrier.
-        This can be used later to calculate weights for 0 labels.
+        This can be used later to calculate weights for 0 label.
     """
 
     n_samples = len(close)  # Number of samples in the close price array
@@ -44,7 +44,7 @@ def triple_barrier(
     bottom_barrier, top_barrier = horizontal_barriers
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
 
-    labels = np.zeros(n_events, dtype=np.int8)               # The labels (-1, 0, 1)
+    labels = np.zeros(n_events, dtype=np.int8)               # The label (-1, 0, 1)
     barrier_touch_idxs = np.zeros(n_events, dtype=np.int32)  # Index of the first barrier touch
     rets = np.zeros(n_events, dtype=np.float64)              # The return corresponding to the given label
     max_return_ratio = np.zeros(n_events, dtype=np.float64)      # Maximum return/target ratio during the search

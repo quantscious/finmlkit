@@ -4,7 +4,7 @@ import os
 # disable jit
 os.environ['NUMBA_DISABLE_JIT'] = "1"
 
-from finmlkit.labels.weights import vertical_barrier_weights
+from finmlkit.label.weights import vertical_barrier_weights
 
 
 def test_vertical_barrier_weights_normal():

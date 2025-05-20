@@ -4,7 +4,7 @@ import os
 # disable jit
 os.environ['NUMBA_DISABLE_JIT'] = "1"
 
-from finmlkit.labels.weights import label_concurrency_weights
+from finmlkit.label.weights import label_concurrency_weights
 
 
 def test_label_concurrency_weights_basic():
