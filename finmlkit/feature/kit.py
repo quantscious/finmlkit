@@ -1,4 +1,4 @@
-from .ma import ewma
+from .ma import ewma, sma
 from .volatility import ewmst, ewms, realised_vol
 from .structural_break.cusum import cusum_test_rolling
 from .utils import comp_lagged_returns
@@ -71,6 +71,18 @@ class FeatureBuilder:
     def res(self) -> str:
         """Get the final column name of the feature chain."""
         return self.current_col
+
+    def sma(self, window: int, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Apply simple moving average (SMA) with specified window.
+        :param window: Window size for the SMA calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        return self._add_feature(
+            lambda: sma(self.df[self.current_col].values, window),
+            out_col=out_col or f"{self.current_col}_sma{window}"
+        )
 
     def ewma(self, span: int, out_col: str = None) -> 'FeatureBuilder':
         """

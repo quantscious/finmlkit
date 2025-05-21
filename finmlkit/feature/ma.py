@@ -52,13 +52,11 @@ def sma(array: NDArray[np.float64], window: int) -> NDArray[np.float64]:
     :param window: int, window for the rolling average
     :return: np.array, SMA values
     """
-    rma = np.empty_like(array)
-    rma.fill(np.nan)
+    sma = np.empty_like(array)
+    sma.fill(np.nan)
 
     N = window
     for i in prange(N-1, len(array)):
-        rma[i] = 1./N * np.sum(array[i-N+1 : i+1], dtype=np.float64)
+        sma[i] = 1./N * np.sum(array[i-N+1 : i+1], dtype=np.float64)
 
-    return rma
-
-
+    return sma
