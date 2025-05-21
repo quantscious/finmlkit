@@ -60,3 +60,6 @@ def sma(array: NDArray[np.float64], window: int) -> NDArray[np.float64]:
         sma[i] = 1./N * np.sum(array[i-N+1 : i+1], dtype=np.float64)
 
     return sma
+
+
+

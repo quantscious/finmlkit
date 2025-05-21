@@ -272,3 +272,56 @@ def realised_vol(
             rv[i] = np.sqrt(np.nansum(r_window ** 2) / divisor)
 
     return rv
+
+
+@njit(nogil=True)
+def bollinger_percent_b(close: NDArray[np.float64],
+                        window: int,
+                        num_std: float) -> NDArray[np.float64]:
+    """
+    Calculate Bollinger Percent B indicator.
+
+    Bollinger Percent B shows where the price is in relation to the Bollinger Bands.
+    Values range typically between 0 and 1, where:
+    - Values above 1 indicate price is above the upper band
+    - Values below 0 indicate price is below the lower band
+    - Value of 0.5 indicates price is at the middle band (SMA)
+
+    :param close: Array of close prices
+    :param window: Lookback window for calculations
+    :param num_std: Number of standard deviations for bands
+    :return: Array of Bollinger Percent B values
+    """
+    n = close.size
+    out = np.empty(n, np.float64)
+    out[:window] = np.nan
+    if n < window:
+        return out
+
+    # initialize rolling sum variables
+    rolling_sum = 0.0
+    rolling_sum_sq = 0.0
+    for k in range(window):
+        rolling_sum += close[k]
+        rolling_sum_sq += close[k] ** 2
+
+    mean = rolling_sum / window
+    var = (rolling_sum_sq - window * mean * mean) / (window - 1)
+    sd = np.sqrt(max(var, 0.0))
+    lower = mean - num_std * sd
+    upper = mean + num_std * sd
+    out[window - 1] = (close[window - 1] - lower) / (upper - lower) if upper > lower else np.nan
+
+    for i in range(window, n):
+        # rolling update
+        rolling_sum += close[i] - close[i - window]
+        rolling_sum_sq += close[i] ** 2 - close[i - window] ** 2
+        mean = rolling_sum / window
+        var = (rolling_sum_sq - window * mean ** 2) / (window - 1)
+        sd = np.sqrt(max(var, 0.0))
+        lower = mean - num_std * sd
+        upper = mean + num_std * sd
+        out[i] = (close[i] - lower) / (upper - lower) if upper > lower else np.nan
+
+    return out
+

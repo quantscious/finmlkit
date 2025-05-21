@@ -1,6 +1,7 @@
 from .ma import ewma, sma
-from .volatility import ewmst, ewms, realised_vol
+from .volatility import ewmst, ewms, realised_vol, bollinger_percent_b, true_range
 from .structural_break.cusum import cusum_test_rolling
+from .reversion import vwap_distance
 from .utils import comp_lagged_returns
 from finmlkit.utils.log import get_logger
 import pandas as pd
@@ -14,7 +15,9 @@ class FeatureBuilder:
     """
     A chainable builder for creating features from a specific column.
     """
-    def __init__(self, df: pd.DataFrame, source_col: str, timestamps: np.ndarray, drop_intermediate: bool = True):
+
+    def __init__(self, df: pd.DataFrame, source_col: str, timestamps: np.ndarray,
+                 drop_intermediate: bool = True, ohlcv_cols: dict = None):
         """
         Initialize a feature builder for a specific column.
 
@@ -22,13 +25,25 @@ class FeatureBuilder:
         :param source_col: The column to build features from
         :param timestamps: Array of timestamps (int64)
         :param drop_intermediate: Whether to drop intermediate columns
+        :param ohlcv_cols: Dict mapping standard OHLCV names to actual column names
+                          {'open': 'Open', 'high': 'High', 'low': 'Low',
+                           'close': 'Close', 'volume': 'Volume'}
         """
         self.df = df
-        self.source_col = source_col  # Original source column (never dropped)
-        self.current_col = source_col  # Last output column
+        self.source_col = source_col
+        self.current_col = source_col
         self.timestamps = timestamps
         self.drop_intermediate = drop_intermediate
-        self.intermediate_cols = set()  # Track intermediate columns
+        self.intermediate_cols = set()
+
+        # Default OHLCV column mapping
+        self.ohlcv_cols = {
+            'open': 'open', 'high': 'high', 'low': 'low',
+            'close': 'close', 'volume': 'volume'
+        }
+        # Override with user-specified mappings if provided
+        if ohlcv_cols:
+            self.ohlcv_cols.update(ohlcv_cols)
 
     def _add_feature(self, feature_func: Callable, out_col: str = None, **kwargs) -> 'FeatureBuilder':
         """
@@ -66,6 +81,40 @@ class FeatureBuilder:
 
         # Update current column
         self.current_col = out_col
+        return self
+
+    def _add_candle_feature(self, feature_func: Callable, required_cols: list,
+                            out_col: str = None, default_name: str = None, **kwargs) -> 'FeatureBuilder':
+        """
+        Helper method to apply OHLCV/candle features.
+
+        :param feature_func: Feature calculation function to apply
+        :param required_cols: List of required OHLCV column types (e.g., ['close', 'volume'])
+        :param out_col: Optional output column name
+        :param default_name: Default name for output column if not provided
+        :param kwargs: Additional parameters to pass to feature function
+        :return: Self for method chaining
+        """
+        # Map column types to actual DataFrame column names
+        col_mapping = {}
+        for col_type in required_cols:
+            col_name = self.ohlcv_cols.get(col_type, col_type)
+            if col_name not in self.df.columns:
+                raise ValueError(f"{col_type.capitalize()} column '{col_name}' not found in dataframe")
+            col_mapping[col_type] = col_name
+
+        # Generate output column name if not provided
+        if not out_col:
+            out_col = default_name
+
+        # Extract DataFrame columns and calculate feature
+        input_arrays = [self.df[col_mapping[col]].values for col in required_cols]
+        self.df[out_col] = feature_func(*input_arrays, **kwargs)
+
+        # Update state
+        self.intermediate_cols.add(out_col)
+        self.current_col = out_col
+
         return self
 
     def res(self) -> str:
@@ -130,7 +179,7 @@ class FeatureBuilder:
         :return:
         """
         feat_name = "logret" if is_log else "ret"
-        rws_name = f"{return_window_sec}s" if return_window_sec > 1e-6 else "1step"
+        rws_name = f"{return_window_sec}s" if return_window_sec > 1e-6 else "1"
         return self._add_feature(
             lambda: comp_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec, is_log),
             out_col=out_col or f"{self.current_col}_{feat_name}{rws_name}"
@@ -150,7 +199,7 @@ class FeatureBuilder:
             raise ValueError("Realised volatility can only be computed on return series.")
         return self._add_feature(
             lambda: realised_vol(self.df[self.current_col].values, window, is_sample),
-            out_col=out_col or f"{self.current_col}_rvola{window}s"
+            out_col=out_col or f"{self.current_col}_rvola{window}"
         )
 
     def cusum_test(self, window: int = 1000, warmup_period: int = 30, out_col: str = None) -> 'FeatureBuilder':
@@ -167,23 +216,72 @@ class FeatureBuilder:
             out_col=out_col or f"{self.current_col}_cusum{window}"
         )
 
+    def bollinger_b(self, window: int = 20, num_std: float = 2.0, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Add Bollinger Percent B indicator to the feature set.
+
+        :param window: Lookback window for calculations (default: 20)
+        :param num_std: Number of standard deviations for bands (default: 2.0)
+        :param out_col: Optional output column name
+        :return: Self for method chaining
+        """
+        return self._add_feature(
+            lambda: bollinger_percent_b(self.df[self.current_col].values, window, num_std),
+            out_col=out_col or f"{self.current_col}_bollb{window}"
+        )
+
+    def vwapd(self, n_periods: int=16, is_log: bool = False, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Calculate the distance of the current price from the VWAP on a specified number of periods.
+
+        :param n_periods: Number of periods to calculate VWAP (default: 16)
+        :param is_log: If True, compute log distance.
+        :param out_col: Optional output column name
+        :return: Self for method chaining
+        """
+        return self._add_candle_feature(
+            feature_func=vwap_distance,
+            required_cols=['close', 'volume'],
+            out_col=out_col,
+            default_name=f"vwapd{n_periods}",
+            n_periods=n_periods,
+            is_log=is_log
+        )
+
+    def tr(self, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Calculate the True Range.
+
+        :param out_col: Optional output column name
+        :return: Self for method chaining
+        """
+        return self._add_candle_feature(
+            feature_func=true_range,
+            required_cols=['high', 'low', 'close'],
+            out_col=out_col,
+            default_name="true_range"
+        )
+
 
 class FeatureKit:
     """
     Feature creation toolkit for dataframes.
     All feature operations are accessed through the feature() method.
     """
-    def __init__(self, df: pd.DataFrame, ts_col: str = None, inplace: bool = True):
+    def __init__(self, df: pd.DataFrame, ts_col: str = None, inplace: bool = True,
+                 ohlcv_cols: dict = None):
         """
         Initialize the feature kit.
 
         :param df: Dataframe with the parent data
         :param ts_col: Column name containing timestamps
         :param inplace: Add feature columns to the original dataframe
+        :param ohlcv_cols: Dict mapping standard OHLCV names to actual column names
         """
         self.df = df if inplace else df.copy()
         self._ts_col = ts_col
         self._ts = self._get_timestamp()
+        self._ohlcv_cols = ohlcv_cols
 
     def _get_timestamp(self):
         """Get timestamps as int64 numpy array"""
@@ -202,5 +300,21 @@ class FeatureKit:
         """
         return FeatureBuilder(self.df, col, self._ts, drop_intermediate)
 
+    def ohlcv(self, drop_intermediate: bool = True) -> FeatureBuilder:
+        """
+        Start a feature chain specifically for OHLCV data.
 
+        :param drop_intermediate: Whether to drop intermediate columns
+        :return: FeatureBuilder configured for OHLCV data
+        """
+        if not self._ohlcv_cols or 'close' not in self._ohlcv_cols:
+            # Use default column name if not specified
+            close_col = 'close'
+        else:
+            close_col = self._ohlcv_cols['close']
 
+        return FeatureBuilder(
+            self.df, close_col, self._ts,
+            drop_intermediate=drop_intermediate,
+            ohlcv_cols=self._ohlcv_cols
+        )
