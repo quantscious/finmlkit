@@ -4,7 +4,7 @@ import pytest
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.feature.utils import compute_lagged_returns
+from finmlkit.feature.utils import comp_lagged_returns
 from numpy.testing import assert_allclose
 
 
@@ -67,7 +67,7 @@ def test_returns_equivalence():
     minutes = 1
 
     # Compute returns in Numba function
-    returns_numba = compute_lagged_returns(timestamps, close_array, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, close_array, return_window_sec)
 
     # Compute returns in pandas function
     returns_pandas = alternative_return_calculation(close_series, days=0, hours=0, minutes=minutes, seconds=0)
@@ -105,7 +105,7 @@ def test_returns_equivalence_large_return_window():
     return_window_sec = 3600  # 1 hour
 
     # Compute returns in both functions
-    returns_numba = compute_lagged_returns(timestamps, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns
@@ -131,7 +131,7 @@ def test_returns_zero_return_window():
 
     # Test Numba function raises ValueError
     with pytest.raises(ValueError):
-        compute_lagged_returns(timestamps, prices, return_window_sec)
+        comp_lagged_returns(timestamps, prices, return_window_sec)
 
 
 # Test with data containing zeros
@@ -158,7 +158,7 @@ def test_returns_data_with_zeros():
     return_window_sec = 60
 
     # Compute returns in both functions
-    returns_numba = compute_lagged_returns(timestamps, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns, allowing NaNs
@@ -192,7 +192,7 @@ def test_returns_data_with_nans():
     return_window_sec = 60
 
     # Compute returns in both functions
-    returns_numba = compute_lagged_returns(timestamps, prices_filled, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices_filled, return_window_sec)
     returns_pandas = alternative_return_calculation(close_series.fillna(method='ffill'), seconds=return_window_sec)
 
     # Align and compare returns, allowing NaNs
@@ -236,7 +236,7 @@ def test_returns_equivalence_irregular_data():
     return_window_sec = 60  # 1 minutes
 
     # Compute returns in both functions
-    returns_numba = compute_lagged_returns(timestamps_ns, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps_ns, prices, return_window_sec)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns

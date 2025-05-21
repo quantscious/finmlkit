@@ -4,7 +4,7 @@ Implements various volatility estimators.
 import numpy as np
 from numpy.typing import NDArray
 from numba import njit, prange
-from .utils import compute_lagged_returns, logger
+from .utils import comp_lagged_returns, logger
 
 
 @njit(nogil=True)
@@ -71,14 +71,14 @@ def ewms(y: NDArray[np.float64], span: int) -> NDArray[np.float64]:
 
 
 @njit(nogil=True)
-def ewmst_return(
+def ewmst_mean0(
     timestamps: NDArray[np.int64],
     y:          NDArray[np.float64],
     half_life:  float,
     sigma_floor: float = 1e-12
 ) -> NDArray[np.float64]:
     """
-    Unbiased EWMA std-dev with time-decay half-life on returns (zero-mean series).
+    Unbiased EWMA std-dev with time-decay half-life fo a zero-mean series)
 
     σ_t² = U_t / V_t  with
       U_t = α_t * y_t² + (1-α_t) * U_{t-1}
@@ -221,48 +221,6 @@ def ewmst(
 
 
 @njit(nogil=True, parallel=True)
-def standard_volatility_estimator(
-        timestamps: NDArray[np.int64],
-        close: NDArray[np.float64],
-        return_window_sec: float,
-        half_life_sec: float
-) -> NDArray[np.float64]:
-    """
-    Implements a simple volatility estimator using an exponentially weighted rolling window
-    standard deviation on lagged returns.
-
-    This function works for arbitrary time series data and does not require a fixed frequency.
-    It first computes time-lagged returns over a fixed horizon, and then applies
-    an exponentially weighted moving standard deviation (EWM Std) over a specified lookback window.
-
-    :param timestamps: Raw trade timestamps in nanoseconds, sorted in ascending order.
-    :param close: Raw trade prices corresponding to the timestamps.
-    :param return_window_sec: The lag window size in seconds to compute returns.
-    :param half_life_sec: Half life for the exponentially weighted moving standard deviation in seconds.
-    :returns: The exponentially weighted rolling volatility estimate as a NumPy array.
-    :raises ValueError: If `timestamps` and `close` are not the same length.
-
-    .. note::
-        This estimator does not assume uniform sampling. It is suitable for event-driven
-        data such as trades or tick-level bars. The EWM standard deviation used internally
-        has ``adjust=True``, ``bias=False`` behavior, which provides an unbiased estimate.
-    """
-    if len(timestamps) != len(close):
-        raise ValueError("The length of timestamps and close prices must be the same.")
-
-    n = len(close)
-    vol_estimates = np.empty(n, dtype=np.float64)
-    vol_estimates.fill(np.nan)
-
-    # 1. Compute the lagged returns
-    returns = compute_lagged_returns(timestamps, close, return_window_sec)
-    # 2. Apply EWM standard deviation over the returns
-    vol_estimates = ewmst(timestamps, returns, half_life_sec)
-
-    return vol_estimates
-
-
-@njit(nogil=True, parallel=True)
 def true_range(high: NDArray, low: NDArray, close: NDArray) -> NDArray:
     """
     Calculate True Range using Numba.
@@ -285,4 +243,33 @@ def true_range(high: NDArray, low: NDArray, close: NDArray) -> NDArray:
                     )  # TR formula
 
     return tr
+
+
+@njit(nogil=True, parallel=True)
+def realised_vol(
+        r: NDArray[np.float64],
+        period: int,
+        is_sample: bool
+) -> NDArray[np.float64]:
+    """
+    Calculate realised volatility using Numba.
+
+    :param r: np.array of returns
+    :param period: int, period for volatility calculation
+    :param is_sample: bool, if True uses (n-1) divisor for sample standard deviation, else uses n for population
+    :return: np.array, realised volatility values
+    """
+    n = len(r)
+    rv = np.empty(n, dtype=np.float64)
+    rv.fill(np.nan)
+
+    for i in prange(period, n):
+        window = r[i - period:i]
+        valid_count = np.sum(~np.isnan(window))
+
+        if valid_count > 1:
+            divisor = (valid_count - 1) if is_sample else valid_count
+            rv[i] = np.sqrt(np.nansum(window ** 2) / divisor)
+
+    return rv
 

@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 
 @njit(nogil=True, parallel=True)
-def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.float64], return_window_sec: float):
+def comp_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.float64], return_window_sec: float, is_log: bool) -> NDArray[np.float64]:
     """
     Calculate the lagged returns on the given time window.
 
@@ -20,6 +20,7 @@ def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.floa
     :param timestamps: Timestamps series in nanoseconds.
     :param close: Close price series.
     :param return_window_sec: Time window in seconds for lagged return calculation. Set it to a small value (e.g. 1e-6) for 1 sample lag.
+    :param is_log: If True, compute log returns instead of simple returns.
     :returns: The lagged returns series as a float64 array.
     :raises ValueError: If return_window_sec is less than or equal to zero.
 
@@ -45,7 +46,12 @@ def compute_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.floa
         lag_idx = np.searchsorted(timestamps, target_time, side='right') - 1
         if 0 <= lag_idx < i:
             if close[lag_idx] != 0.0:
-                ret = close[i] / close[lag_idx] - 1.0
+                if is_log:
+                    # Calculate log return
+                    ret = np.log(close[i] / close[lag_idx])
+                else:
+                    # Calculate simple return
+                    ret = close[i] / close[lag_idx] - 1.0
                 returns[i] = ret
             else:
                 print("Warning: Encountered a zero in price data while calculating lagged return.\n"

@@ -1,6 +1,6 @@
 from .ma import ewma
-from .volatility import ewmst, ewms
-from .utils import compute_lagged_returns
+from .volatility import ewmst, ewms, realised_vol
+from .utils import comp_lagged_returns
 from finmlkit.utils.log import get_logger
 import pandas as pd
 import numpy as np
@@ -41,7 +41,7 @@ class FeatureBuilder:
         # If no output column specified, generate one based on function name and params
         if not out_col:
             # Extract function name and the first parameter value for naming
-            func_name = feature_func.__name__.replace("ewm", "").replace("compute_lagged_", "")
+            func_name = feature_func.__name__.replace("ewm", "").replace("comp_lagged_", "")
             param_value = next(iter(kwargs.values()), "")
             param_suffix = f"_{param_value}s" if isinstance(param_value, float) else f"_{param_value}"
             out_col = f"{self.current_col}_{func_name}{param_suffix}"
@@ -81,11 +81,36 @@ class FeatureBuilder:
             out_col=out_col or f"{self.current_col}_ewmst{half_life_sec}s"
         )
 
-    def ret(self, return_window_sec: float, out_col: str = None) -> 'FeatureBuilder':
-        """Compute lagged returns over the specified window."""
+    def ret(self, return_window_sec: float, is_log: bool = False, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Compute lagged returns over the specified time window. Works for unregular time series too.
+
+        :param return_window_sec: Return window in seconds. Set to a small value (e.g. 1e-6) for 1 sample lag.
+        :param is_log: If True, compute log returns instead of simple returns.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        feat_name = "logret" if is_log else "ret"
+        rws_name = return_window_sec if return_window_sec > 1e-6 else 1
         return self._add_feature(
-            lambda: compute_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec),
-            out_col=out_col or f"{self.current_col}_ret{return_window_sec}s"
+            lambda: comp_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec, is_log),
+            out_col=out_col or f"{self.current_col}_{feat_name}{rws_name}s"
+        )
+
+    def rvola(self, period: int, is_sample=False, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Compute realised volatility over the specified period for returns.
+        :param period: Number of periods to compute realised volatility over.
+        :param is_sample: To calculate sample or population volatility.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        # Check if the current column is a return series
+        if "_ret" not in self.current_col and "_logret" not in self.current_col:
+            raise ValueError("Realised volatility can only be computed on return series.")
+        return self._add_feature(
+            lambda: realised_vol(self.df[self.current_col].values, period, is_sample),
+            out_col=out_col or f"{self.current_col}_rvola{period}"
         )
 
     def res(self) -> str:
