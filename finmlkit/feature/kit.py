@@ -1,5 +1,6 @@
 from .ma import ewma
 from .volatility import ewmst, ewms, realised_vol
+from .structural_break.cusum import cusum_test_rolling
 from .utils import comp_lagged_returns
 from finmlkit.utils.log import get_logger
 import pandas as pd
@@ -47,35 +48,61 @@ class FeatureBuilder:
             out_col = f"{self.current_col}_{func_name}{param_suffix}"
 
         # Apply the feature function
-        self.df[out_col] = feature_func(**kwargs)
+        result = feature_func(**kwargs)
+        if isinstance(result, (tuple, list)):
+            for i, res in enumerate(result):
+                col_name = f"{out_col}_{i}"
+                self.df[col_name] = res
+                self.intermediate_cols.add(col_name)
+        else:
+            # Mark the new column as intermediate
+            self.intermediate_cols.add(out_col)
+            self.df[out_col] = result
 
         # Handle intermediate columns
         if self.drop_intermediate and self.current_col != self.source_col:
             if self.current_col in self.intermediate_cols:
                 self.df.drop(columns=self.current_col, inplace=True)
 
-        # Mark the new column as intermediate
-        self.intermediate_cols.add(out_col)
         # Update current column
         self.current_col = out_col
         return self
 
+    def res(self) -> str:
+        """Get the final column name of the feature chain."""
+        return self.current_col
+
     def ewma(self, span: int, out_col: str = None) -> 'FeatureBuilder':
-        """Apply EWMA with specified span."""
+        """
+        Apply EWMA with specified span.
+        :param span: Span for the EWMA calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
         return self._add_feature(
             lambda: ewma(self.df[self.current_col].values, span),
             out_col=out_col or f"{self.current_col}_ewma{span}"
         )
 
     def ewms(self, span: int, out_col: str = None) -> 'FeatureBuilder':
-        """Apply EWMS with specified span."""
+        """
+        Apply exponentially weighted moving standard deviation (EWMS) with specified span.
+        :param span: Span for the EWMS calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
         return self._add_feature(
             lambda: ewms(self.df[self.current_col].values, span),
             out_col=out_col or f"{self.current_col}_ewms{span}"
         )
 
     def ewmst(self, half_life_sec: float, out_col: str = None) -> 'FeatureBuilder':
-        """Apply time-decay EWMS."""
+        """
+        Apply a temporal exponentially weighted moving standard deviation (EWMS) with specified half-life.
+        :param half_life_sec: Half-life in seconds for the EWMS calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
         return self._add_feature(
             lambda: ewmst(self.timestamps, self.df[self.current_col].values, half_life_sec),
             out_col=out_col or f"{self.current_col}_ewmst{half_life_sec}s"
@@ -91,16 +118,17 @@ class FeatureBuilder:
         :return:
         """
         feat_name = "logret" if is_log else "ret"
-        rws_name = return_window_sec if return_window_sec > 1e-6 else 1
+        rws_name = f"{return_window_sec}s" if return_window_sec > 1e-6 else "1step"
         return self._add_feature(
             lambda: comp_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec, is_log),
-            out_col=out_col or f"{self.current_col}_{feat_name}{rws_name}s"
+            out_col=out_col or f"{self.current_col}_{feat_name}{rws_name}"
         )
 
-    def rvola(self, period: int, is_sample=False, out_col: str = None) -> 'FeatureBuilder':
+    def rvola(self, window: int, is_sample=False, out_col: str = None) -> 'FeatureBuilder':
         """
         Compute realised volatility over the specified period for returns.
-        :param period: Number of periods to compute realised volatility over.
+
+        :param window: Number of samples to compute realised volatility over.
         :param is_sample: To calculate sample or population volatility.
         :param out_col: Optional output column name.
         :return:
@@ -109,13 +137,23 @@ class FeatureBuilder:
         if "_ret" not in self.current_col and "_logret" not in self.current_col:
             raise ValueError("Realised volatility can only be computed on return series.")
         return self._add_feature(
-            lambda: realised_vol(self.df[self.current_col].values, period, is_sample),
-            out_col=out_col or f"{self.current_col}_rvola{period}"
+            lambda: realised_vol(self.df[self.current_col].values, window, is_sample),
+            out_col=out_col or f"{self.current_col}_rvola{window}s"
         )
 
-    def res(self) -> str:
-        """Get the final column name of the feature chain."""
-        return self.current_col
+    def cusum_test(self, window: int = 1000, warmup_period: int = 30, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Apply the CUSUM test for structural breaks.
+
+        :param window: Rolling window size for the CUSUM test.
+        :param warmup_period: Warmup period for the CUSUM test.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        return self._add_feature(
+            lambda: cusum_test_rolling(self.df[self.current_col].values, window, warmup_period),
+            out_col=out_col or f"{self.current_col}_cusum{window}"
+        )
 
 
 class FeatureKit:

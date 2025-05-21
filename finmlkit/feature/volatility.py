@@ -248,14 +248,14 @@ def true_range(high: NDArray, low: NDArray, close: NDArray) -> NDArray:
 @njit(nogil=True, parallel=True)
 def realised_vol(
         r: NDArray[np.float64],
-        period: int,
+        window: int,
         is_sample: bool
 ) -> NDArray[np.float64]:
     """
     Calculate realised volatility using Numba.
 
     :param r: np.array of returns
-    :param period: int, period for volatility calculation
+    :param window: int, number of samples for volatility calculation
     :param is_sample: bool, if True uses (n-1) divisor for sample standard deviation, else uses n for population
     :return: np.array, realised volatility values
     """
@@ -263,13 +263,12 @@ def realised_vol(
     rv = np.empty(n, dtype=np.float64)
     rv.fill(np.nan)
 
-    for i in prange(period, n):
-        window = r[i - period:i]
-        valid_count = np.sum(~np.isnan(window))
+    for i in prange(window - 1, n):
+        r_window = r[i - window + 1: i + 1]
+        valid_count = np.sum(~np.isnan(r_window))
 
         if valid_count > 1:
             divisor = (valid_count - 1) if is_sample else valid_count
-            rv[i] = np.sqrt(np.nansum(window ** 2) / divisor)
+            rv[i] = np.sqrt(np.nansum(r_window ** 2) / divisor)
 
     return rv
-
