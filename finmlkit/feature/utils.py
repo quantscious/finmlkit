@@ -62,3 +62,45 @@ def comp_lagged_returns(timestamps: NDArray[np.int64], close: NDArray[np.float64
             returns[i] = np.nan
 
     return returns
+
+
+@njit(nogil=True, parallel=True)
+def comp_zscore(x: NDArray[np.float64], window: int, ddof: int) -> NDArray[np.float64]:
+    """
+    Compute the z-score of a time series using a rolling window.
+
+    :param x: Input time series data.
+    :param window: Window size for the rolling calculation.
+    :param ddof: Delta degrees of freedom for standard deviation calculation.
+    :return: series of z-scores (same size as input)
+    """
+    n = len(x)
+    z_scores = np.empty(n, dtype=np.float64)
+    z_scores.fill(np.nan)
+
+    for i in prange(window - 1, n):
+        window_data = x[i - window + 1: i + 1]
+        mean = np.mean(window_data)
+        std = np.std(window_data, ddof=ddof)
+        if std != 0:
+            z_scores[i] = (x[i] - mean) / std
+
+    return z_scores
+
+@njit(nogil=True, parallel=True)
+def comp_burst_ratio(series: NDArray[np.float64], window: int) -> NDArray[np.float64]:
+    """
+    Compute the burst ratio of a time series.
+    :param series: Time series data.
+    :param window: Window size for the rolling calculation.
+    :return: series of burst ratios (same size as input)
+    """
+    n = len(series)
+    out = np.empty(n, np.float64)
+    out[:window] = np.nan
+
+    for i in prange(window - 1, n):
+        series_window = series[i - window + 1: i + 1]
+        med = np.median(series_window)
+        out[i] = series[i]/med if med>0 else np.nan
+    return out

@@ -2,11 +2,11 @@ from .ma import ewma, sma
 from .volatility import ewmst, ewms, realised_vol, bollinger_percent_b, true_range
 from .structural_break.cusum import cusum_test_rolling
 from .reversion import vwap_distance
-from .utils import comp_lagged_returns
+from .utils import comp_lagged_returns, comp_zscore, comp_burst_ratio
 from finmlkit.utils.log import get_logger
 import pandas as pd
 import numpy as np
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
 logger = get_logger(__name__)
 
@@ -183,6 +183,46 @@ class FeatureBuilder:
         return self._add_feature(
             lambda: comp_lagged_returns(self.timestamps, self.df[self.current_col].values, return_window_sec, is_log),
             out_col=out_col or f"{self.current_col}_{feat_name}{rws_name}"
+        )
+
+    def zscore(self, window: int, ddof: int = 0, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Compute the z-score of the current column over a specified window.
+
+        :param window: Window size for the z-score calculation.
+        :param ddof: Delta degrees of freedom for standard deviation calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        return self._add_feature(
+            lambda: comp_zscore(self.df[self.current_col].values, window, ddof),
+            out_col=out_col or f"{self.current_col}_z{window}"
+        )
+
+    def burst_ratio(self, window: int, out_col: str = None) -> 'FeatureBuilder':
+        """
+        Compute the burst ratio of the current column over a specified window.
+
+        :param window: Window size for the burst ratio calculation.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        return self._add_feature(
+            lambda: comp_burst_ratio(self.df[self.current_col].values, window),
+            out_col=out_col or f"{self.current_col}_burst{window}"
+        )
+
+    def lag(self, n_periods: Sequence[int], out_col: str = None) -> 'FeatureBuilder':
+        """
+        Create a lagged version of the current column.
+
+        :param n_periods: Number of periods to lag or shift the series.
+        :param out_col: Optional output column name.
+        :return:
+        """
+        return self._add_feature(
+            lambda: self.df[self.current_col].shift(n_periods),
+            out_col=out_col or f"{self.current_col}_lag{n_periods}"
         )
 
     def rvola(self, window: int, is_sample=False, out_col: str = None) -> 'FeatureBuilder':
