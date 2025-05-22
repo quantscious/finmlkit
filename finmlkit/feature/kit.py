@@ -1,33 +1,36 @@
 from .ma import ewma, sma
-from .volatility import ewmst, ewms, realised_vol, bollinger_percent_b, true_range
+from .volatility import ewmst, ewms, realised_vol, bollinger_percent_b, true_range, parkinson_range
 from .structural_break.cusum import cusum_test_rolling
 from .reversion import vwap_distance
-from .utils import comp_lagged_returns, comp_zscore, comp_burst_ratio
+from .volume import comp_flow_acceleration
+from .utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
 from finmlkit.utils.log import get_logger
 import pandas as pd
 import numpy as np
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, Union
 
 logger = get_logger(__name__)
 
 
 class FeatureBuilder:
     """
-    A chainable builder for creating features from a specific column.
+    A chainable builder for creating features from one or more columns.
     """
 
-    def __init__(self, df: pd.DataFrame, source_col: str, timestamps: np.ndarray, ohlcv_cols: dict = None):
+    def __init__(self, df: pd.DataFrame, source_cols: Union[str, Sequence[str]], timestamps: np.ndarray,
+                 ohlcv_cols: dict = None):
         """
-        Initialize a feature builder for a specific column.
+        Initialize a feature builder for one or more columns.
 
         :param df: Dataframe containing the data
-        :param source_col: The column to build features from
+        :param source_cols: The column(s) to build features from - either a string or sequence of strings
         :param timestamps: Array of timestamps (int64)
         :param ohlcv_cols: Dict mapping standard OHLCV names to actual column names
         """
         self.df = df
-        self.source_col = source_col
-        self.current_col = source_col
+        # Handle both single column and sequence of columns
+        self.source_cols = [source_cols] if isinstance(source_cols, str) else list(source_cols)
+        self.current_col = self.source_cols[0] if len(self.source_cols) == 1 else None
         self.timestamps = timestamps
         self.intermediate_cols = set()
 
@@ -45,7 +48,7 @@ class FeatureBuilder:
         Generic method to apply a feature function and manage columns.
 
         :param feature_func: Feature calculation function to apply
-        :param out_col: Output column name (internally defined, not user-exposed)
+        :param feature_name: Output column name (internally defined)
         :param kwargs: Parameters to pass to the feature function
         :return: Self for method chaining
         """
@@ -61,9 +64,15 @@ class FeatureBuilder:
             self.df[feature_name] = result
             self.intermediate_cols.add(feature_name)
 
-        # Always drop intermediate columns except the source column
-        if self.current_col != self.source_col and self.current_col in self.intermediate_cols:
-            self.df.drop(columns=self.current_col, inplace=True)
+        # Drop intermediate columns except source columns
+        to_drop = []
+        for col in self.intermediate_cols:
+            if col not in self.source_cols and col != feature_name:
+                to_drop.append(col)
+
+        if to_drop:
+            self.df.drop(columns=to_drop, inplace=True)
+            self.intermediate_cols = self.intermediate_cols.difference(set(to_drop))
 
         # Update current column
         self.current_col = feature_name
@@ -88,22 +97,23 @@ class FeatureBuilder:
                 raise ValueError(f"{col_type.capitalize()} column '{col_name}' not found in dataframe")
             col_mapping[col_type] = col_name
 
-        # Generate output column name
-        param_value = next(iter(kwargs.values()), "")
-        param_suffix = f"{param_value}" if param_value else ""
-        out_col = f"{feature_name}{param_suffix}"
-
         # Extract DataFrame columns and calculate feature
         input_arrays = [self.df[col_mapping[col]].values for col in required_cols]
-        self.df[out_col] = feature_func(*input_arrays, **kwargs)
+        self.df[feature_name] = feature_func(*input_arrays, **kwargs)
 
-        # Drop intermediate columns except the source column
-        if self.current_col != self.source_col and self.current_col in self.intermediate_cols:
-            self.df.drop(columns=self.current_col, inplace=True)
+        # Drop intermediate columns except source columns
+        to_drop = []
+        for col in self.intermediate_cols:
+            if col not in self.source_cols and col != feature_name:
+                to_drop.append(col)
+
+        if to_drop:
+            self.df.drop(columns=to_drop, inplace=True)
+            self.intermediate_cols = self.intermediate_cols.difference(set(to_drop))
 
         # Update state
-        self.intermediate_cols.add(out_col)
-        self.current_col = out_col
+        self.intermediate_cols.add(feature_name)
+        self.current_col = feature_name
 
         return self
 
@@ -144,7 +154,6 @@ class FeatureBuilder:
         return self._add_feature(
             lambda: ewms(self.df[self.current_col].values, span),
             feature_name=f"ewms{span}",
-            span=span
         )
 
     def ewmst(self, half_life_sec: float) -> 'FeatureBuilder':
@@ -215,6 +224,19 @@ class FeatureBuilder:
             n_periods=periods
         )
 
+    def pct_change(self, periods: int = 1) -> 'FeatureBuilder':
+        """
+        Calculate the percentage change of the current column.
+
+        :param periods: Number of periods to calculate percentage change. Default is 1.
+        :return: Self for method chaining
+        """
+        return self._add_feature(
+            lambda: pct_change(self.df[self.current_col].values, periods),
+            feature_name=f"pctc{periods}",
+            periods=periods
+        )
+
     def rvola(self, window: int, is_sample=False) -> 'FeatureBuilder':
         """
         Compute realised volatility over the specified period for returns.
@@ -263,6 +285,20 @@ class FeatureBuilder:
             num_std=num_std
         )
 
+    def flow_acc(self, window: int = 20, recent_periods: int = 3) -> 'FeatureBuilder':
+        """
+        Compute flow acceleration.
+
+        :param window: Window size for the flow acceleration calculation.
+        :param recent_periods: Number of recent periods to consider for acceleration.
+        :return: Self for method chaining
+        """
+        return self._add_feature(
+            lambda: comp_flow_acceleration(self.df[self.current_col].values, window, recent_periods),
+            feature_name=f"acce_{window}_{recent_periods}",
+        )
+
+
     def vwapd(self, window: int=16, is_log: bool = True) -> 'FeatureBuilder':
         """
         Calculate the distance of the current price from the VWAP.
@@ -288,9 +324,20 @@ class FeatureBuilder:
         return self._add_ohlcv_feature(
             feature_func=true_range,
             required_cols=['high', 'low', 'close'],
-            feature_name="true_range"
+            feature_name="tr"
         )
 
+    def parkinson_range(self):
+        """
+        Calculate the Parkinson range.
+
+        :return: Self for method chaining
+        """
+        return self._add_ohlcv_feature(
+            feature_func=parkinson_range,
+            required_cols=['high', 'low'],
+            feature_name="parkinson_range"
+        )
 
 class FeatureKit:
     """

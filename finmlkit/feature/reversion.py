@@ -10,7 +10,7 @@ from numba import njit, prange
 def vwap_distance(close: NDArray[np.float64],
                   volume: NDArray[np.float64],
                   n_periods: int,
-                  is_log: bool = False
+                  is_log: bool
                   ) -> NDArray[np.float64]:
     """
     Calculate the distance of the current price from the VWAP (Volume Weighted Average Price).

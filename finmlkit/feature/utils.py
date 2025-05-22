@@ -104,3 +104,19 @@ def comp_burst_ratio(series: NDArray[np.float64], window: int) -> NDArray[np.flo
         med = np.median(series_window)
         out[i] = series[i]/med if med>0 else np.nan
     return out
+
+@njit(nogil=True)
+def pct_change(x: NDArray[np.float64], periods: int) -> NDArray[np.float64]:
+    """
+    Calculate the percentage change of a signal with a specified lag.
+    :param x: the input signal
+    :param periods: the lag period
+    :return: the percentage change of the signal
+    """
+    n = len(x)
+    out = np.empty(n, np.float64)
+    out[:periods] = np.nan
+    for t in range(periods, n):
+        base = x[t-periods]
+        out[t] = (x[t]-base)/base if base > 0 else np.nan
+    return out

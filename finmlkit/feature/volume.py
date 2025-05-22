@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
-from numba import njit
+from numba import njit, prange
 from finmlkit.bar.data_model import FootprintData
 from typing import Union
+from numpy.typing import NDArray
 
 from finmlkit.utils.log import get_logger
 logger = get_logger(__name__)
@@ -232,7 +233,7 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
     # Ensure that there is at least one bin
     if len(bin_edges) < 2:
         bin_edges = np.array([min_price, max_price + 1], dtype=np.int32)
-        logger.warning("Not enough price levels to compute volume buckets. There is only one bin.")
+        print("Warning! Not enough price levels to compute volume buckets. There is only one bin.")
 
     # Digitize the price levels into price level buckets
     bin_indices = np.digitize(all_price_levels, bin_edges) - 1
@@ -531,3 +532,42 @@ def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarra
         lva_prices[t] = lva_price
 
     return ts[start_idx:end_idx], poc_prices, hva_prices, lva_prices
+
+
+@njit(nogil=True, parallel=True)
+def comp_flow_acceleration(
+        volumes: NDArray[np.float64],
+        window: int,
+        recent_periods: int
+) -> NDArray[np.float64]:
+    """
+    Calculate flow acceleration using Numba
+
+    :param volumes: volumes
+    :param window: window size (eg. 20)
+    :param recent_periods: Most recent periods to consider for acceleration calculation
+    :return:
+    """
+    eps = 1e-12
+
+    n = len(volumes)
+    out = np.empty(n, dtype=np.float64)
+    out.fill(np.nan)
+
+    if n < window or recent_periods >= window:
+        return out                 # edge cases
+
+
+    # prefix cumsum array
+    S = np.empty(n+1, np.float64)
+    S[0] = 0.0
+    for i in range(n):
+        S[i+1] = S[i] + volumes[i]
+
+    for i in prange(window - 1, n):
+        recent_sum = S[i+1] - S[i+1 - recent_periods]
+        past_sum   = S[i+1 - recent_periods] - S[i+1 - window]
+        out[i] = np.log((recent_sum + eps) / (past_sum + eps))
+
+    return out
+

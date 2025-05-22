@@ -325,3 +325,13 @@ def bollinger_percent_b(close: NDArray[np.float64],
 
     return out
 
+
+@njit(nogil=True)
+def parkinson_range(high: NDArray[np.float64],
+                    low: NDArray[np.float64]) -> NDArray[np.float64]:
+    n = len(high)
+    out = np.empty(n, np.float64)
+    ln2 = np.log(2.0)*4.0
+    for i in range(n):
+        out[i] = (np.log(high[i]/low[i])**2) / ln2
+    return out
