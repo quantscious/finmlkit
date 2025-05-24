@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Union, Optional
+from typing import Union, Optional, Sequence
 import pandas as pd
 from utils.log import get_logger
 import numpy as np
@@ -9,120 +9,98 @@ logger = get_logger(__name__)
 
 
 class BaseTransform(ABC):
-    requires: list[str]        # input column names
-    produces: str              # output column name
+    requires: Union[str, list[str]]       # input column names
+    produces: Union[str, list[str]]       # output column name
 
-    def __init__(self, input_cols: Optional[Union[list[str], str]], output_col: str):
-        self.requires = list(input_cols) if isinstance(input_cols, (list, tuple)) else [input_cols]
-        self.produces = output_col
+    def __init__(self, input_cols: Union[Sequence[str], str], output_cols: Union[Sequence[str], str]):
+        self.requires = list(input_cols) if isinstance(input_cols, Sequence) else [input_cols]
+        self.produces = list(output_cols) if isinstance(output_cols, Sequence) else [output_cols]
 
     # --- public API ---------------------------------------------------------
-    def __call__(self, x: Union[pd.DataFrame, pd.Series], *, backend="nb") -> Union[pd.Series, tuple[pd.Series]]:
+    def __call__(self, x: pd.DataFrame, *, backend="nb") -> Union[pd.Series, tuple[pd.Series, ...]]:
         """
         Apply the transform to the input data.
         :param x: DataFrame or Series to transform
         :param backend: Backend to use for the transform. Can be "pd" or "nb". Default is "nb".
         :return:
         """
+        self._validate_input(x)
+
         if backend == "pd":
-            return self.transform_pandas(x)
+            return self._pd(x)
         elif backend == "nb":
-            return self.transform_numba(x)
+            return self._nb(x)
         raise ValueError(f"Unknown backend {backend!r}")
 
-    def check_input(self, x: Union[pd.DataFrame, pd.Series]) -> bool:
-        """
-        Check if the input columns are present in the input DataFrame.
-        This method should be called before applying the transform.
-        :param x: DataFrame or Series to check
-        :return: True if the input is valid
-        """
-        if isinstance(x, pd.DataFrame):
-            if len(self.requires) == 0:
-                raise ValueError("No input columns specified")
-            missing_cols = [c for c in self.requires if c not in x.columns]
-            if missing_cols:
-                raise ValueError(f"Missing required columns: {missing_cols}")
-        elif isinstance(x, pd.Series):
-            pass
-        else:
-            raise TypeError("Input must be a pandas DataFrame or Series")
-
-        return True
 
     @staticmethod
-    def _check_datetime_index(x: Union[pd.DataFrame, pd.Series]) -> bool:
+    def _check_datetime_index(x: pd.DataFrame) -> bool:
         """
-        Check if the input DataFrame has a datetime index. This will be used for time based features.
-        :param x: DataFrame or Series to check
+        Helper function to check if the input DataFrame has a datetime index. This will be used for time based features.
+        :param x: DataFrame
         :return: True if the index is a datetime index
         """
         if isinstance(x, pd.DataFrame):
             if not pd.api.types.is_datetime64_any_dtype(x.index):
-                raise ValueError("Input DataFrame must have a datetime index")
-        elif isinstance(x, pd.Series):
-            if not pd.api.types.is_datetime64_any_dtype(x.index):
-                raise ValueError("Input Series must have a datetime index")
+                raise ValueError("Input DataFrame must have a datetime index for time-based features.")
         else:
-            raise TypeError("Input must be a pandas DataFrame or Series")
+            raise TypeError("Input must be a pandas DataFrame")
 
         return True
 
-    def get_input_arrays(self, x: Union[pd.DataFrame, pd.Series]) -> Union[dict[str, NDArray], NDArray]:
+    def _get_timestamps(self, x: pd.DataFrame) -> NDArray[np.int64]:
         """
-        Get the input data for numba. This will be used for numba based transforms.
-        :param x: DataFrame or Series to transform
-        :return: Dict of input data for DataFrame or array for Series
-        """
-        self.check_input(x)
-        if isinstance(x, pd.DataFrame):
-            if len(self.requires) > 1:
-                return {c: x[c].values for c in self.requires}
-            else:
-                return self.get_input_arrays(x[self.requires[0]]) # this will be a Series
-        elif isinstance(x, pd.Series):
-            return x.values
-        else:
-            raise TypeError("Input must be a pandas DataFrame or Series")
-
-    def get_series(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
-        """
-        Get the input data as a pandas Series. This will be used for pandas based transforms.
-        :param x: DataFrame or Series to transform
-        :return: Series with the same index as the input data
-        """
-        self.check_input(x)
-        if isinstance(x, pd.DataFrame):
-            if len(self.requires) > 1:
-                raise ValueError("Input DataFrame has multiple columns, cannot convert to Series")
-            return x[self.requires[0]]
-        elif isinstance(x, pd.Series):
-            return x
-        else:
-            raise TypeError("Input must be a pandas DataFrame or Series")
-
-    def get_timestamps(self, x: Union[pd.DataFrame, pd.Series]) -> NDArray[np.int64]:
-        """
-        Get the timestamps from the input DataFrame or Series.
-        :param x: DataFrame or Series to get timestamps from
-        :return: DatetimeIndex of the input data
+        Helper function the get timestamps nanoseconds timestamp from the input DataFrame.
+        :param x: DataFrame to get timestamps from
+        :return: numpy array of timestamps in nanoseconds
         """
         self._check_datetime_index(x)
         return x.index.values.astype(np.int64)
 
-    def to_series(self, x: Union[pd.DataFrame, pd.Series], y: NDArray) -> pd.Series:
-        """
-        Convert the output of the transform to a pandas Series.
-        :param x: DataFrame or Series to transform
-        :param y: Output data from the transform
-        :return: Series with the same index as the input data
-        """
-        return pd.Series(y, index=x.index, name=self.produces)
-
-
     # --- to be implemented by children --------------------------------------
     @abstractmethod
-    def transform_pandas(self, x: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, tuple[pd.Series]]:
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        """
+        Check if the input columns are present in the input DataFrame.
+        This method is called before applying the transform.
+
+        :param x: DataFrame to validate
+        :return: True if the input is valid
+        """
+        pass
+
+    @abstractmethod
+    def _prepare_input_nb(self, x: pd.DataFrame) -> Union[dict[str, NDArray], NDArray]:
+        """
+        Prepare array inputs for numba functions.
+
+        :param x: DataFrame or Series to transform
+        :return: Dict of input data for DataFrame or array for Series
+        """
+        pass
+
+    @abstractmethod
+    def output_name(self) -> Union[str, list[str]]:
+        """
+        Get the output names of the transform.
+        This is used to determine the output column names in the DataFrame.
+        Used by prepare_output_nb to create the output Series.
+        :return: Output name or list of output names
+        """
+        pass
+
+    @abstractmethod
+    def _prepare_output_nb(self, idx: pd.Index, y: Union[NDArray, tuple[NDArray]]) -> Union[pd.Series, tuple[pd.Series, ...]]:
+        """
+        Prepare the output data for numba functions.
+        :param idx: index of the original DataFrame
+        :param y: Output data from the transform
+        :return: Series or tuple of Series with the same index as the input data
+        """
+        pass
+
+    @abstractmethod
+    def _pd(self, x: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, tuple[pd.Series]]:
         """
         Transform the input data using pandas. For fast prototyping
         :param x: DataFrame or Series to transform
@@ -130,25 +108,243 @@ class BaseTransform(ABC):
         pass
 
     @abstractmethod
-    def transform_numba(self, x: Union[pd.DataFrame, pd.Series])  -> Union[pd.Series, tuple[pd.Series]]:
+    def _nb(self, x: Union[pd.DataFrame, pd.Series])  -> Union[pd.Series, tuple[pd.Series]]:
         # Fall back to pandas if not overridden
         pass
 
 
+class SISOTransform(BaseTransform, ABC):
+    """
+    Implement a single input, single output transform on a DataFrame.
+    """
+    def __init__(self, input_col: str, output_col: str):
+        super().__init__(input_col, output_col)
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if self.requires[0] not in x.columns:
+            raise ValueError(f"Input column {self.requires[0]} not found in DataFrame")
+        return True
+
+    def _prepare_input_nb(self, x: pd.DataFrame) -> NDArray:
+        """
+        Prepare the input data for numba functions.
+        :param x: DataFrame to transform
+        :return: Numpy array of the input column
+        """
+        return x[self.requires[0]].values
+
+    def output_name(self) -> str:
+        """
+        Get the output name of the transform.
+        This is used to determine the output column name in the DataFrame.
+        :return: Output name
+        """
+        return f"{self.requires[0]}_{self.produces[0]}"
+
+    def _prepare_output_nb(self, idx: pd.Index, y: NDArray) -> pd.Series:
+        """
+        Prepare the output data for numba functions.
+        :param idx: index of the original DataFrame
+        :param y: Output data from the transform
+        :return: Series with the same index as the input data
+        """
+        return pd.Series(y, index=idx, name=self.output_name())
+
+
+class MISOTransform(BaseTransform, ABC):
+    """
+    Implement a multiple input, single output transform on a DataFrame.
+    """
+    def __init__(self, input_cols: Sequence[str], output_col: str):
+        super().__init__(input_cols, output_col)
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        missing_cols = [col for col in self.requires if col not in x.columns]
+        if missing_cols:
+            raise ValueError(f"Input columns {missing_cols} not found in DataFrame")
+        return True
+
+    def _prepare_input_nb(self, x: pd.DataFrame) -> dict[str, NDArray]:
+        """
+        Prepare the input data for numba functions.
+        :param x: DataFrame to transform
+        :return: Dict of input data for each column
+        """
+        return {col: x[col].values for col in self.requires}
+
+    def output_name(self) -> str:
+        """
+        For MISO transforms, the output name is the same as the produces.
+
+        :return: Output name
+        """
+        return self.produces[0]
+
+    def _prepare_output_nb(self, idx: pd.Index, y: NDArray) -> pd.Series:
+        """
+        Prepare the output data for numba functions.
+        :param idx: index of the original DataFrame
+        :param y: Output data from the transform
+        :return: Series with the same index as the input data
+        """
+        return pd.Series(y, index=idx, name=self.output_name())
+
+
+class SIMOTransform(BaseTransform, ABC):
+    """
+    Implement a single input, multiple output transform on a DataFrame.
+    """
+    def __init__(self, input_col: str, output_cols: Sequence[str]):
+        super().__init__(input_col, output_cols)
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        if self.requires[0] not in x.columns:
+            raise ValueError(f"Input column {self.requires[0]} not found in DataFrame")
+        return True
+
+    def _prepare_input_nb(self, x: pd.DataFrame) -> NDArray:
+        """
+        Prepare the input data for numba functions.
+        :param x: DataFrame to transform
+        :return: Numpy array of the input column
+        """
+        return x[self.requires[0]].values
+
+    def output_name(self) -> list[str]:
+        """
+        Get the output names of the transform.
+        For SIMO transforms, the output names are derived from the input column name.
+        :return: List of output names
+        """
+        return [f"{self.requires[0]}_{col}" for col in self.produces]
+
+    def _prepare_output_nb(self, idx: pd.Index, y: tuple[NDArray]) -> tuple[pd.Series, ...]:
+        """
+        Prepare the output data for numba functions.
+        :param idx: index of the original DataFrame
+        :param y: Output data from the transform
+        :return: Tuple of Series with the same index as the input data
+        """
+        if len(y) != len(self.produces):
+            raise ValueError(f"Expected {len(self.produces)} outputs, got {len(y)}")
+        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name()))
+
+
+class MIMO(BaseTransform, ABC):
+    """
+    Implement a multiple input, multiple output transform on a DataFrame.
+    """
+    def __init__(self, input_cols: Sequence[str], output_cols: Sequence[str]):
+        super().__init__(input_cols, output_cols)
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        missing_cols = [col for col in self.requires if col not in x.columns]
+        if missing_cols:
+            raise ValueError(f"Input columns {missing_cols} not found in DataFrame")
+        return True
+
+    def _prepare_input_nb(self, x: pd.DataFrame) -> dict[str, NDArray]:
+        """
+        Prepare the input data for numba functions.
+        :param x: DataFrame to transform
+        :return: Dict of input data for each column
+        """
+        return {col: x[col].values for col in self.requires}
+
+    def output_name(self) -> list[str]:
+        """
+        Get the output names of the transform.
+        :return: List of output names
+        """
+        return self.produces
+
+    def _prepare_output_nb(self, idx: pd.Index, y: tuple[NDArray]) -> tuple[pd.Series, ...]:
+        """
+        Prepare the output data for numba functions.
+        :param idx: index of the original DataFrame
+        :param y: Output data from the transform
+        :return: Tuple of Series with the same index as the input data
+        """
+        if len(y) != len(self.produces):
+            raise ValueError(f"Expected {len(self.produces)} outputs, got {len(y)}")
+        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name()))
+
+
 class Compose(BaseTransform):
-    def __init__(self, *transforms: BaseTransform):
+    def __init__(self, *transforms: SISOTransform):
+        requires = transforms[0].requires[0]  # First tfs determines the source column
+        first_output = transforms[0].output_name()
+        produces = "_".join([first_output] + [t.produces for t in transforms[1:]])
+        super().__init__(requires, produces)
         self.transforms = transforms
-        produces = "_".join([t.produces for t in transforms])
-        super().__init__(transforms[0].requires, produces)
 
-    def transform_pandas(self, x: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, tuple[pd.Series]]:
-        result = x
-        for t in self.transforms:
-            result = t.transform_pandas(result)
-        return result
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        """
+        Validate that the input DataFrame contains the required columns for all transforms.
+        :param x: DataFrame to validate
+        :return: True if the input is valid
+        """
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        if self.requires not in x.columns:
+            raise ValueError(f"Input column {self.requires} not found in DataFrame")
+        return True
 
-    def transform_numba(self, x: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, tuple[pd.Series]]:
-        result = x
-        for t in self.transforms:
-            result = t.transform_numba(result)
-        return result
+    def _prepare_input_nb(self, x: pd.DataFrame) -> dict[str, NDArray]:
+        pass
+
+    def _prepare_output_nb(self, idx: pd.Index, y: Union[NDArray, tuple[NDArray]]) -> Union[pd.Series, tuple[pd.Series, ...]]:
+        pass
+
+    def output_name(self) -> str:
+        """
+        Get the output name of the composed transform.
+        The output name is a combination of the first transform's output and the subsequent transforms' produces.
+        :return: Output name
+        """
+        return self.produces
+    
+    def _run_pipeline(self, x: pd.DataFrame, *, backend) -> pd.Series:
+        """
+        Apply the composed transforms to the input DataFrame.
+        :param x: DataFrame to transform
+        :param backend: Backend is already specified in the transforms
+        :return: Transformed Series
+        """
+        self._validate_input(x)
+        series_out = None
+        for i, tfs in enumerate(self.transforms):
+            if i == 0:
+                # First transform on the input DataFrame
+                series_out = tfs(x)
+            else:
+                # Subsequent transforms on the output of the previous transform
+                series_out = tfs(pd.DataFrame(series_out, columns=[tfs.requires[0]]), backend=backend)
+
+        # Return the final output Series with the composed name
+        series_out.name = self.produces
+
+        return series_out
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Apply the composed transforms using pandas.
+        :param x: DataFrame to transform
+        :return: Transformed Series
+        """
+        return self._run_pipeline(x, backend="pd")
+
+    def _nb(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Apply the composed transforms using numba.
+        :param x: DataFrame to transform
+        :return: Transformed Series
+        """
+        return self._run_pipeline(x, backend="nb")
+
