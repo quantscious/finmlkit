@@ -264,7 +264,8 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
             # We have a leftover price level
             binned_volumes[n_bins] += total_volumes[i]
         else:
-            logger.error("BUG: Bin index is out of bounds while bucketing price levels...")
+            print("BUG: Bin index is out of bounds while bucketing price levels...")
+            print(bin_idx)
 
     return binned_price_levels, binned_volumes
 
@@ -353,7 +354,7 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
                 if down_idx - 1 >= 0:
                     current_down_volume += volumes[down_idx - 1]
         else:
-            logger.error("Stuck in loop while calculating POC, HVA, and LVA.")
+            print("BUG! Stuck in loop while calculating POC, HVA, and LVA.")
             break
 
     return poc_price, hva_price, lva_price
@@ -392,8 +393,8 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     first_interval_idx = np.searchsorted(ts, ts[0] + window_interval_ns)
 
     for i in range(first_interval_idx, n_bars):
-        end_ts = ts[i]
-        start_ts = end_ts - window_interval_ns
+        end_ts = int(ts[i])
+        start_ts = int(end_ts - window_interval_ns)
 
         all_price_levels, total_buy_volumes, total_sell_volumes = aggregate_footprint(ts, highs, lows,
                                                                                       price_levels,

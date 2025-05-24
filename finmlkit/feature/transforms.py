@@ -4,6 +4,7 @@ Feature transform wrapper for financial time series data.
 from .base import SISOTransform, SIMOTransform, MISOTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
 from .core.volatility import ewmst, realised_vol, bollinger_percent_b, parkinson_range
+from .core.volume import comp_flow_acceleration
 from .core.reversion import vwap_distance
 from .core.time import time_cues
 from .core.ma import ewma, sma
@@ -79,6 +80,33 @@ class Return(SISOTransform):
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
+
+
+    class Lag(SISOTransform):
+        """
+        Implements lagged values of a time series.
+        """
+
+        def __init__(self, periods: int = 1, input_col: str = "close"):
+            """
+            Compute lagged values over the specified number of periods.
+
+            :param input_col: If DataFrame is passed, this is the column name to compute lags on.
+            :param periods: The lag period.
+            """
+            super().__init__(input_col, f"lag{periods}")
+            self.periods = periods
+
+        def _pd(self, x):
+            series = x[self.requires[0]]
+            outp = series.shift(self.periods)
+            outp.name = self.output_name()
+
+            return outp
+
+        def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+            logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+            return self._pd(x)
 
 
 class ROC(SISOTransform):
@@ -374,7 +402,7 @@ class RealisedVolatility(SISOTransform):
     """
     Computes the realised volatility of a time series.
     """
-    def __init__(self, window: int, is_sample=False, input_col: str = "close"):
+    def __init__(self, window: int, is_sample=False, input_col: str = "ret"):
         """
         Compute the realised volatility of a time series.
 
@@ -392,7 +420,7 @@ class RealisedVolatility(SISOTransform):
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         input_arr = self._prepare_input_nb(x)
-        result = realised_vol(input_arr, self.window, self.is_sample)
+        result = realised_vol(input_arr.astype(np.float64), self.window, self.is_sample)
 
         return self._prepare_output_nb(x.index, result)
 
@@ -508,4 +536,28 @@ class EWMA(SISOTransform):
         return self._prepare_output_nb(x.index, result)
 
 
+class FlowAcceleration(SISOTransform):
+    """
+    Computes the Flow Acceleration of a time series.
+    """
+    def __init__(self, window: int, recent_periods, input_col: str = "volume"):
+        """
+        Compute the Flow Acceleration of a time series.
+
+        :param input_col: If DataFrame is passed, this is the column name to compute returns on.
+        :param window: Window size for the rolling calculation.
+        """
+        super().__init__(input_col, f"flowacc_{window}_{recent_periods}")
+        self.window = window
+        self.recent_periods = recent_periods
+
+    def _pd(self, x):
+        logger.info(f"Fall back to numba for {self.__class__.__name__}")
+        return self._nb(x)
+
+    def _nb(self, x: pd.DataFrame) -> pd.Series:
+        input_arr = self._prepare_input_nb(x)
+        result = comp_flow_acceleration(input_arr, self.window, self.recent_periods)
+
+        return self._prepare_output_nb(x.index, result)
 

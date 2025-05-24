@@ -66,7 +66,6 @@ def rsi_wilder(close: NDArray[np.float64], window: int) -> NDArray[np.float64]:
 
 
 @njit(nogil=True)
-@njit(nogil=True)
 def stoch_k(
         close: NDArray[np.float64],
         low: NDArray[np.float64],

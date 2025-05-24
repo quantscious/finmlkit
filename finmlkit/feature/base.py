@@ -13,8 +13,10 @@ class BaseTransform(ABC):
     produces: Union[str, list[str]]       # output column name
 
     def __init__(self, input_cols: Union[Sequence[str], str], output_cols: Union[Sequence[str], str]):
-        self.requires = list(input_cols) if isinstance(input_cols, Sequence) else [input_cols]
-        self.produces = list(output_cols) if isinstance(output_cols, Sequence) else [output_cols]
+        assert isinstance(input_cols, (str, tuple, list)), "Input columns must be a string or a sequence of strings."
+        assert isinstance(output_cols, (str, tuple, list)), "Output columns must be a string or a sequence of strings."
+        self.requires = [input_cols] if isinstance(input_cols, str) else list(input_cols)
+        self.produces = [output_cols] if isinstance(output_cols, str) else list(output_cols)
 
     # --- public API ---------------------------------------------------------
     def __call__(self, x: pd.DataFrame, *, backend="nb") -> Union[pd.Series, tuple[pd.Series, ...]]:
@@ -121,6 +123,8 @@ class SISOTransform(BaseTransform, ABC):
         super().__init__(input_col, output_col)
 
     def _validate_input(self, x: pd.DataFrame) -> bool:
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
         if self.requires[0] not in x.columns:
             raise ValueError(f"Input column {self.requires[0]} not found in DataFrame")
         return True
@@ -280,7 +284,7 @@ class Compose(BaseTransform):
     def __init__(self, *transforms: SISOTransform):
         requires = transforms[0].requires[0]  # First tfs determines the source column
         first_output = transforms[0].output_name()
-        produces = "_".join([first_output] + [t.produces for t in transforms[1:]])
+        produces = "_".join([first_output] + [t.produces[0] for t in transforms[1:]])
         super().__init__(requires, produces)
         self.transforms = transforms
 
@@ -292,7 +296,7 @@ class Compose(BaseTransform):
         """
         if not isinstance(x, pd.DataFrame):
             raise TypeError("Input must be a pandas DataFrame")
-        if self.requires not in x.columns:
+        if self.requires[0] not in x.columns:
             raise ValueError(f"Input column {self.requires} not found in DataFrame")
         return True
 
@@ -308,8 +312,8 @@ class Compose(BaseTransform):
         The output name is a combination of the first transform's output and the subsequent transforms' produces.
         :return: Output name
         """
-        return self.produces
-    
+        return self.produces[0]
+
     def _run_pipeline(self, x: pd.DataFrame, *, backend) -> pd.Series:
         """
         Apply the composed transforms to the input DataFrame.
@@ -328,7 +332,7 @@ class Compose(BaseTransform):
                 series_out = tfs(pd.DataFrame(series_out, columns=[tfs.requires[0]]), backend=backend)
 
         # Return the final output Series with the composed name
-        series_out.name = self.produces
+        series_out.name = self.output_name()
 
         return series_out
 

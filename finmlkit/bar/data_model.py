@@ -441,28 +441,32 @@ class FootprintData:
         self.buy_imbalances = np.array(self.buy_imbalances, dtype=object)
         self.sell_imbalances = np.array(self.sell_imbalances, dtype=object)
 
-    def memory_usage(self) -> float:
-        """
-        Estimate memory usage of all internal arrays.
-        :returns: Memory usage in megabytes (MB).
-        """
-        from pympler import asizeof  # memory profiler
-
+    def memory_usage(self):
+        """Calculate the approximate memory usage of this object in MB."""
+        from pympler import asizeof
+        import dataclasses
         total_memory = 0
-        attributes = [
-            'bar_timestamps', 'price_levels', 'buy_volumes',
-            'sell_volumes', 'buy_ticks', 'sell_ticks',
-            'buy_imbalances', 'sell_imbalances',
-            'cot_price_levels', 'sell_imbalances_sum', 'buy_imbalances_sum'
-        ]
 
-        for attr in attributes:
-            array = getattr(self, attr)
-            if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, NumbaList):
-                # Use pympler to measure the size of each element
-                total_memory += sum(asizeof.asizeof(item) for item in array if item is not None)
+        # Get field names from dataclass fields
+        fields = [field.name for field in dataclasses.fields(self)]
 
-        return total_memory / (1024 ** 2)  # Convert to MB
+        # Handle the main data attributes
+        for attr in fields:
+            if hasattr(self, attr):
+                array = getattr(self, attr)
+                if isinstance(array, np.ndarray) or isinstance(array, list) or isinstance(array, NumbaList):
+                    try:
+                        # Try using pympler
+                        total_memory += sum(asizeof.asizeof(item) for item in array if item is not None)
+                    except ValueError:
+                        # Fallback for NumPy arrays with problematic memory layouts
+                        if isinstance(array, np.ndarray):
+                            total_memory += array.size * array.itemsize
+                        else:
+                            # Rough estimate for other types
+                            total_memory += len(array) * 8  # Assume 8 bytes per object
+
+        return total_memory / (1024 ** 2)
 
     def is_valid(self) -> bool:
         """
