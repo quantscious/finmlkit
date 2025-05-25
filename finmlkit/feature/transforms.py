@@ -3,7 +3,7 @@ Feature transform wrapper for financial time series data.
 """
 from .base import SISOTransform, SIMOTransform, MISOTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
-from .core.volatility import ewmst, realised_vol, bollinger_percent_b, parkinson_range
+from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range
 from .core.volume import comp_flow_acceleration
 from .core.reversion import vwap_distance
 from .core.time import time_cues
@@ -398,9 +398,9 @@ class TimeCues(SIMOTransform):
         return self._prepare_output_nb(x.index, result)
 
 
-class RealisedVolatility(SISOTransform):
+class RealizedVolatility(SISOTransform):
     """
-    Computes the realised volatility of a time series.
+    Computes the realized volatility of a time series.
     """
     def __init__(self, window: int, is_sample=False, input_col: str = "ret"):
         """
@@ -415,12 +415,29 @@ class RealisedVolatility(SISOTransform):
         self.is_sample = is_sample
 
     def _pd(self, x):
-        logger.info(f"Fall back to numba for {self.__class__.__name__}")
-        return self._nb(x)
+        # Get input series
+        series = x[self.requires[0]]
+
+        # Create result series filled with NaNs
+        result = pd.Series(np.nan, index=series.index, name=self.output_name())
+
+        # Calculate only from window-1 onward (matching numba implementation)
+        for i in range(self.window - 1, len(series)):
+            window_data = series.iloc[i - self.window + 1:i + 1]
+            valid_count = window_data.count()
+
+            if valid_count > 1:
+                divisor = (valid_count - 1) if self.is_sample else valid_count
+                result.iloc[i] = np.sqrt((window_data ** 2).sum(skipna=True) / divisor)
+
+
+        result.name = self.output_name()
+
+        return result
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         input_arr = self._prepare_input_nb(x)
-        result = realised_vol(input_arr.astype(np.float64), self.window, self.is_sample)
+        result = realized_vol(input_arr.astype(np.float64), self.window, self.is_sample)
 
         return self._prepare_output_nb(x.index, result)
 
