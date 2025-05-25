@@ -81,7 +81,9 @@ def comp_zscore(x: NDArray[np.float64], window: int, ddof: int) -> NDArray[np.fl
     for i in prange(window - 1, n):
         window_data = x[i - window + 1: i + 1]
         mean = np.mean(window_data)
-        std = np.std(window_data, ddof=ddof)
+        # Manual calculation of standard deviation with ddof
+        variance = np.sum((window_data - mean) ** 2) / (len(window_data) - ddof)
+        std = np.sqrt(variance)
         if std != 0:
             z_scores[i] = (x[i] - mean) / std
 

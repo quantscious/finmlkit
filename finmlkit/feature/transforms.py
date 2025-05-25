@@ -1,7 +1,7 @@
 """
 Feature transform wrapper for financial time series data.
 """
-from .base import SISOTransform, SIMOTransform, MISOTransform
+from .base import SISOTransform, SIMOTransform, MISOTransform, BaseTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
 from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range
 from .core.volume import comp_flow_acceleration
@@ -15,6 +15,43 @@ import pandas as pd
 import numpy as np
 
 logger = get_logger(__name__)
+
+
+class Identity(BaseTransform):
+    """
+    Returns the identity transform of a selected column
+    """
+    def __init__(self, input_col: str = "close"):
+        """
+        Identity transform that returns the input column as is.
+
+        :param input_col: If DataFrame is passed, this is the column name to return.
+        """
+        assert isinstance(input_col, str), "Input column must be a string."
+        super().__init__(input_col, input_col)
+
+    def __call__(self, df: pd.DataFrame, *, backend="nb") -> pd.Series:
+        """
+        Returns the selected col as a series.
+
+        :param df: Input DataFrame.
+        :param backend: Ignored for this transform.
+        :return: The input DataFrame with the specified column.
+        """
+        self._validate_input(df)
+
+        return df[self.requires[0]]
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if self.requires[0] not in x.columns:
+            raise ValueError(f"Input DataFrame must contain the column '{self.requires[0]}'.")
+        return True
+
+    def output_name(self) -> str:
+        """
+        Returns the name of the output column.
+        """
+        return self.produces[0]
 
 
 class ReturnT(SISOTransform):
@@ -480,7 +517,7 @@ class ParkinsonRange(MISOTransform):
         :param input_cols: High and Low columns. If None defaults to ["high", "low"].
         """
         if input_cols is None:
-            input_col = ["high", "low"]
+            input_cols = ["high", "low"]
         super().__init__(input_cols, f"parkrange")
 
     def _pd(self, x):
