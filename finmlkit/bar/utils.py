@@ -3,7 +3,7 @@ from numba import njit
 from numpy.typing import NDArray
 import numpy as np
 import pandas as pd
-from math import gcd
+import math
 
 
 @njit(nogil=True, fastmath=True)
@@ -73,7 +73,7 @@ def comp_price_tick_size(prices: NDArray[np.float64]) -> float:
     tick_int = 0
     for diff_int in np.diff(int_px):
         if diff_int > 0:
-            tick_int = diff_int if tick_int == 0 else gcd(tick_int, diff_int)
+            tick_int = diff_int if tick_int == 0 else math.gcd(tick_int, diff_int)
             if tick_int == 1:
                 break
 

@@ -54,6 +54,32 @@ class Identity(BaseTransform):
         return self.produces[0]
 
 
+class Lag(SISOTransform):
+    """
+    Implements lagged values of a time series.
+    """
+
+    def __init__(self, periods: int = 1, input_col: str = "close"):
+        """
+        Compute lagged values over the specified number of periods.
+
+        :param input_col: If DataFrame is passed, this is the column name to compute lags on.
+        :param periods: The lag period.
+        """
+        super().__init__(input_col, f"lag{periods}")
+        self.periods = periods
+
+    def _pd(self, x):
+        series = x[self.requires[0]]
+        outp = series.shift(self.periods)
+        outp.name = self.output_name
+
+        return outp
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
 class ReturnT(SISOTransform):
     """
     Calculates the lagged returns of a time series using a specified period defined in seconds.
@@ -110,40 +136,13 @@ class Return(SISOTransform):
             # Calculate simple returns
             outp = series / series_lagged - 1.0
 
-        outp = pd.Series(outp, index=series.index, name=self.output_name())
+        outp = pd.Series(outp, index=series.index, name=self.output_name)
 
         return outp
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
-
-
-    class Lag(SISOTransform):
-        """
-        Implements lagged values of a time series.
-        """
-
-        def __init__(self, periods: int = 1, input_col: str = "close"):
-            """
-            Compute lagged values over the specified number of periods.
-
-            :param input_col: If DataFrame is passed, this is the column name to compute lags on.
-            :param periods: The lag period.
-            """
-            super().__init__(input_col, f"lag{periods}")
-            self.periods = periods
-
-        def _pd(self, x):
-            series = x[self.requires[0]]
-            outp = series.shift(self.periods)
-            outp.name = self.output_name()
-
-            return outp
-
-        def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
-            logger.info(f"Fall back to pandas for {self.__class__.__name__}")
-            return self._pd(x)
 
 
 class ROC(SISOTransform):
@@ -167,6 +166,32 @@ class ROC(SISOTransform):
     def _nb(self, x: pd.DataFrame) -> pd.Series:
         input_arr = self._prepare_input_nb(x)
         result = roc(input_arr, self.periods)
+
+        return self._prepare_output_nb(x.index, result)
+
+
+class PctChange(SISOTransform):
+    """
+    Computes the percentage change of a time series using a specified lag.
+    """
+    def __init__(self, window: int, input_col: str = "close"):
+        """
+        Calculate the percentage change of a signal with a specified lag.
+
+        :param input_col: If DataFrame is passed, this is the column name to compute returns on.
+        :param periods: The lag period.
+        :return: The percentage change of the signal.
+        """
+        super().__init__(input_col, f"pctc{window}")
+        self.periods = window
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        series = x[self.requires[0]]
+        return series.pct_change(self.periods)
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        input_arr = self._prepare_input_nb(x)
+        result = pct_change(input_arr, self.periods)
 
         return self._prepare_output_nb(x.index, result)
 
@@ -231,7 +256,7 @@ class RSIWilder(SISOTransform):
 
             rsi.iloc[i] = 100 - (100 / (1 + rs)) if rs != float('inf') else 100
 
-        rsi.name = self.output_name()
+        rsi.name = self.output_name
         return rsi
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
@@ -352,32 +377,6 @@ class BurstRatio(SISOTransform):
         return self._prepare_output_nb(x.index, result)
 
 
-class PctChange(SISOTransform):
-    """
-    Computes the percentage change of a time series using a specified lag.
-    """
-    def __init__(self, window: int, input_col: str = "close"):
-        """
-        Calculate the percentage change of a signal with a specified lag.
-
-        :param input_col: If DataFrame is passed, this is the column name to compute returns on.
-        :param periods: The lag period.
-        :return: The percentage change of the signal.
-        """
-        super().__init__(input_col, f"pctc{window}")
-        self.periods = window
-
-    def _pd(self, x: pd.DataFrame) -> pd.Series:
-        series = x[self.requires[0]]
-        return series.pct_change(self.periods)
-
-    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
-        input_arr = self._prepare_input_nb(x)
-        result = pct_change(input_arr, self.periods)
-
-        return self._prepare_output_nb(x.index, result)
-
-
 class VWAPDistance(MISOTransform):
     """
     Computes the distance of the current price from the VWAP (Volume Weighted Average Price).
@@ -434,6 +433,11 @@ class TimeCues(SIMOTransform):
 
         return self._prepare_output_nb(x.index, result)
 
+    @property
+    def output_name(self):
+        return self.produces
+
+
 
 class RealizedVolatility(SISOTransform):
     """
@@ -456,7 +460,7 @@ class RealizedVolatility(SISOTransform):
         series = x[self.requires[0]]
 
         # Create result series filled with NaNs
-        result = pd.Series(np.nan, index=series.index, name=self.output_name())
+        result = pd.Series(np.nan, index=series.index, name=self.output_name)
 
         # Calculate only from window-1 onward (matching numba implementation)
         for i in range(self.window - 1, len(series)):
@@ -468,7 +472,7 @@ class RealizedVolatility(SISOTransform):
                 result.iloc[i] = np.sqrt((window_data ** 2).sum(skipna=True) / divisor)
 
 
-        result.name = self.output_name()
+        result.name = self.output_name
 
         return result
 
@@ -538,7 +542,7 @@ class SMA(SISOTransform):
     """
     Computes the Simple Moving Average (SMA) of a time series.
     """
-    def __init__(self, window: int, input_col: str = None):
+    def __init__(self, window: int, input_col: str = "x"):
         """
         Compute the Simple Moving Average (SMA) of a time series.
 
@@ -579,7 +583,7 @@ class EWMA(SISOTransform):
     def _pd(self, x):
         input_series = x[self.requires[0]]
         outp = input_series.ewm(span=self.span).mean()
-        outp.name = self.output_name()
+        outp.name = self.output_name
 
         return outp
 

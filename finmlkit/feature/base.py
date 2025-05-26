@@ -9,8 +9,9 @@ logger = get_logger(__name__)
 
 
 class BaseTransform(ABC):
-    requires: Union[str, list[str]]       # input column names
-    produces: Union[str, list[str]]       # output column name
+    requires: list[str]      # input column names
+    produces: list[str]      # output column name
+    _output_name: Union[str, list[str]]
 
     def __init__(self, input_cols: Union[Sequence[str], str], output_cols: Union[Sequence[str], str]):
         assert isinstance(input_cols, (str, tuple, list)), f"Input columns must be a string or a sequence of strings. Got {type(input_cols)}"
@@ -40,6 +41,7 @@ class BaseTransform(ABC):
         """
         pass
 
+    @property
     @abstractmethod
     def output_name(self) -> Union[str, list[str]]:
         """
@@ -153,6 +155,7 @@ class SISOTransform(CoreTransform, ABC):
         """
         return x[self.requires[0]].values
 
+    @property
     def output_name(self) -> str:
         """
         Get the output name of the transform.
@@ -168,7 +171,7 @@ class SISOTransform(CoreTransform, ABC):
         :param y: Output data from the transform
         :return: Series with the same index as the input data
         """
-        return pd.Series(y, index=idx, name=self.output_name())
+        return pd.Series(y, index=idx, name=self.output_name)
 
 
 class MISOTransform(CoreTransform, ABC):
@@ -194,6 +197,7 @@ class MISOTransform(CoreTransform, ABC):
         """
         return {col: x[col].values for col in self.requires}
 
+    @property
     def output_name(self) -> str:
         """
         For MISO transforms, the output name is the same as the produces.
@@ -209,7 +213,7 @@ class MISOTransform(CoreTransform, ABC):
         :param y: Output data from the transform
         :return: Series with the same index as the input data
         """
-        return pd.Series(y, index=idx, name=self.output_name())
+        return pd.Series(y, index=idx, name=self.output_name)
 
 
 class SIMOTransform(CoreTransform, ABC):
@@ -234,6 +238,7 @@ class SIMOTransform(CoreTransform, ABC):
         """
         return x[self.requires[0]].values
 
+    @property
     def output_name(self) -> list[str]:
         """
         Get the output names of the transform.
@@ -251,7 +256,7 @@ class SIMOTransform(CoreTransform, ABC):
         """
         if len(y) != len(self.produces):
             raise ValueError(f"Expected {len(self.produces)} outputs, got {len(y)}")
-        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name()))
+        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name))
 
 
 class MIMO(CoreTransform, ABC):
@@ -277,6 +282,7 @@ class MIMO(CoreTransform, ABC):
         """
         return {col: x[col].values for col in self.requires}
 
+    @property
     def output_name(self) -> list[str]:
         """
         Get the output names of the transform.
@@ -293,13 +299,13 @@ class MIMO(CoreTransform, ABC):
         """
         if len(y) != len(self.produces):
             raise ValueError(f"Expected {len(self.produces)} outputs, got {len(y)}")
-        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name()))
+        return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name))
 
 
 class Compose(BaseTransform):
     def __init__(self, *transforms: SISOTransform):
         requires = transforms[0].requires[0]  # First tfs determines the source column
-        first_output = transforms[0].output_name()
+        first_output = transforms[0].output_name
         produces = "_".join([first_output] + [t.produces[0] for t in transforms[1:]])
         super().__init__(requires, produces)
         self.transforms = transforms
@@ -316,6 +322,7 @@ class Compose(BaseTransform):
             raise ValueError(f"Input column {self.requires} not found in DataFrame")
         return True
 
+    @property
     def output_name(self) -> str:
         """
         Get the output name of the composed transform.
@@ -343,7 +350,7 @@ class Compose(BaseTransform):
                 series_out = tfs(pd.DataFrame(series_out.values, index=series_out.index, columns=[tfs.requires[0]]), backend=backend)
 
         # Return the final output Series with the composed name
-        series_out.name = self.output_name()
+        series_out.name = self.output_name
 
         return series_out
 
