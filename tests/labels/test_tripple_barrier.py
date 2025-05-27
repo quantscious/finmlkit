@@ -26,11 +26,11 @@ def test_upper_barrier_hit():
     """
     ts   = _make_timestamps(5)
     px   = np.array([100, 101, 101, 101, 101], dtype=np.float64)
-    tgt  = np.full_like(px, 0.005)                 # ~0.5 %
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.005], dtype=np.float64)    # Target for the single event
 
     label, t_idx, ret, rbr = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=3,                        # sec
@@ -50,11 +50,11 @@ def test_lower_barrier_hit():
     """
     ts   = _make_timestamps(5)
     px   = np.array([100, 99, 99, 99, 99], dtype=np.float64)
-    tgt  = np.full_like(px, 0.005)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.005], dtype=np.float64)     # Target for the single event
 
     label, t_idx, ret, rbr = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=3,
@@ -74,11 +74,11 @@ def test_vertical_barrier_only():
     """
     ts   = _make_timestamps(5)
     px   = np.array([100, 100.2, 100.3, 100.25, 100.2], dtype=np.float64)
-    tgt  = np.full_like(px, 0.002)      # 0.2 %
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.002], dtype=np.float64)      # Target for the single event (0.2%)
 
     label, t_idx, ret, rbr = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(np.inf, np.inf),      # disabled
         vertical_barrier=3,
@@ -97,11 +97,11 @@ def test_min_ret_filter():
     """
     ts   = _make_timestamps(3)
     px   = np.array([100, 101, 102], dtype=np.float64)
-    tgt  = np.full_like(px, 0.0005)               # 0.05 % (< min_ret)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.0005], dtype=np.float64)   # 0.05% (< min_ret)
 
     label, t_idx, ret, rbr = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=2,
@@ -119,12 +119,12 @@ def test_meta_labeling():
     """
     ts   = _make_timestamps(4)
     px   = np.array([100, 101, 102, 103], dtype=np.float64)
-    tgt  = np.full_like(px, 0.004)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.004], dtype=np.float64)
     side = np.array([1], dtype=np.int8)
 
     label, _, ret, _ = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=3,
@@ -141,11 +141,11 @@ def test_no_vertical_barrier_inf():
     """
     ts   = _make_timestamps(6)
     px   = np.array([100, 100.5, 101, 101.5, 102, 102.5], dtype=np.float64)
-    tgt  = np.full_like(px, 0.025)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.025], dtype=np.float64)
 
     label, t_idx, ret, _ = triple_barrier(
-        ts, px, tgt, evix,
+        ts, px, evix, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=np.inf,
@@ -168,7 +168,7 @@ def test_invalid_lengths():
 
     with pytest.raises(ValueError, match="lengths.*must match"):
         triple_barrier(
-            ts, px, tgt, evix,
+            ts, px, evix, tgt,
             min_ret=0.001,
             horizontal_barriers=(1.0, 1.0),
             vertical_barrier=2,
@@ -180,12 +180,12 @@ def test_invalid_lengths():
 def test_non_positive_vertical_barrier(vbar):
     ts   = _make_timestamps(3)
     px   = np.array([100, 101, 102], dtype=np.float64)
-    tgt  = np.full_like(px, 0.005)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.005], dtype=np.float64)
 
     with pytest.raises(ValueError, match="vertical barrier"):
         triple_barrier(
-            ts, px, tgt, evix,
+            ts, px, evix, tgt,
             min_ret=0.001,
             horizontal_barriers=(1.0, 1.0),
             vertical_barrier=vbar,
@@ -196,12 +196,12 @@ def test_non_positive_vertical_barrier(vbar):
 def test_negative_min_ret():
     ts   = _make_timestamps(3)
     px   = np.array([100, 101, 102], dtype=np.float64)
-    tgt  = np.full_like(px, 0.005)
     evix = np.array([0], dtype=np.int64)
+    tgt  = np.array([0.005], dtype=np.float64)
 
     with pytest.raises(ValueError, match="minimum return"):
         triple_barrier(
-            ts, px, tgt, evix,
+            ts, px, evix, tgt,
             min_ret=-0.1,
             horizontal_barriers=(1.0, 1.0),
             vertical_barrier=2,

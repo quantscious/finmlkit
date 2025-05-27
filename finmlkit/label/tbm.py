@@ -12,8 +12,8 @@ from typing import Tuple, Optional
 def triple_barrier(
         timestamps: NDArray[np.int64],
         close: NDArray[np.float64],
-        targets: NDArray[np.float64],
         event_idxs: NDArray[np.int64],
+        targets: NDArray[np.float64],
         min_ret: float,
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
@@ -25,8 +25,8 @@ def triple_barrier(
 
     :param timestamps: The timestamps in nanoseconds for the close prices series.
     :param close: The close prices of the asset.
-    :param targets: Log-return targes for the events, e.g. acquired from a moving volatility estimator. Length must match timestamps and close.
     :param event_idxs: The indices of the events, e.g. acquired from the cusum filter. (subset of timestamps)
+    :param targets: Log-return targes for the events, e.g. acquired from a moving volatility estimator. Length must matchevent_idxs.
     :param min_ret: The minimum target return required for running the triple barrier search.
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
@@ -44,8 +44,10 @@ def triple_barrier(
         raise ValueError("The vertical barrier must be greater than zero.")
     if min_ret < 0:
         raise ValueError("The minimum return must be non-negative.")
-    if len(timestamps) != len(close) or len(timestamps) != len(targets):
-        raise ValueError("The lengths of timestamps, close, and targets must match.")
+    if len(timestamps) != len(close):
+        raise ValueError("The lengths of timestamps and close must match.")
+    if len(event_idxs) != len(targets):
+        raise ValueError("The lengths of event_idxs and targets must match.")
     if len(event_idxs) == 0:
         raise ValueError("The event_idxs array must not be empty.")
 
