@@ -97,7 +97,7 @@ def triple_barrier(
 
         # Evaluate the path
         touch_idx = t1_idx
-        max_rbr = np.nan
+        max_rbr = 0.0
         base_price = log_close[t0_idx]  # Base price for calculating returns
         ret = 0.
         for j in range(t0_idx + 1, t1_idx + 1):
@@ -126,6 +126,6 @@ def triple_barrier(
             labels[i] = np.sign(ret)
         touch_idxs[i] = touch_idx
         rets[i] = ret
-        max_rb_ratios[i] = max_rbr
+        max_rb_ratios[i] = max_rbr if np.isfinite(upper_barrier) and upper_barrier != 0.0 else np.nan
 
     return labels, touch_idxs, rets, max_rb_ratios

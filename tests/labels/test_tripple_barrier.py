@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import os
 # disable jit
-#os.environ['NUMBA_DISABLE_JIT'] = "1"
+os.environ['NUMBA_DISABLE_JIT'] = "1"
 
 from finmlkit.label.tbm import triple_barrier
 
@@ -207,3 +207,8 @@ def test_negative_min_ret():
             vertical_barrier=2,
             side=None,
         )
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "--tb=short"])
+    #pytest.main([__file__, "-s", "--tb=short"])  # for debugging, to see print statements
