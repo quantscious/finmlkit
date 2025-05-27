@@ -121,7 +121,7 @@ def triple_barrier(
 
         # Assign the label and other values
         if is_meta:
-            labels[i] = 1 if ret > min_ret else 0
+            labels[i] = 1 if ret >= min_ret else 0
         else:
             labels[i] = np.sign(ret)
         touch_idxs[i] = touch_idx
