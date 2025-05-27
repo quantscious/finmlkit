@@ -12,7 +12,7 @@ from typing import Tuple, Optional
 def triple_barrier(
         timestamps: NDArray[np.int64],
         close: NDArray[np.float64],
-        event_idxs: NDArray[np.int64],
+        event_ts: NDArray[np.int64],
         targets: NDArray[np.float64],
         min_ret: float,
         horizontal_barriers: Tuple[float, float],
@@ -25,7 +25,7 @@ def triple_barrier(
 
     :param timestamps: The timestamps in nanoseconds for the close prices series.
     :param close: The close prices of the asset.
-    :param event_idxs: The indices of the events, e.g. acquired from the cusum filter. (subset of timestamps)
+    :param event_ts: The nanosecond timestamps of the events, e.g. acquired from the cusum filter. (subset of timestamps)
     :param targets: Log-return targes for the events, e.g. acquired from a moving volatility estimator. Length must matchevent_idxs.
     :param min_ret: The minimum target return required for running the triple barrier search.
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
@@ -46,18 +46,18 @@ def triple_barrier(
         raise ValueError("The minimum return must be non-negative.")
     if len(timestamps) != len(close):
         raise ValueError("The lengths of timestamps and close must match.")
-    if len(event_idxs) != len(targets):
+    if len(event_ts) != len(targets):
         raise ValueError("The lengths of event_idxs and targets must match.")
-    if len(event_idxs) == 0:
+    if len(event_ts) == 0:
         raise ValueError("The event_idxs array must not be empty.")
 
     is_meta = side is not None
     if is_meta:
-        if len(event_idxs) != len(side):
+        if len(event_ts) != len(side):
             raise ValueError("The length of event_idxs must match the length of side.")
 
     n_samples = len(close)  # Number of samples in the close price array
-    n_events = len(event_idxs)  # Number of events (subset of samples)
+    n_events = len(event_ts)  # Number of events (subset of samples)
     bottom_mult, top_mult = horizontal_barriers
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
     log_close = np.log(close)  # Precompute log of close prices for efficiency
@@ -68,6 +68,8 @@ def triple_barrier(
     rets = np.full(n_events, np.nan, dtype=np.float64)             # The return corresponding to the given label
     max_rb_ratios = np.full(n_events, np.nan, dtype=np.float64)    # Maximum return/target ratio during the search
 
+    # Find the event indices in the timestamps array
+    event_idxs = np.searchsorted(timestamps, event_ts, side='left')
 
     # Loop over the events parallelized
     for i in prange(n_events):
