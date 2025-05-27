@@ -28,15 +28,15 @@ def triple_barrier(
     :param targets: The target returns for the events, e.g. acquired from a moving volatility estimator. Assumes a log return target.
     :param min_ret: The minimum target return required for running the triple barrier search.
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
-        This setup determines the width of the horizontal barriers. If you want to disable one of the barriers, set it to np.inf.
-    :param vertical_barrier: The temporal barrier in seconds.
+        This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
+    :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
 
     :returns: A tuple of 4 elements containing:
-        - The label (-1, 0, 1),
+        - The label (-1, 1), 0 for no label,
         - The first barrier touch index,
         - The return,
         - Maximum return-barrier ratio during the search describing how close the path came to a horizontal barrier.
-        This can be used later to calculate weights for 0 label. (If barrier is hit, the ratio is 1.0)
+          This can be used later to calculate weights for labels. If barrier is hit, the ratio is 1.0, otherwise it is less than 1.0 – or np.nan if barriers are disabled)
     """
 
     n_samples = len(close)  # Number of samples in the close price array
@@ -44,11 +44,11 @@ def triple_barrier(
     bottom_mult, top_mult = horizontal_barriers
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
 
-    labels = np.zeros(n_events, dtype=np.int8)               # The label (-1, 0, 1)
+    labels = np.zeros(n_events, dtype=np.int8)                # The label (-1, 0, 1)
     touch_idxs   = np.empty(n_events, np.int64)               # Index of the first barrier touch
     touch_idxs[:] = -1
-    rets = np.full(n_events, np.nan, dtype=np.float64)           # The return corresponding to the given label
-    max_rb_ratios = np.full(n_events, np.nan, dtype=np.float64)         # Maximum return/target ratio during the search
+    rets = np.full(n_events, np.nan, dtype=np.float64)             # The return corresponding to the given label
+    max_rb_ratios = np.full(n_events, np.nan, dtype=np.float64)    # Maximum return/target ratio during the search
 
     # Loop over the events parallelized
     for i in prange(n_events):
@@ -79,15 +79,14 @@ def triple_barrier(
             )
 
         # Evaluate the path
-        label = 0
         touch_idx = t1_idx
         max_rbr = 0.
-        base_price = close[t0_idx]  # Base price for calculating returns
-
+        log_close = np.log(close)       # Precompute log of close prices for efficiency
+        base_price = log_close[t0_idx]  # Base price for calculating returns
         for j in range(t0_idx + 1, t1_idx + 1):
-            ret = np.log(close[j] / base_price)
+            ret = log_close[j] - base_price
 
-            # # progress towards barrier (skip if barrier is inf/0)
+            # progress towards barrier (skip if barrier is inf/0)
             if ret > 0.0 and np.isfinite(upper_barrier) and upper_barrier != 0.0:
                 max_rbr = max(max_rbr, ret / upper_barrier)
             elif ret < 0.0 and np.isfinite(lower_barrier) and lower_barrier != 0.0:
@@ -95,15 +94,15 @@ def triple_barrier(
 
             # Check if we touch the barrier
             if ret >= upper_barrier:
-                label, touch_idx = 1, j
+                touch_idx = j
                 break
             if ret <= lower_barrier:
-                label, touch_idx = -1, j
+                touch_idx = j
                 break
 
         # Assign the label and other values
-        final_ret = np.log(close[touch_idx] / base_price)
-        labels[i] = label if abs(final_ret) >= min_ret else 0
+        final_ret = log_close[touch_idx] - base_price  # Final return at the touch index
+        labels[i] = np.sign(final_ret) if abs(final_ret) >= min_ret else 0
         touch_idxs[i] = touch_idx
         rets[i] = final_ret
         max_rb_ratios[i] = max_rbr
