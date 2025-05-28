@@ -94,15 +94,14 @@ def triple_barrier(
             continue
         if t1_idx >= n_samples:
             # Safety check for vertical barrier index
-            # If the vertical barrier index exceeds the number of samples, raise an error
             # This should not happen in practice, but it's a good safeguard.
-            raise ValueError(
-                f"Vertical barrier index {t1_idx} exceeds the number of samples {n_samples}."
-            )
+            print(f"BUG: Vertical barrier index {t1_idx} exceeds the number of samples {n_samples}.")
+            continue
 
         # Evaluate the path
         touch_idx = t1_idx
-        max_rbr = 0.0
+        max_urbr = 0.0
+        max_lrbr = 0.0
         base_price = log_close[t0_idx]  # Base price for calculating returns
         ret = 0.
         for j in range(t0_idx + 1, t1_idx + 1):
@@ -112,9 +111,11 @@ def triple_barrier(
 
             # progress towards barrier (skip if barrier is inf/0)
             if ret > 0.0 and np.isfinite(upper_barrier) and upper_barrier != 0.0:
-                max_rbr = max(max_rbr, ret / upper_barrier)
+                # Approaching the upper barrier
+                max_urbr = max(max_urbr, ret / upper_barrier)
             elif ret < 0.0 and np.isfinite(lower_barrier) and lower_barrier != 0.0:
-                max_rbr = max(max_rbr, ret / lower_barrier)
+                # Approaching the lower barrier
+                max_lrbr = max(max_lrbr, ret / lower_barrier)
 
             # Check if we touch the barrier
             if ret >= upper_barrier:
@@ -131,6 +132,14 @@ def triple_barrier(
             labels[i] = np.sign(ret)
         touch_idxs[i] = touch_idx
         rets[i] = ret
-        max_rb_ratios[i] = min(max_rbr, 1.) if np.isfinite(upper_barrier) and upper_barrier != 0.0 else np.nan
+
+        # Calculate the maximum return-barrier ratio based sample weight
+        if ret > 0.:
+            max_rbr = max_urbr / (1 + max_lrbr)
+            max_rbr = max_rbr if np.isfinite(upper_barrier) else np.nan
+        else:
+            max_rbr = max_lrbr / (1 + max_urbr)
+            max_rbr = max_rbr if np.isfinite(lower_barrier) else np.nan
+        max_rb_ratios[i] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
 
     return labels, event_idxs, touch_idxs, rets, max_rb_ratios
