@@ -18,7 +18,7 @@ def triple_barrier(
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
         side: Optional[NDArray[np.int8]]
-) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
+) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Implements the Triple Barrier Method (TBM) for labeling financial data based on
     Advances in Financial Machine Learning, Chapter 3.
@@ -33,12 +33,13 @@ def triple_barrier(
     :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
     :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs.
 
-    :returns: A tuple of 4 elements containing:
+    :returns: A tuple of 5 elements containing:
         - The label (-1, 1), 0 for no label; If side is provided, the meta-labels are (0, 1)
+        - The event indices in the timestamps array,
         - The first barrier touch index,
         - The return,
         - Maximum return-barrier ratio during the search describing how close the path came to a horizontal barrier.
-          This can be used later to calculate weights for labels. If barrier is hit, the ratio is 1.0, otherwise it is less than 1.0 – or np.nan if barriers are disabled)
+          This can be used to weight samples. If a barrier is hit, the ratio is 1.0, otherwise it is less than 1.0 – or np.nan if barriers are disabled)
     """
     if vertical_barrier <= 0:
         raise ValueError("The vertical barrier must be greater than zero.")
@@ -130,6 +131,6 @@ def triple_barrier(
             labels[i] = np.sign(ret)
         touch_idxs[i] = touch_idx
         rets[i] = ret
-        max_rb_ratios[i] = max_rbr if np.isfinite(upper_barrier) and upper_barrier != 0.0 else np.nan
+        max_rb_ratios[i] = min(max_rbr, 1.) if np.isfinite(upper_barrier) and upper_barrier != 0.0 else np.nan
 
-    return labels, touch_idxs, rets, max_rb_ratios
+    return labels, event_idxs, touch_idxs, rets, max_rb_ratios

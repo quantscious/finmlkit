@@ -29,7 +29,7 @@ def test_upper_barrier_hit():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.005], dtype=np.float64)    # Target for the single event
 
-    label, t_idx, ret, rbr = triple_barrier(
+    label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
@@ -53,7 +53,7 @@ def test_lower_barrier_hit():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.005], dtype=np.float64)     # Target for the single event
 
-    label, t_idx, ret, rbr = triple_barrier(
+    label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
@@ -77,7 +77,7 @@ def test_vertical_barrier_only():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.002], dtype=np.float64)      # Target for the single event (0.2%)
 
-    label, t_idx, ret, rbr = triple_barrier(
+    label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(np.inf, np.inf),      # disabled
@@ -100,7 +100,7 @@ def test_min_ret_filter():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.0005], dtype=np.float64)   # 0.05% (< min_ret)
 
-    label, t_idx, ret, rbr = triple_barrier(
+    label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
@@ -123,7 +123,7 @@ def test_meta_labeling():
     tgt  = np.array([0.004], dtype=np.float64)
     side = np.array([1], dtype=np.int8)
 
-    label, _, ret, _ = triple_barrier(
+    label, _,  _, ret, _ = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
@@ -144,7 +144,7 @@ def test_no_vertical_barrier_inf():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.025], dtype=np.float64)
 
-    label, t_idx, ret, _ = triple_barrier(
+    label, _,  t_idx, ret, _ = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),

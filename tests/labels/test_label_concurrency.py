@@ -4,7 +4,7 @@ import os
 # disable jit
 os.environ['NUMBA_DISABLE_JIT'] = "1"
 
-from finmlkit.label.weights import label_concurrency_weights
+from finmlkit.label.weights import label_average_uniqueness
 
 
 def test_label_concurrency_weights_basic():
@@ -16,7 +16,7 @@ def test_label_concurrency_weights_basic():
     lookahead_idxs = np.array([5, 7], dtype=np.int64)
 
     expected_weights = np.array([0.75, 0.625], dtype=np.float64)
-    weights = label_concurrency_weights(timestamps, event_idxs, lookahead_idxs)
+    weights = label_average_uniqueness(timestamps, event_idxs, lookahead_idxs)
     np.testing.assert_almost_equal(weights, expected_weights, decimal=5)
 
 def test_label_concurrency_weights_no_overlap():
@@ -27,7 +27,7 @@ def test_label_concurrency_weights_no_overlap():
     event_idxs = np.array([1, 5], dtype=np.int64)
     lookahead_idxs = np.array([3, 7], dtype=np.int64)
     expected_weights = np.array([1.0, 1.0], dtype=np.float64)
-    weights = label_concurrency_weights(timestamps, event_idxs, lookahead_idxs)
+    weights = label_average_uniqueness(timestamps, event_idxs, lookahead_idxs)
     np.testing.assert_almost_equal(weights, expected_weights, decimal=5)
 
 def test_label_concurrency_weights_full_overlap():
@@ -39,7 +39,7 @@ def test_label_concurrency_weights_full_overlap():
     lookahead_idxs = np.array([5, 5], dtype=np.int64)
 
     expected_weights = np.array([0.5, 0.5], dtype=np.float64)
-    weights = label_concurrency_weights(timestamps, event_idxs, lookahead_idxs)
+    weights = label_average_uniqueness(timestamps, event_idxs, lookahead_idxs)
     np.testing.assert_almost_equal(weights, expected_weights, decimal=5)
 
 def test_label_concurrency_weights_edge_cases():
@@ -51,7 +51,7 @@ def test_label_concurrency_weights_edge_cases():
     lookahead_idxs = np.array([2], dtype=np.int64)
 
     expected_weights = np.array([1.0], dtype=np.float64)
-    weights = label_concurrency_weights(timestamps, event_idxs, lookahead_idxs)
+    weights = label_average_uniqueness(timestamps, event_idxs, lookahead_idxs)
     np.testing.assert_almost_equal(weights, expected_weights, decimal=5)
 
 def test_label_concurrency_weights_invalid_input():
@@ -60,4 +60,4 @@ def test_label_concurrency_weights_invalid_input():
     lookahead_idxs = np.array([5], dtype=np.int64)  # Mismatched length
 
     with pytest.raises(ValueError):
-        label_concurrency_weights(timestamps, event_idxs, lookahead_idxs)
+        label_average_uniqueness(timestamps, event_idxs, lookahead_idxs)
