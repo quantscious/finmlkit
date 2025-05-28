@@ -109,7 +109,7 @@ def triple_barrier(
             if is_meta:
                 ret *= side[i]  # Adjust return based on the side if meta-labeling
 
-            # progress towards barrier (skip if barrier is inf/0)
+            # progress towards barrier (skip if barrier is inf o r0)
             if ret > 0.0 and np.isfinite(upper_barrier) and upper_barrier != 0.0:
                 # Approaching the upper barrier
                 max_urbr = max(max_urbr, ret / upper_barrier)

@@ -5,11 +5,11 @@ from typing import Tuple
 
 
 @njit(nogil=True, parallel=True)
-def label_average_uniqueness(
+def average_uniqueness(
         timestamps: NDArray[np.int64],
         event_idxs: NDArray[np.int64],
         touch_idxs: NDArray[np.int64]
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.int16]]:
     """
     Calculate the uniqueness weights for the overlapping label.
     Based on Advances in Financial Machine Learning, Chapter 4. page 61.
@@ -17,7 +17,9 @@ def label_average_uniqueness(
     :param timestamps: The timestamps in nanoseconds for the close prices series.
     :param event_idxs: The indices of the labeled events, e.g. acquired from the cusum filter. (subset of timestamps)
     :param touch_idxs: The touch indices for the given events.
-    :returns: The uniqueness weights [0, 1] for the label.
+    :returns: A tuple with two arrays
+        - The uniqueness weights [0, 1] for the label.
+        - The concurrency array, which indicates how many labels overlap at each timestamp.
     :raises ValueError: If timestamps and touch indices are of different lengths.
     """
     if len(event_idxs) != len(touch_idxs):
@@ -26,7 +28,7 @@ def label_average_uniqueness(
     n = len(timestamps)
     n_events = len(event_idxs)
 
-    concurrency = np.zeros(n, dtype=np.int32)
+    concurrency = np.zeros(n, dtype=np.int16)
     weights = np.zeros(n_events, dtype=np.float64)
 
     # 1.) Calculate the concurrency for each timestamp
@@ -44,4 +46,94 @@ def label_average_uniqueness(
         # The weights are calculated as per the arithmetic mean of the inverse concurrency over the label’s duration.
         weights[i] = np.mean(1.0 / concurrency_slice)
 
+    return weights, concurrency
+
+
+@njit(nogil=True, parallel=True)
+def return_attribution(event_idxs: NDArray[np.int64],
+                       touch_idxs: NDArray[np.int64],
+                       close: NDArray[np.float64],
+                       concurrency: NDArray[np.int16]) -> NDArray[np.float64]:
+    """
+    Assign more weights to samples with higher return attribution.
+    :param event_idxs: Event indices where the label starts.
+    :param touch_idxs: Touch indices where the label ends.
+    :param close: Close price array.
+    :param concurrency: Concurrency array indicating how many labels overlap at each timestamp. From `label_average_uniqueness` function.
+    :return: NDArray[np.float64]
+        An array of return attribution weights for each event.
+    """
+    n_events = len(event_idxs)
+    n = len(close)
+    weights = np.zeros(n_events, dtype=np.float64)
+
+    # Compute log returns for the close prices
+    log_rets = np.full(n, np.nan, dtype=np.float64)
+    for i in range(1, n):
+        if close[i - 1] != 0.0:
+            log_rets[i] = np.log(close[i] / close[i - 1])
+        else:
+            log_rets[i] = np.nan
+
+    # Calculate the return attribution weights for each event
+    for i in prange(n_events):
+        start_idx = event_idxs[i]
+        end_idx = touch_idxs[i]
+
+        weight = 0.0
+        for j in range(start_idx, end_idx + 1):
+            if concurrency[j] > 0 and not np.isnan(log_rets[j]):
+                weight += log_rets[j] / concurrency[j]
+
+        weights[i] = abs(weight)
+
+    # Normalize the weight to sum up to n_events
+    sum_weights = np.sum(weights)
+    weights = weights * n_events / sum_weights if sum_weights != 0 else 1.0
+
     return weights
+
+
+@njit(nogil=True)
+def class_balance_weights(
+        labels: NDArray[np.int8],
+        base_w: NDArray[np.float64]
+) -> Tuple[NDArray[np.int8], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Run this function after all other sample weights have been calculated and combined into `base_w`.
+    Calculate the class balance weights for the given label using the base sample weights.
+
+    :param labels: The label (e.g., -1, 0, 1) for the given events.
+    :param base_w: Base weights for the given label (e.g., uniqueness weights or vertical barrier weights).
+        Number of class elements will be calculated as a weighted sum.
+    :returns: A tuple containing:
+        - The identified classes.
+        - Corresponding class weights.
+        - Number of class elements per label.
+        - Final weights array per sample.
+    """
+
+    n_samples = len(labels)
+    unique_labels = np.unique(labels)
+    n_classes = len(unique_labels)
+    n_class_elements = np.zeros(n_classes, dtype=np.float64)
+    class_weights = np.zeros(n_classes, dtype=np.float64)
+    final_weights = np.zeros(n_samples, dtype=np.float64)
+
+    # Cumulate weighted sum for each class
+    for i in range(n_samples):
+        label_idx = np.searchsorted(unique_labels, labels[i])
+        n_class_elements[label_idx] += base_w[i]
+
+    total_weights = np.sum(n_class_elements)
+
+    # Calculate the class balance weights
+    for c in range(n_classes):
+        class_weights[c] = total_weights / (n_classes * n_class_elements[c]) if n_class_elements[c] > 0. else 0.0
+
+    # Calculate the final weights
+    for i in range(n_samples):
+        label_idx = np.searchsorted(unique_labels, labels[i])
+        final_weights[i] = base_w[i] * class_weights[label_idx]
+
+    return unique_labels, class_weights, n_class_elements, final_weights
