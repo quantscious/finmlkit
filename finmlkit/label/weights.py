@@ -110,7 +110,7 @@ def time_decay(
 
     :param avg_uniqueness: The average uniqueness weights for the label from `average_uniqueness` function.
     :param last_weight: The weight assigned to the last sample.
-    :return: An array of time-decayed weights for each event.
+    :return: An array of time-decayed weights [0, 1] for each event.
     :raises ValueError("The sum of all average uniqueness weights must be greater than 0.")
     :raises ValueError: If `last_weight` is not in the range [-1, 1].
     """
@@ -147,36 +147,42 @@ def class_balance_weights(
     Calculate the class balance weights for the given label using the base sample weights.
 
     :param labels: The label (e.g., -1, 0, 1) for the given events.
-    :param base_w: Base weights for the given label (e.g., uniqueness weights or vertical barrier weights).
-        Number of class elements will be calculated as a weighted sum.
+    :param base_w: Base weights for the given label (e.g., avg_uniqueness weights, vertical barrier weights, return attribution, time-decay combined).
+           Number of class elements will be calculated as a weighted sum.
     :returns: A tuple containing:
         - The identified classes.
         - Corresponding class weights.
-        - Number of class elements per label.
-        - Final weights array per sample.
+        - Number of class elements per label calculated as a sum of sample weights.
+        - Final weights array per sample: class weights multiplied by base weights.
     """
 
     n_samples = len(labels)
     unique_labels = np.unique(labels)
     n_classes = len(unique_labels)
-    n_class_elements = np.zeros(n_classes, dtype=np.float64)
+    sum_w_class = np.zeros(n_classes, dtype=np.float64)
     class_weights = np.zeros(n_classes, dtype=np.float64)
     final_weights = np.zeros(n_samples, dtype=np.float64)
+
+    # Ensure that the mean of base_w is 1
+    mean_base_w = np.mean(base_w)
+    if mean_base_w <= 0:
+        raise ValueError("Base weights must have a positive mean to calculate class balance weights.")
+    base_w = base_w / mean_base_w
 
     # Cumulate weighted sum for each class
     for i in range(n_samples):
         label_idx = np.searchsorted(unique_labels, labels[i])
-        n_class_elements[label_idx] += base_w[i]
+        sum_w_class[label_idx] += base_w[i]
 
-    total_weights = np.sum(n_class_elements)
+    total_weights = np.sum(sum_w_class)
 
     # Calculate the class balance weights
     for c in range(n_classes):
-        class_weights[c] = total_weights / (n_classes * n_class_elements[c]) if n_class_elements[c] > 0. else 0.0
+        class_weights[c] = total_weights / (n_classes * sum_w_class[c]) if sum_w_class[c] > 0. else 0.0
 
     # Calculate the final weights
     for i in range(n_samples):
         label_idx = np.searchsorted(unique_labels, labels[i])
         final_weights[i] = base_w[i] * class_weights[label_idx]
 
-    return unique_labels, class_weights, n_class_elements, final_weights
+    return unique_labels, class_weights, sum_w_class, final_weights
