@@ -56,12 +56,15 @@ def return_attribution(event_idxs: NDArray[np.int64],
                        concurrency: NDArray[np.int16]) -> NDArray[np.float64]:
     """
     Assign more weights to samples with higher return attribution.
+    Advances in Financial Machine Learning, Chapter 4, page 68.
+
     :param event_idxs: Event indices where the label starts.
     :param touch_idxs: Touch indices where the label ends.
     :param close: Close price array.
     :param concurrency: Concurrency array indicating how many labels overlap at each timestamp. From `label_average_uniqueness` function.
     :return: NDArray[np.float64]
         An array of return attribution weights for each event.
+
     """
     n_events = len(event_idxs)
     n = len(close)
@@ -92,6 +95,46 @@ def return_attribution(event_idxs: NDArray[np.int64],
     weights = weights * n_events / sum_weights if sum_weights != 0 else 1.0
 
     return weights
+
+
+@njit(nogil=True)
+def time_decay(
+        avg_uniqueness: NDArray[np.float64],
+        last_weight: float
+) -> NDArray[np.float64]:
+    """
+    Apply linear time decay based on the average uniqueness weights.
+    Newest observation assigned with 1.0 and oldest with `last_weight`.
+    If `last_weight` is negative, the oldest portion (n_events* last_weight) is get erased (assigned with 0.0.)
+    Advances in Financial Machine Learning, Chapter 4, page 70.
+
+    :param avg_uniqueness: The average uniqueness weights for the label from `average_uniqueness` function.
+    :param last_weight: The weight assigned to the last sample.
+    :return: An array of time-decayed weights for each event.
+    :raises ValueError("The sum of all average uniqueness weights must be greater than 0.")
+    :raises ValueError: If `last_weight` is not in the range [-1, 1].
+    """
+    if not -1.0 <= last_weight <= 1.0:
+        raise ValueError("last_weight must lie in [-1, 1]")
+
+    cum_avg_uniqueness = np.cumsum(avg_uniqueness)
+    if cum_avg_uniqueness[-1] == 0.0:
+        raise ValueError("The sum of all average uniqueness weights must be grater than 0.")
+
+    if last_weight >= 0.0:
+        slope = (1. - last_weight) / cum_avg_uniqueness[-1]
+    else:
+        slope = 1. / ((last_weight + 1.) * cum_avg_uniqueness[-1])
+
+    const = 1. - slope * cum_avg_uniqueness[-1]
+    weights = const + slope * cum_avg_uniqueness
+
+    # clip negative part caused by truncation to exactly zero
+    if last_weight < 0.0:
+        weights = np.maximum(weights, 0.0)
+
+    return weights
+
 
 
 @njit(nogil=True)
