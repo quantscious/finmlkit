@@ -93,14 +93,15 @@ def test_vertical_barrier_only():
 
 def test_min_ret_filter():
     """
-    Targets below min_ret must be skipped (label 0, idx -1, NaNs).
+    Targets below min_ret are now filtered out completely from the returned arrays.
     """
-    ts   = _make_timestamps(3)
-    px   = np.array([100, 101, 102], dtype=np.float64)
-    event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
-    tgt  = np.array([0.0005], dtype=np.float64)   # 0.05% (< min_ret)
+    ts   = _make_timestamps(5)
+    px   = np.array([100, 101, 102, 103, 104], dtype=np.float64)
+    # Create two events - one valid, one below min_ret threshold
+    event_ts = np.array([ts[0], ts[1]], dtype=np.int64)
+    tgt  = np.array([0.0005, 0.002], dtype=np.float64)   # First target 0.05% (< min_ret)
 
-    label, _, t_idx, ret, rbr = triple_barrier(
+    label, event_idxs, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
         min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
@@ -108,9 +109,18 @@ def test_min_ret_filter():
         side=None,
     )
 
-    assert label[0] == 0
-    assert t_idx[0] == -1
-    assert np.isnan(ret[0]) and np.isnan(rbr[0])
+    # Should only return the second event (where target >= min_ret)
+    assert len(label) == 1
+    assert len(event_idxs) == 1
+    assert len(t_idx) == 1
+    assert len(ret) == 1
+    assert len(rbr) == 1
+
+    # The returned values should be from the valid event
+    assert event_idxs[0] == 1  # Index of the second event
+    assert label[0] != 0       # Should have a real label (-1 or 1)
+    assert t_idx[0] != -1      # Should have a valid touch index
+    assert not np.isnan(ret[0]) and not np.isnan(rbr[0])  # Should not be NaN
 
 
 def test_meta_labeling():
