@@ -92,7 +92,9 @@ def return_attribution(event_idxs: NDArray[np.int64],
 
     # Normalize the weight to sum up to n_events
     sum_weights = np.sum(weights)
-    weights = weights * n_events / sum_weights if sum_weights != 0 else 1.0
+    if sum_weights <= 0.:
+        raise ValueError("Sum of weights is zero or negative, cannot normalize.")
+    weights = weights * n_events / sum_weights
 
     return weights
 
