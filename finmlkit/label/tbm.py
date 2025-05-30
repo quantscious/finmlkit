@@ -14,10 +14,10 @@ def triple_barrier(
         close: NDArray[np.float64],
         event_ts: NDArray[np.int64],
         targets: NDArray[np.float64],
-        min_ret: float,
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
-        side: Optional[NDArray[np.int8]]
+        side: Optional[NDArray[np.int8]],
+        min_ret: float = 0.0
 ) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Implements the Triple Barrier Method (TBM) for labeling financial data based on
@@ -27,11 +27,11 @@ def triple_barrier(
     :param close: The close prices of the asset.
     :param event_ts: The nanosecond timestamps of the events, e.g. acquired from the cusum filter. (subset of timestamps)
     :param targets: Log-return targets for the events, e.g. acquired from a moving volatility estimator. Length must matchevent_idxs.
-    :param min_ret: The minimum target return required for running the triple barrier search.
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
     :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
     :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs.
+    :param min_ret: The minimum target value for meta-labeling. If the return is below this value, the label will be 0, otherwise 1.
 
     :returns: A tuple of 5 elements containing:
         - The label (-1, 1) for side prediction (barriers should be symmetric); If side is provided, the meta-labels are (0, 1)
@@ -63,7 +63,7 @@ def triple_barrier(
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
     log_close = np.log(close)  # Precompute log of close prices for efficiency
 
-    labels = np.zeros(n_events, dtype=np.int8)                # The label (-1, 0, 1) or (0, 1)
+    labels = np.zeros(n_events, dtype=np.int8)                # The label (-1, 1) or (0, 1)
     touch_idxs   = np.empty(n_events, np.int64)               # Index of the first barrier touch
     touch_idxs[:] = -1
     rets = np.full(n_events, np.nan, dtype=np.float64)             # The return corresponding to the given label
@@ -72,29 +72,23 @@ def triple_barrier(
     # Find the event indices in the timestamps array
     event_idxs = np.searchsorted(timestamps, event_ts, side='left')
 
-    is_valid_idx = np.zeros(n_events, dtype=np.bool_)
     # Loop over the events parallelized
     for i in prange(n_events):
         t0_idx = event_idxs[i]
         tgt = targets[t0_idx]
 
         # Early skip if `tgt` is below `min_ret`
-        if tgt < min_ret:
-            # labels[i] = 0; touch_idxs[i] = -1; rets[i] = np.nan; max_rb_ratios[i] = np.nan
-            # In a postprocessing step these should be removed.
-            continue
-        else:
-            # If we reached this point, the event is valid
-            is_valid_idx[i] = True  # This will be used later to drop invalid events
+        # if tgt < min_ret:
+        #     continue
+        # -> This should be done in a preprocessing step before calling this function.
+
 
         # Upper and lower barriers in log-return space
         upper_barrier = tgt * top_mult
         lower_barrier = -tgt * bottom_mult
-
         # Pre-compute barrier conditions outside the loop
         upper_valid = np.isfinite(upper_barrier) and upper_barrier != 0.0
         lower_valid = np.isfinite(lower_barrier) and lower_barrier != 0.0
-        side_multiplier = side[i] if is_meta else 1.0
 
         # Find vertical barrier index
         t0 = timestamps[t0_idx]         # Start timestamp
@@ -110,6 +104,7 @@ def triple_barrier(
             continue
 
         # ---------- Evaluate the path -----------
+        side_multiplier = side[i] if is_meta else 1.0
         touch_idx = t1_idx
         max_urbr = 0.0
         max_lrbr = 0.0
@@ -135,48 +130,22 @@ def triple_barrier(
                 break
 
         # ---------- Assign the label and other values ------------
+        touch_idxs[i] = touch_idx
+        rets[i] = ret
+
+        # Assign the labels
         if is_meta:
             labels[i] = 1 if ret >= min_ret else 0
         else:
             labels[i] = np.sign(ret)
-        touch_idxs[i] = touch_idx
-        rets[i] = ret
 
         # Calculate the maximum return-barrier ratio based sample weight
         if ret > 0.:
             max_rbr = max_urbr / (1 + max_lrbr)
-            max_rbr = max_rbr if np.isfinite(upper_barrier) else np.nan
+            max_rbr = max_rbr if upper_valid else np.nan
         else:
             max_rbr = max_lrbr / (1 + max_urbr)
-            max_rbr = max_rbr if np.isfinite(lower_barrier) else np.nan
+            max_rbr = max_rbr if lower_valid else np.nan
         max_rb_ratios[i] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
-
-
-    # -------- Postprocessing: Remove invalid events ----------
-    n_valid_events = np.sum(is_valid_idx)  # Count valid events
-    if n_valid_events < n_events:
-        # Create new arrays with the correct size
-        valid_labels = np.empty(n_valid_events, dtype=np.int8)
-        valid_event_idxs = np.empty(n_valid_events, dtype=np.int64)
-        valid_touch_idxs = np.empty(n_valid_events, dtype=np.int64)
-        valid_rets = np.empty(n_valid_events, dtype=np.float64)
-        valid_max_rb_ratios = np.empty(n_valid_events, dtype=np.float64)
-
-        valid_idx = 0
-        for i in range(n_events):
-            if is_valid_idx[i]:
-                valid_labels[valid_idx] = labels[i]
-                valid_event_idxs[valid_idx] = event_idxs[i]
-                valid_touch_idxs[valid_idx] = touch_idxs[i]
-                valid_rets[valid_idx] = rets[i]
-                valid_max_rb_ratios[valid_idx] = max_rb_ratios[i]
-                valid_idx += 1
-
-        # Return the valid arrays
-        labels = valid_labels
-        event_idxs = valid_event_idxs
-        touch_idxs = valid_touch_idxs
-        rets = valid_rets
-        max_rb_ratios = valid_max_rb_ratios
 
     return labels, event_idxs, touch_idxs, rets, max_rb_ratios

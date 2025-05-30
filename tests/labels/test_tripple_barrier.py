@@ -31,10 +31,10 @@ def test_upper_barrier_hit():
 
     label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
-        min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=3,                        # sec
         side=None,
+        min_ret=0.0,                               # Default value, unused in non-meta labeling
     )
 
     expected_ret = np.log(101 / 100.0)
@@ -55,10 +55,10 @@ def test_lower_barrier_hit():
 
     label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
-        min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=3,
         side=None,
+        min_ret=0.0,                               # Default value, unused in non-meta labeling
     )
 
     expected_ret = np.log(99 / 100.0)
@@ -79,10 +79,10 @@ def test_vertical_barrier_only():
 
     label, _, t_idx, ret, rbr = triple_barrier(
         ts, px, event_ts, tgt,
-        min_ret=0.001,
         horizontal_barriers=(np.inf, np.inf),      # disabled
         vertical_barrier=3,
         side=None,
+        min_ret=0.0,                               # Default value, unused in non-meta labeling
     )
 
     assert t_idx[0] == 3                           # 3 s timeout
@@ -91,36 +91,42 @@ def test_vertical_barrier_only():
     assert ret[0] > 0
 
 
-def test_min_ret_filter():
+def test_min_ret_in_meta_labeling():
     """
-    Targets below min_ret are now filtered out completely from the returned arrays.
+    Test min_ret parameter in meta-labeling mode (with side information).
+    The min_ret parameter only affects meta-labeling output.
     """
     ts   = _make_timestamps(5)
-    px   = np.array([100, 101, 102, 103, 104], dtype=np.float64)
-    # Create two events - one valid, one below min_ret threshold
-    event_ts = np.array([ts[0], ts[1]], dtype=np.int64)
-    tgt  = np.array([0.0005, 0.002], dtype=np.float64)   # First target 0.05% (< min_ret)
+    px   = np.array([100, 100.2, 100.4, 100.6, 100.8], dtype=np.float64)
+    event_ts = np.array([ts[0]], dtype=np.int64)
+    tgt  = np.array([0.01], dtype=np.float64)  # 1% target
+    side = np.array([1], dtype=np.int8)  # Buy side
 
-    label, event_idxs, t_idx, ret, rbr = triple_barrier(
+    # With small min_ret, the return should qualify as a successful trade (label=1)
+    label_small, _, _, ret_small, _ = triple_barrier(
         ts, px, event_ts, tgt,
-        min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
-        vertical_barrier=2,
-        side=None,
+        vertical_barrier=4,
+        side=side,
+        min_ret=0.001,  # Small threshold - 0.1%
     )
 
-    # Should only return the second event (where target >= min_ret)
-    assert len(label) == 1
-    assert len(event_idxs) == 1
-    assert len(t_idx) == 1
-    assert len(ret) == 1
-    assert len(rbr) == 1
+    # With large min_ret, the return should be considered unsuccessful (label=0)
+    label_large, _, _, ret_large, _ = triple_barrier(
+        ts, px, event_ts, tgt,
+        horizontal_barriers=(1.0, 1.0),
+        vertical_barrier=4,
+        side=side,
+        min_ret=0.01,  # Large threshold - 1% (higher than the actual return)
+    )
 
-    # The returned values should be from the valid event
-    assert event_idxs[0] == 1  # Index of the second event
-    assert label[0] != 0       # Should have a real label (-1 or 1)
-    assert t_idx[0] != -1      # Should have a valid touch index
-    assert not np.isnan(ret[0]) and not np.isnan(rbr[0])  # Should not be NaN
+    # The return should be positive but less than 1%
+    assert ret_small[0] > 0
+    assert ret_small[0] == ret_large[0]  # Same return in both cases
+
+    # Different labels due to different min_ret thresholds
+    assert label_small[0] == 1  # Return > small threshold
+    assert label_large[0] == 0  # Return < large threshold
 
 
 def test_meta_labeling():
@@ -154,9 +160,8 @@ def test_no_vertical_barrier_inf():
     event_ts = np.array([ts[0]], dtype=np.int64)  # Using timestamp instead of index
     tgt  = np.array([0.025], dtype=np.float64)
 
-    label, _,  t_idx, ret, _ = triple_barrier(
+    label, _, t_idx, ret, _ = triple_barrier(
         ts, px, event_ts, tgt,
-        min_ret=0.001,
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=np.inf,
         side=None,
@@ -179,10 +184,10 @@ def test_invalid_lengths():
     with pytest.raises(ValueError, match="lengths.*must match"):
         triple_barrier(
             ts, px, event_ts, tgt,
-            min_ret=0.001,
             horizontal_barriers=(1.0, 1.0),
             vertical_barrier=2,
             side=None,
+            min_ret=0.0,                          # Default value, unused in non-meta labeling
         )
 
 

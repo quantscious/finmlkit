@@ -111,7 +111,7 @@ def time_decay(
     Advances in Financial Machine Learning, Chapter 4, page 70.
 
     :param avg_uniqueness: The average uniqueness weights for the label from `average_uniqueness` function.
-    :param last_weight: The weight assigned to the last sample.
+    :param last_weight: The weight assigned to the last sample. If 1.0, then there is no decay.
     :return: An array of time-decayed weights [0, 1] for each event.
     :raises ValueError("The sum of all average uniqueness weights must be greater than 0.")
     :raises ValueError: If `last_weight` is not in the range [-1, 1].
@@ -164,12 +164,6 @@ def class_balance_weights(
     sum_w_class = np.zeros(n_classes, dtype=np.float64)
     class_weights = np.zeros(n_classes, dtype=np.float64)
     final_weights = np.zeros(n_samples, dtype=np.float64)
-
-    # Ensure that the mean of base_w is 1
-    mean_base_w = np.mean(base_w)
-    if mean_base_w <= 0:
-        raise ValueError("Base weights must have a positive mean to calculate class balance weights.")
-    base_w = base_w / mean_base_w
 
     # Cumulate weighted sum for each class
     for i in range(n_samples):
