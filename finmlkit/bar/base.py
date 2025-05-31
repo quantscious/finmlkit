@@ -7,7 +7,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from numba import prange
-from typing import Tuple
+from typing import Tuple, Optional
 import pandas as pd
 from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
@@ -57,6 +57,18 @@ class BarBuilderBase(ABC):
         if self._open_indices is None:
             logger.info("Calculating bar open tick indices and timestamps...")
             self._open_ts, self._open_indices = self._generate_bar_opens()
+
+    @property
+    def close_indices(self) -> Optional[NDArray[np.int64]]:
+        """
+        Return the bar close indices in the raw trades data.
+        :return:
+        """
+        if self._open_indices is None:
+            print("Bar open indices are not calculated yet. Call _calc_bar_open_values() first.")
+            return None
+        return self._open_indices[1:]
+
 
     def build_ohlcv(self) -> pd.DataFrame:
         """

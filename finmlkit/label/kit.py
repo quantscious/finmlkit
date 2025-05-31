@@ -2,15 +2,17 @@
 from .tbm import triple_barrier
 from .weights import average_uniqueness, return_attribution, time_decay, class_balance_weights
 from finmlkit.utils.log import get_logger
+from finmlkit.bar.data_model import TradesData
 import pandas as pd
 import numpy as np
+from numpy.typing import NDArray
 
 logger = get_logger(__name__)
 
 
 class TBMLabel:
     def __init__(self,
-                 features: pd.DataFrame,
+                 perfo: pd.DataFrame,
                  target_ret_col: str,
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
@@ -19,8 +21,7 @@ class TBMLabel:
         """
         Triple barrier labeling method
 
-        :param features: The events dataframe (subset of `base_bars`)
-            containing the event timestamps (as DatetimeIndex) and features
+        :param features: The events dataframe containing the event indices ("event_idx" column) and features
         :param target_ret_col: The name of the target return column in the `features` dataframe.
             Typically, a volatility estimator output.
             This will be used to determine the horizontal barriers.
@@ -49,6 +50,8 @@ class TBMLabel:
                 raise ValueError("For meta labeling, 'side' column must be present in features DataFrame.")
             if not pd.api.types.is_integer_dtype(features['side']):
                 raise ValueError("The 'side' column must be of integer type (e.g., -1, 0, 1).")
+        if "event_idx" not in features.columns:
+            raise ValueError("The 'event_idx' column must be present in features DataFrame.")
 
         self._orig_features = self._preprocess_features(features, target_ret_col, min_ret)
         self._features = self._orig_features
@@ -176,50 +179,33 @@ class TBMLabel:
             raise ValueError("Log returns have not been computed yet. Call `compute_labels()` first.")
         return self._out['returns']
 
-    def _check_base_series(self, close_series: pd.Series) -> bool:
-        """
-        Checks whether the first event is within the base series.
-        :param series: base close series.
-        :return: bool
-        """
-        if not isinstance(close_series, pd.Series):
-            raise ValueError("close_series must be a pandas Series.")
-        if not isinstance(close_series.index, pd.DatetimeIndex):
-            raise ValueError("Base bars index must be a DatetimeIndex.")
-
-        if self.first_event_timestamp < close_series.index[0]:
-            logger.warning(f"First event timestamp {self.first_event_timestamp} "
-                           f"is before the first base series timestamp {close_series.index[0]}. "
-                           "This may lead to incorrect label computation.")
-            return False
-
-        return True
-
-    def _drop_trailing_events(self, close_series: pd.Series) -> pd.DataFrame:
+    def _drop_trailing_events(self, trades: TradesData) -> pd.DataFrame:
         """
         We should drop the trailing events which cannot be evaluated on the full temporal window.
-        :param close_series: Base close series on which the events will be evaluated.
+        :param trades: Raw trades data the events will be evaluated.
         :return: Trimmed features DataFrame with events that are within the base series.
         """
-        return self._orig_features[self.features.index + pd.Timedelta(self.vertical_barrier) <= close_series.index[-1]]
+        last_timestamp = pd.Timestamp(trades.data.timestamp.values[-1], unit='ns')
+        return self._orig_features[self.features.index + pd.Timedelta(self.vertical_barrier, unit="s") <= last_timestamp]
 
 
-    def compute_labels(self, close_series: pd.Series) -> pd.Series:
+    def compute_labels(self, trades: TradesData) -> pd.Series:
         """
         Compute the labels for the events using the triple barrier method.
         
-        :param close_series: The base price series on which the events will be evaluated
-            (its frequency should be greater than the features/event dataframe)
+        :param trades: The raw trades data the events will be evaluated
+        :param event_idxs: The event indices in the trades data.
         :return: A pandas Series containing the labels.
         """
-        self._check_base_series(close_series)
-        self._features = self._drop_trailing_events(close_series)
+        if not isinstance(trades, TradesData):
+            raise ValueError("Trades must be an instance of TradesData.")
+        self._features = self._drop_trailing_events(trades)
 
         # Call the triple_barrier function
-        labels, event_idxs, touch_idxs, rets, max_rb_ratios = triple_barrier(
-            timestamps=close_series.index.values.astype(np.int64),
-            close=close_series.values,
-            event_ts=self.features.index.values.astype(np.int64),
+        labels, touch_idxs, rets, max_rb_ratios = triple_barrier(
+            timestamps=trades.data.timestamp.values,
+            close=trades.data.price.values,
+            event_idxs=self.features.event_idx.values,
             targets=self.target_returns.values,
             horizontal_barriers=self.horizontal_barriers,
             vertical_barrier=self.vertical_barrier,
@@ -230,7 +216,7 @@ class TBMLabel:
         # Construct the output DataFrame
         self._out = pd.DataFrame({
             'labels': labels,
-            'event_idxs': event_idxs,
+            'event_idxs': self.features.event_idx.values,
             'touch_idxs': touch_idxs,
             'returns': rets,
             'vertical_touch_weights': max_rb_ratios
@@ -238,7 +224,7 @@ class TBMLabel:
 
         return self.labels
 
-    def compute_weights(self, close_series: pd.Series,
+    def compute_weights(self, trades: TradesData,
                         apply_return_attribution: bool = True,
                         time_decay_last_weight: float = 0.5,
                         apply_vertical_touch_weights: bool = True,
@@ -248,7 +234,7 @@ class TBMLabel:
         Computes the sample weights for the triple barrier labels.
         This method combines average uniqueness (default), return attribution, time decay, and class balance weights.
 
-        :param close_series: The base price series on which the events are evaluated
+        :param trades: The raw trades on which the events are evaluated
         :param apply_return_attribution: If True, apply return attribution weights else only average uniqueness weights will be used.
         :param time_decay_last_weight: The weight assigned to the last sample in time decay. Should be in the range [0, 1].
                If 1.0, there is no decay, If negative the oldest portion (n_events * last_weight) will be erased
@@ -256,14 +242,13 @@ class TBMLabel:
         :param apply_class_balance: If True, apply class balance weights to the labels.
         :return:  A pandas Series containing the combined sample weights for the events.
         """
-        self._check_base_series(close_series)
 
         if self._out is None:
             raise ValueError("Labels have not been computed yet. Call `compute_labels()` first.")
 
         # Compute average uniqueness weights
         avg_u, concurrency = average_uniqueness(
-            timestamps=close_series.index.values.astype(np.int64),
+            timestamps=trades.data.timestamp.values,
             event_idxs=self._out.event_idxs.values,
             touch_idxs=self._out.touch_idxs.values
         )
@@ -274,7 +259,7 @@ class TBMLabel:
             info_w = return_attribution(
                 event_idxs=self._out.event_idxs.values,
                 touch_idxs=self._out.touch_idxs.values,
-                close=close_series.values,
+                close=trades.data.price.values,
                 concurrency=concurrency
             )
         else:

@@ -8,7 +8,7 @@ from numba.typed import List as NumbaList
 
 from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
-from .utils import comp_trade_side_vector
+from .utils import comp_trade_side_vector, fast_sort_trades, merge_trades
 
 logger = get_logger(__name__)
 
@@ -59,8 +59,9 @@ class TradesData:
         self.data = trades
 
         # Add datetime index
-        self.data.index = pd.to_datetime(self.data['timestamp'], unit='ns')
-        self.data.index.name = 'datetime'
+        # self.data.index = pd.to_datetime(self.data['timestamp'], unit='ns')
+        # self.data.index.name = 'datetime'
+        # Do not add index, it is slow for large datasets and we can use timestamp column directly.
 
         logger.info("TradesData prepared successfully.")
 
@@ -99,16 +100,47 @@ class TradesData:
         if missing_columns:
             raise ValueError(f"Missing columns in trades data: {', '.join(missing_columns)}")
 
+        logger.info("Input trades data OK. Required columns are present.")
+
     @staticmethod
     def _sort_trades(trades: pd.DataFrame) -> None:
         """
         Sort trades by timestamp to ensure correct order for processing.
+        For large datasets, uses a fast Numba-based sorting algorithm.
 
         :param trades: DataFrame to sort.
         """
-        logger.info('Input trades data OK. Sorting by timestamp...')
-        trades.sort_values(by='timestamp', inplace=True)
+        if trades.timestamp.is_monotonic_increasing:
+            logger.info('Trades data is already in ascending order. Skipping sort.')
+            return
+
+        logger.info('Sorting by timestamp...')
+
+        # Extract numpy arrays for sorting
+        timestamps = trades['timestamp'].values.astype(np.int64)
+        prices = trades['price'].values.astype(np.float64)
+        amounts = trades['amount'].values.astype(np.float32)
+
+        # Check if side info is available
+        is_buyer_maker = None
+        if 'is_buyer_maker' in trades.columns:
+            is_buyer_maker = trades['is_buyer_maker'].values.astype(np.bool_)
+
+        # Sort using numba
+        sorted_timestamps, sorted_prices, sorted_amounts, sorted_is_buyer_maker = fast_sort_trades(
+            timestamps, prices, amounts, is_buyer_maker
+        )
+
+        # Update the DataFrame with sorted values
+        trades['timestamp'] = sorted_timestamps
+        trades['price'] = sorted_prices
+        trades['amount'] = sorted_amounts
+        if is_buyer_maker is not None:
+            trades['is_buyer_maker'] = sorted_is_buyer_maker
+
+        # Reset index
         trades.reset_index(drop=True, inplace=True)
+
 
     def _merge_trades(self, trades: pd.DataFrame) -> pd.DataFrame:
         """
@@ -117,14 +149,27 @@ class TradesData:
         :param trades: DataFrame with trades to merge.
         :return: Merged DataFrame.
         """
-        # TODO: Implement a more efficient numba merging strategy if needed
         logger.info('Merging split trades (same timestamps) on same price level...')
+        # if self.is_side:
+        #     trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'],
+        #                                    as_index=False).agg({'amount': 'sum'})
+        # else:
+        #     trades = trades.groupby(['timestamp', 'price'],
+        #                                    as_index=False).agg({'amount': 'sum'})
+
+        ts, px, am, side = merge_trades(
+            trades['timestamp'].values.astype(np.int64),
+            trades['price'].values.astype(np.float64),
+            trades['amount'].values.astype(np.float32),
+            trades['is_buyer_maker'].values.astype(np.bool_) if self.is_side else None
+        )
+        trades = pd.DataFrame({
+            'timestamp': ts,
+            'price': px,
+            'amount': am
+        })
         if self.is_side:
-            trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'],
-                                           as_index=False).agg({'amount': 'sum'})
-        else:
-            trades = trades.groupby(['timestamp', 'price'],
-                                           as_index=False).agg({'amount': 'sum'})
+            trades['side'] = side
 
         return trades
 
@@ -144,9 +189,17 @@ class TradesData:
         if timestamp_unit not in valid_units:
             raise ValueError(f"Invalid timestamp format! Must be one of: {', '.join(valid_units)}")
 
+        nanosec_multiplier_dict = {
+            's': 1_000_000_000,
+            'ms': 1_000_000,
+            'us': 1_000,
+            'ns': 1
+        }
+
         # Convert timestamp to nanoseconds
         logger.info('Converting timestamp to nanoseconds units for processing...')
-        trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
+        #trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
+        trades.timestamp = (trades.timestamp * nanosec_multiplier_dict[timestamp_unit]).astype(np.int64)
 
         return timestamp_unit
 
@@ -180,10 +233,7 @@ class TradesData:
         :param trades: DataFrame to process.
         :returns: None - modifies the trades DataFrame in place to include a 'side' column.
         """
-        if self.is_side:
-            logger.info("Trade side information found. Using 'is_buyer_maker' to determine trade side.")
-            trades['side'] = np.where(trades['is_buyer_maker'] == 1, -1, 1).astype(np.int8)
-        else:
+        if not self.is_side:
             logger.info("No trade side information found. Inferring trade side from price movements.")
             trades['side'] = comp_trade_side_vector(trades['price'].values)
 

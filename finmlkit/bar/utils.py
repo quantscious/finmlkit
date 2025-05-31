@@ -1,9 +1,10 @@
 from typing import Literal
-from numba import njit
+from numba import njit, prange
 from numpy.typing import NDArray
 import numpy as np
 import pandas as pd
 import math
+from typing import Optional, Union
 
 
 @njit(nogil=True, fastmath=True)
@@ -221,3 +222,105 @@ def median3(a, b, c):
     if b > c: b, c = c, b
     if a > b: a, b = b, a
     return b
+
+
+@njit(nogil=True)
+def check_timestamps_order(timestamps: NDArray[np.int64]) -> bool:
+    """
+    Are timestamps sorted in ascending order?
+    :param timestamps: nanosec timestamps array
+    :return: True if timestamps are sorted in ascending order else False
+    """
+    for i in range(1, len(timestamps)):
+        if timestamps[i] < timestamps[i - 1]:
+            return False
+    return True
+
+
+@njit(nogil=True)
+def merge_trades(timestamps: NDArray[np.int64], prices: NDArray[np.float64], amounts: NDArray[np.float32],
+                 is_buyer_maker: Optional[NDArray[np.bool_]]) \
+        -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], NDArray[np.int8]]:
+    """
+    Merge split transaction trades. Inputs must already be ordered by (timestamp, price, side).
+
+    :param timestamps: nanosec timestamp array
+    :param prices: raw trades price array
+    :param amounts: raw trades amount array
+    :param is_buyer_maker: Optional array to compute side
+    :return: a tuple of arrays containing:
+        1. the merged trades timestamps
+        2. the merged trades price
+        3. the merged trades amount
+        4. the merged trades side if is_buyer_maker provided (else empty list)
+    """
+    n = len(timestamps)
+    merged_timestamps = np.empty(n, dtype=np.int64)
+    merged_prices     = np.empty(n, dtype=np.float64)
+    merged_amounts    = np.empty(n, dtype=np.float32)
+    merged_side = None
+    with_side = is_buyer_maker is not None
+    if with_side:
+        merged_side = np.empty(n, dtype=np.int8)
+
+    # Initialize with the first trade
+    merged_timestamps[0] = timestamps[0]
+    merged_prices[0]     = prices[0]
+    merged_amounts[0]    = amounts[0]
+    if with_side:
+        merged_side[0]       = -1 if is_buyer_maker[0] else 1
+
+    merged_idx = 0
+    for i in range(1, n):
+        same_trade = (timestamps[i] == merged_timestamps[merged_idx] and
+                      abs(prices[i] - merged_prices[merged_idx]) < 1e-8)
+
+        if with_side:
+            same_trade &= is_buyer_maker[i] == (merged_side[merged_idx] == -1)
+
+        if same_trade:
+            merged_amounts[merged_idx] += amounts[i]
+            # Price and side remain unchanged for merged trades
+        else:
+            # New timestamp or price; store the new unique trade values
+            merged_idx += 1
+            merged_timestamps[merged_idx] = timestamps[i]
+            merged_prices[merged_idx] = prices[i]
+            merged_amounts[merged_idx] = amounts[i]
+            if merged_side is not None:
+                merged_side[merged_idx] = -1 if is_buyer_maker[i] else 1
+
+    # Trim the arrays to the actual number of merged trades
+    merged_timestamps = merged_timestamps[:merged_idx + 1]
+    merged_prices = merged_prices[:merged_idx + 1]
+    merged_amounts = merged_amounts[:merged_idx + 1]
+    if merged_side is not None:
+        merged_side = merged_side[:merged_idx + 1]
+
+    return (merged_timestamps,
+            merged_prices,
+            merged_amounts,
+            merged_side if with_side else np.empty(0, dtype=np.int8))
+
+
+@njit(nogil=True)
+def fast_sort_trades(timestamps: NDArray[np.int64],
+                     prices: NDArray[np.float64],
+                     amounts: NDArray[np.float32],
+                     is_buyer_maker: Optional[NDArray[np.bool_]] = None) -> \
+                     tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], Optional[NDArray[np.bool_]]]:
+    """
+    Fast sorting of trade data by timestamps using Numba.
+    For very large datasets, this is much faster than pandas sorting.
+
+    :param timestamps: nanosec timestamp array
+    :param prices: raw trades price array
+    :param amounts: raw trades amount array
+    :param is_buyer_maker: Optional array for trade side
+    :return: tuple of sorted (timestamps, prices, amounts, is_buyer_maker)
+    """
+    idxs = np.argsort(timestamps)
+
+    return (timestamps[idxs],
+            prices[idxs], amounts[idxs],
+            is_buyer_maker[idxs] if is_buyer_maker is not None else None)

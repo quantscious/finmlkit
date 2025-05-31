@@ -12,20 +12,20 @@ from typing import Tuple, Optional
 def triple_barrier(
         timestamps: NDArray[np.int64],
         close: NDArray[np.float64],
-        event_ts: NDArray[np.int64],
+        event_idxs: NDArray[np.int64],
         targets: NDArray[np.float64],
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
         side: Optional[NDArray[np.int8]],
         min_ret: float
-) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
+) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Implements the Triple Barrier Method (TBM) for labeling financial data based on
     Advances in Financial Machine Learning, Chapter 3.
 
     :param timestamps: The timestamps in nanoseconds for the close prices series.
     :param close: The close prices of the asset.
-    :param event_ts: The nanosecond timestamps of the events, e.g. acquired from the cusum filter. (subset of timestamps)
+    :param event_idxs: The nanosecond timestamps of the events, e.g. acquired from the cusum filter. (subset of timestamps)
     :param targets: Log-return targets for the events, e.g. acquired from a moving volatility estimator. Length must matchevent_idxs.
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
@@ -35,7 +35,6 @@ def triple_barrier(
 
     :returns: A tuple of 5 elements containing:
         - The label (-1, 1) for side prediction (barriers should be symmetric); If side is provided, the meta-labels are (0, 1)
-        - The event indices in the timestamps array,
         - The first barrier touch index,
         - The return,
         - Maximum return-barrier ratio during the search describing how close the path came to a horizontal barrier.
@@ -47,21 +46,20 @@ def triple_barrier(
         raise ValueError("The minimum return must be non-negative.")
     if len(timestamps) != len(close):
         raise ValueError("The lengths of timestamps and close must match.")
-    if len(event_ts) != len(targets):
+    if len(event_idxs) != len(targets):
         raise ValueError("The lengths of event_idxs and targets must match.")
-    if len(event_ts) == 0:
+    if len(event_idxs) == 0:
         raise ValueError("The event_idxs array must not be empty.")
 
     is_meta = side is not None
     if is_meta:
-        if len(event_ts) != len(side):
+        if len(event_idxs) != len(side):
             raise ValueError("The length of event_idxs must match the length of side.")
     else:
         # Create default side array for non-meta labeling
-        side = np.ones_like(event_ts, dtype=np.int8)
+        side = np.ones_like(event_idxs, dtype=np.int8)
 
-    n_samples = len(close)  # Number of samples in the close price array
-    n_events = len(event_ts)  # Number of events (subset of samples)
+    n_events = len(event_idxs)  # Number of events (subset of samples)
     bottom_mult, top_mult = horizontal_barriers
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
     log_close = np.log(close)  # Precompute log of close prices for efficiency
@@ -70,9 +68,6 @@ def triple_barrier(
     touch_idxs   = np.empty(n_events, dtype=np.int64)               # Index of the first barrier touch
     rets = np.full(n_events, np.nan, dtype=np.float64)             # The return corresponding to the given label
     max_rb_ratios = np.full(n_events, np.nan, dtype=np.float64)    # Maximum return/target ratio during the search
-
-    # Find the event indices in the timestamps array
-    event_idxs = np.searchsorted(timestamps, event_ts, side='left')
 
     # Loop over the events parallelized
     for i_event in prange(n_events):
@@ -83,7 +78,6 @@ def triple_barrier(
         # if tgt < min_ret:
         #     continue
         # -> This should be done in a preprocessing step before calling this function.
-
 
         # Upper and lower barriers in log-return space
         upper_barrier = tgt * top_mult
@@ -147,4 +141,4 @@ def triple_barrier(
             max_rbr = max_rbr if lower_valid else np.nan
         max_rb_ratios[i_event] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
 
-    return labels, event_idxs, touch_idxs, rets, max_rb_ratios
+    return labels, touch_idxs, rets, max_rb_ratios
