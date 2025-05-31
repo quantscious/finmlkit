@@ -75,9 +75,9 @@ def triple_barrier(
     event_idxs = np.searchsorted(timestamps, event_ts, side='left')
 
     # Loop over the events parallelized
-    for i in prange(n_events):
-        t0_idx = event_idxs[i]
-        tgt = targets[t0_idx]
+    for i_event in prange(n_events):
+        t0_idx = event_idxs[i_event]
+        tgt = targets[i_event]
 
         # Early skip if `tgt` is below `min_ret`
         # if tgt < min_ret:
@@ -101,7 +101,7 @@ def triple_barrier(
             continue
 
         # ---------- Evaluate the path -----------
-        side_mult = side[i]
+        side_mult = side[i_event]
         touch_idx = t1_idx
         max_urbr = 0.0
         max_lrbr = 0.0
@@ -127,15 +127,15 @@ def triple_barrier(
                 break
 
         # ---------- Assign the label and other values ------------
-        touch_idxs[i] = touch_idx
-        rets[i] = ret
+        touch_idxs[i_event] = touch_idx
+        rets[i_event] = ret
 
         # Assign the labels
         if is_meta:
-            labels[i] = 1 if ret >= min_ret else 0
+            labels[i_event] = 1 if ret >= min_ret else 0
         else:
             sign = np.sign(ret)
-            labels[i] = sign if sign != 0 else 1
+            labels[i_event] = sign if sign != 0 else 1
 
 
         # Calculate the maximum return-barrier ratio based sample weight
@@ -145,6 +145,6 @@ def triple_barrier(
         else:
             max_rbr = max_lrbr / (1 + max_urbr)
             max_rbr = max_rbr if lower_valid else np.nan
-        max_rb_ratios[i] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
+        max_rb_ratios[i_event] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
 
     return labels, event_idxs, touch_idxs, rets, max_rb_ratios

@@ -50,7 +50,8 @@ class TBMLabel:
             if not pd.api.types.is_integer_dtype(features['side']):
                 raise ValueError("The 'side' column must be of integer type (e.g., -1, 0, 1).")
 
-        self.features = self._preprocess_features(features, target_ret_col, min_ret)
+        self._orig_features = self._preprocess_features(features, target_ret_col, min_ret)
+        self._features = self._orig_features
         self.target_ret_col = target_ret_col
         self.min_ret = min_ret
         self.horizontal_barriers = horizontal_barriers
@@ -77,6 +78,10 @@ class TBMLabel:
         if x.empty:
             raise ValueError("No valid events found after filtering by minimum return and removing leading NaNs.")
 
+        # Check there is no nans in the target return column
+        if x[target_ret_col].isna().any():
+            raise ValueError(f"Target return column '{target_ret_col}' contains NaN values. Please ensure it is fully populated.")
+
         return x
 
     @property
@@ -85,7 +90,7 @@ class TBMLabel:
         Get the number of events in the features DataFrame.
         :return: The number of events.
         """
-        return len(self.features)
+        return len(self._features)
 
     @property
     def first_event_timestamp(self) -> pd.Timestamp:
@@ -93,7 +98,7 @@ class TBMLabel:
         Get the timestamp of the first event.
         :return: The timestamp of the first event.
         """
-        return self.features.index[0] if not self.features.empty else None
+        return self._features.index[0] if not self._features.empty else None
 
     @property
     def last_event_timestamp(self) -> pd.Timestamp:
@@ -101,7 +106,7 @@ class TBMLabel:
         Get the timestamp of the last event.
         :return: The timestamp of the last event.
         """
-        return self.features.index[-1] if not self.features.empty else None
+        return self._features.index[-1] if not self._features.empty else None
 
     @property
     def event_range(self) -> str:
@@ -111,6 +116,25 @@ class TBMLabel:
         """
         event_start, event_end = self.first_event_timestamp, self.last_event_timestamp
         return f"From {event_start} to {event_end} ({self.event_count} events)"
+
+    @property
+    def features(self) -> pd.DataFrame:
+        """
+        Get the features corresponding the generated labels.
+        I might be a subset of the original features DataFrame due to TBM evaluation window.
+        :return: The features DataFrame.
+        """
+        return self._features
+
+    @property
+    def target_returns(self) -> pd.Series:
+        """
+        Get the target returns for the events.
+        :return: A pandas Series containing the target returns.
+        """
+        if self.target_ret_col not in self._features.columns:
+            raise ValueError(f"Target return column '{self.target_ret_col}' not found in features DataFrame.")
+        return self._features[self.target_ret_col]
 
     @property
     def labels(self) -> pd.Series:
@@ -143,9 +167,9 @@ class TBMLabel:
         return self._out['avg_uniqueness']
 
     @property
-    def log_returns(self) -> pd.Series:
+    def event_returns(self) -> pd.Series:
         """
-        Get the log returns for the events.
+        Get the log returns associated with each event.
         :return: A pandas Series containing the log returns.
         """
         if self._out is None or 'returns' not in self._out.columns:
@@ -177,7 +201,7 @@ class TBMLabel:
         :param close_series: Base close series on which the events will be evaluated.
         :return: Trimmed features DataFrame with events that are within the base series.
         """
-        return self.features[self.features.index + pd.Timedelta(self.vertical_barrier) <= close_series.index[-1]]
+        return self._orig_features[self.features.index + pd.Timedelta(self.vertical_barrier) <= close_series.index[-1]]
 
 
     def compute_labels(self, close_series: pd.Series) -> pd.Series:
@@ -189,17 +213,17 @@ class TBMLabel:
         :return: A pandas Series containing the labels.
         """
         self._check_base_series(close_series)
-        features = self._drop_trailing_events(close_series)
+        self._features = self._drop_trailing_events(close_series)
 
         # Call the triple_barrier function
         labels, event_idxs, touch_idxs, rets, max_rb_ratios = triple_barrier(
             timestamps=close_series.index.values.astype(np.int64),
             close=close_series.values,
-            event_ts=features.index.values.astype(np.int64),
-            targets=features[self.target_ret_col].values,
+            event_ts=self.features.index.values.astype(np.int64),
+            targets=self.target_returns.values,
             horizontal_barriers=self.horizontal_barriers,
             vertical_barrier=self.vertical_barrier,
-            side=features['side'].values if self.is_meta else None,
+            side=self.features['side'].values if self.is_meta else None,
             min_ret=self.min_ret
         )
 
