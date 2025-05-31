@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 class TBMLabel:
     def __init__(self,
-                 perfo: pd.DataFrame,
+                 features: pd.DataFrame,
                  target_ret_col: str,
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
