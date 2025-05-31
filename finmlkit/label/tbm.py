@@ -17,7 +17,7 @@ def triple_barrier(
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
         side: Optional[NDArray[np.int8]],
-        min_ret: float = 0.0
+        min_ret: float
 ) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Implements the Triple Barrier Method (TBM) for labeling financial data based on
@@ -30,7 +30,7 @@ def triple_barrier(
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
     :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
-    :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs.
+    :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs. None for side predication.
     :param min_ret: The minimum target value for meta-labeling. If the return is below this value, the label will be 0, otherwise 1.
 
     :returns: A tuple of 5 elements containing:
@@ -56,6 +56,9 @@ def triple_barrier(
     if is_meta:
         if len(event_ts) != len(side):
             raise ValueError("The length of event_idxs must match the length of side.")
+    else:
+        # Create default side array for non-meta labeling
+        side = np.ones_like(event_ts, dtype=np.int8)
 
     n_samples = len(close)  # Number of samples in the close price array
     n_events = len(event_ts)  # Number of events (subset of samples)
@@ -64,8 +67,7 @@ def triple_barrier(
     log_close = np.log(close)  # Precompute log of close prices for efficiency
 
     labels = np.zeros(n_events, dtype=np.int8)                # The label (-1, 1) or (0, 1)
-    touch_idxs   = np.empty(n_events, np.int64)               # Index of the first barrier touch
-    touch_idxs[:] = -1
+    touch_idxs   = np.empty(n_events, dtype=np.int64)               # Index of the first barrier touch
     rets = np.full(n_events, np.nan, dtype=np.float64)             # The return corresponding to the given label
     max_rb_ratios = np.full(n_events, np.nan, dtype=np.float64)    # Maximum return/target ratio during the search
 
@@ -97,21 +99,16 @@ def triple_barrier(
         if t1_idx <= t0_idx:
             print("Warning: Vertical barrier index is less than or equal to event index. Skipping this event.")
             continue
-        if t1_idx >= n_samples:
-            # Safety check for vertical barrier index
-            # This should not happen in practice, but it's a good safeguard.
-            print(f"BUG: Vertical barrier index {t1_idx} exceeds the number of samples {n_samples}.")
-            continue
 
         # ---------- Evaluate the path -----------
-        side_multiplier = side[i] if is_meta else 1.0
+        side_mult = side[i]
         touch_idx = t1_idx
         max_urbr = 0.0
         max_lrbr = 0.0
         base_price = log_close[t0_idx]  # Base price for calculating returns
         ret = 0.
         for j in range(t0_idx + 1, t1_idx + 1):
-            ret = (log_close[j] - base_price) * side_multiplier
+            ret = (log_close[j] - base_price) * side_mult
 
             # progress towards barrier (skip if barrier is inf o r0)
             if ret > 0.0 and upper_valid:
@@ -137,7 +134,9 @@ def triple_barrier(
         if is_meta:
             labels[i] = 1 if ret >= min_ret else 0
         else:
-            labels[i] = np.sign(ret)
+            sign = np.sign(ret)
+            labels[i] = sign if sign != 0 else 1
+
 
         # Calculate the maximum return-barrier ratio based sample weight
         if ret > 0.:

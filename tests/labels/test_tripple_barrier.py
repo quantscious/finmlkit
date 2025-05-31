@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import os
 # disable jit
-os.environ['NUMBA_DISABLE_JIT'] = "1"
+#os.environ['NUMBA_DISABLE_JIT'] = "1"
 
 from finmlkit.label.tbm import triple_barrier
 
@@ -165,6 +165,7 @@ def test_no_vertical_barrier_inf():
         horizontal_barriers=(1.0, 1.0),
         vertical_barrier=np.inf,
         side=None,
+        min_ret=0.0,
     )
 
     assert t_idx[0] == len(px) - 1                 # touched at the last bar
@@ -217,10 +218,10 @@ def test_negative_min_ret():
     with pytest.raises(ValueError, match="minimum return"):
         triple_barrier(
             ts, px, event_ts, tgt,
-            min_ret=-0.1,
             horizontal_barriers=(1.0, 1.0),
             vertical_barrier=2,
             side=None,
+            min_ret=-1.0,
         )
 
 

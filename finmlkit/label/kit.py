@@ -14,7 +14,7 @@ class TBMLabel:
                  target_ret_col: str,
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
-                 vertical_barriers: float,
+                 vertical_barrier: float,
                  is_meta: bool = False):
         """
         Triple barrier labeling method
@@ -30,7 +30,7 @@ class TBMLabel:
         :param horizontal_barriers: Bottom and Top (SL/TP) horizontal barrier multipliers.
             The return target will be multiplied by these multipliers. Determines the width of the horizontal barriers.
             If you want to disable the barriers, set it to -np.inf or +np.inf, respectively.
-        :param vertical_barriers: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
+        :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
         :param is_meta: Side or meta labeling.
             If `True` `features` must contain `side` column containing the predictions of the primary model.
         """
@@ -54,7 +54,7 @@ class TBMLabel:
         self.target_ret_col = target_ret_col
         self.min_ret = min_ret
         self.horizontal_barriers = horizontal_barriers
-        self.vertical_barriers = vertical_barriers
+        self.vertical_barrier = vertical_barrier
         self.is_meta = is_meta
 
         self._out = None
@@ -62,11 +62,15 @@ class TBMLabel:
     @staticmethod
     def _preprocess_features(x: pd.DataFrame, target_ret_col: str, min_ret: float) -> pd.DataFrame:
         # Remove the leading NaNs from the features DataFrame
-        start_idx = x.first_valid_index()
-        if start_idx:
-            x = x.iloc[start_idx:]
-        else:
-            raise ValueError("No valid data found in the features DataFrame after removing leading NaNs.")
+        first_valid_indices = [x[col].first_valid_index() for col in x.columns if
+                               x[col].first_valid_index() is not None]
+
+        if not first_valid_indices:
+            raise ValueError("All columns contain only NaN values.")
+
+        # Use the latest of the first valid indices
+        start_idx = max(first_valid_indices)
+        x = x.loc[start_idx:]
 
         # Filter out rows where the target return is below the minimum required return threshold
         x = x[x[target_ret_col].abs() >= min_ret]
@@ -129,7 +133,7 @@ class TBMLabel:
         return self._out['weights']
 
     @property
-    def avg_uniqueness(self) -> pd.Series:
+    def sample_avg_uniqueness(self) -> pd.Series:
         """
         Get the average uniqueness weights for the events.
         :return: A pandas Series containing the average uniqueness weights.
@@ -137,6 +141,44 @@ class TBMLabel:
         if self._out is None or 'avg_uniqueness' not in self._out.columns:
             raise ValueError("Average uniqueness weights have not been computed yet. Call `compute_weights()` first.")
         return self._out['avg_uniqueness']
+
+    @property
+    def log_returns(self) -> pd.Series:
+        """
+        Get the log returns for the events.
+        :return: A pandas Series containing the log returns.
+        """
+        if self._out is None or 'returns' not in self._out.columns:
+            raise ValueError("Log returns have not been computed yet. Call `compute_labels()` first.")
+        return self._out['returns']
+
+    def _check_base_series(self, close_series: pd.Series) -> bool:
+        """
+        Checks whether the first event is within the base series.
+        :param series: base close series.
+        :return: bool
+        """
+        if not isinstance(close_series, pd.Series):
+            raise ValueError("close_series must be a pandas Series.")
+        if not isinstance(close_series.index, pd.DatetimeIndex):
+            raise ValueError("Base bars index must be a DatetimeIndex.")
+
+        if self.first_event_timestamp < close_series.index[0]:
+            logger.warning(f"First event timestamp {self.first_event_timestamp} "
+                           f"is before the first base series timestamp {close_series.index[0]}. "
+                           "This may lead to incorrect label computation.")
+            return False
+
+        return True
+
+    def _drop_trailing_events(self, close_series: pd.Series) -> pd.DataFrame:
+        """
+        We should drop the trailing events which cannot be evaluated on the full temporal window.
+        :param close_series: Base close series on which the events will be evaluated.
+        :return: Trimmed features DataFrame with events that are within the base series.
+        """
+        return self.features[self.features.index + pd.Timedelta(self.vertical_barrier) <= close_series.index[-1]]
+
 
     def compute_labels(self, close_series: pd.Series) -> pd.Series:
         """
@@ -146,18 +188,18 @@ class TBMLabel:
             (its frequency should be greater than the features/event dataframe)
         :return: A pandas Series containing the labels.
         """
-        if not isinstance(close_series.index, pd.DatetimeIndex):
-            raise ValueError("Base bars index must be a DatetimeIndex.")
+        self._check_base_series(close_series)
+        features = self._drop_trailing_events(close_series)
 
         # Call the triple_barrier function
         labels, event_idxs, touch_idxs, rets, max_rb_ratios = triple_barrier(
             timestamps=close_series.index.values.astype(np.int64),
             close=close_series.values,
-            event_ts=self.features.index.values.astype(np.int64),
-            targets=self.features[self.target_ret_col].values,
+            event_ts=features.index.values.astype(np.int64),
+            targets=features[self.target_ret_col].values,
             horizontal_barriers=self.horizontal_barriers,
-            vertical_barrier=self.vertical_barriers,
-            side=self.features['side'].values if self.is_meta else None,
+            vertical_barrier=self.vertical_barrier,
+            side=features['side'].values if self.is_meta else None,
             min_ret=self.min_ret
         )
 
@@ -190,8 +232,8 @@ class TBMLabel:
         :param apply_class_balance: If True, apply class balance weights to the labels.
         :return:  A pandas Series containing the combined sample weights for the events.
         """
-        if not isinstance(close_series.index, pd.DatetimeIndex):
-            raise ValueError("Base bars index must be a DatetimeIndex.")
+        self._check_base_series(close_series)
+
         if self._out is None:
             raise ValueError("Labels have not been computed yet. Call `compute_labels()` first.")
 
