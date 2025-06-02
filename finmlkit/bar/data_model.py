@@ -8,7 +8,8 @@ from numba.typed import List as NumbaList
 
 from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
-from .utils import comp_trade_side_vector, fast_sort_trades, merge_trades
+from .utils import comp_trade_side_vector, fast_sort_trades, merge_split_trades
+import os
 
 logger = get_logger(__name__)
 
@@ -23,126 +24,98 @@ class TradesData:
     """
 
     def __init__(self,
-                 trades: pd.DataFrame,
-                 columns: Optional[dict[str, str]] = None,
+                 ts: NDArray, px: NDArray, qty: NDArray, *,
+                 is_buyer_maker: NDArray = None,
+                 side = None,
                  timestamp_unit: Optional[str] = None,
-                 proc_res: Optional[str] = None,
-                 inplace: bool = False):
+                 preprocess: bool = False,
+                 proc_res: Optional[str] = None):
         """
         Initialize the TradesData with raw trades data.
 
-        :param trades: DataFrame containing raw trades data with 'timestamp', 'price',
-                      and 'amount' columns. If 'is_buyer_maker' is present, it indicates
-                      the trade side; otherwise, it is inferred.
-        :param columns: (Optional) Dictionary to map raw column names to standard names: `timestamp`, `price`, `amount`, `is_buyer_maker` (optional).
-                        Eg.: {'time': 'timestamp', 'qty': 'amount', 'is_buyer_maker': 'side'}
+        :param ts: array of timestamps
+        :param px: array of prices
+        :param qty: array of quantity or amount of trades
+        :param is_buyer_maker: Optional Array of side info: True if buyer maker, False otherwise. If None side information will be inferred from data.
+        :param side: Optional Array Market order side information (-1: sell, 1: buy)
         :param timestamp_unit: (Optional) timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
         :param proc_res: (Optional) processing resolution for timestamps (e.g., 'ms' cuts us to ms resolution).
-        :param inplace: If True, modifies the trades DataFrame in place.
+        :param preprocess: If True, runs the preprocessing pipeline (sorting, merging split trades etc...)
         :raises ValueError: If required columns are missing or timestamp format is invalid.
 
         """
-        if not inplace:
-            trades = trades.copy()
+        if not isinstance(ts, np.ndarray):
+            raise TypeError("ts must be a np.ndarray")
+        if not isinstance(px, np.ndarray):
+            raise TypeError("px must be a np.ndarray")
+        if not isinstance(qty, np.ndarray):
+            raise TypeError("qty must be a np.ndarray")
+        if is_buyer_maker is not None and not isinstance(is_buyer_maker, np.ndarray):
+            raise TypeError("is_buyer_maker must be None or np.ndarray")
+        if side is not None and not isinstance(side, np.ndarray):
+            raise TypeError("side must be None or np.ndarray")
 
-        # Process the trades data step by step
-        self._preprocess_column_names(trades, columns)
-        self._validate_columns(trades)
-        self.is_side = self._is_side_column_present(trades)
-        self._sort_trades(trades)
-        trades = self._merge_trades(trades)
-        self._timestamp_unit = self._convert_timestamps_to_ns(trades, timestamp_unit)
-        self._apply_timestamp_resolution(trades, timestamp_unit, proc_res)
-        self._extract_trade_side_info(trades)
+        self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
+        self.is_buyer_maker = is_buyer_maker
+        if side is not None:
+            self.data['side'] = side
+        self._orig_timestamp_unit = timestamp_unit if timestamp_unit else self.infer_timestamp_unit()
 
-        # Store the processed data
-        self.data = trades
-
-        # Add datetime index
-        # self.data.index = pd.to_datetime(self.data['timestamp'], unit='ns')
-        # self.data.index.name = 'datetime'
-        # Do not add index, it is slow for large datasets and we can use timestamp column directly.
+        # Process the trades data
+        if preprocess:
+            self._sort_trades()
+            self._merge_trades()
+            self._convert_timestamps_to_ns()
+            self._apply_timestamp_resolution(proc_res)
+            if "side" not in self.data.columns:
+                # If side info is not provided, infer it from trades data
+                self._add_trade_side_info()
 
         logger.info("TradesData prepared successfully.")
 
-    @staticmethod
-    def _preprocess_column_names(trades: pd.DataFrame, columns: dict[str, str]) -> None:
+    @property
+    def orig_timestamp_unit(self) -> str:
         """
-        Standardize column names for consistent processing.
+        Get the timestamp unit used for processing.
 
-        :param trades: DataFrame to preprocess.
+        :return: Timestamp unit string.
         """
-        if columns:
-            standard_column_names = ['timestamp', 'price', 'amount', 'is_buyer_maker']
-            # Ensure the provided columns are valid
-            for key, value in columns.items():
-                if key not in trades.columns:
-                    raise ValueError(f"Missing required column: {key}")
-                if value not in standard_column_names:
-                    raise ValueError(f"Invalid column mapping: {value}. Must be one of: {', '.join(standard_column_names)}")
-                trades.rename(columns={key: value}, inplace=True)
+        return self._orig_timestamp_unit
 
-    @staticmethod
-    def _is_side_column_present(trades: pd.DataFrame) -> bool:
-        return "is_buyer_maker" in trades.columns
-
-    @staticmethod
-    def _validate_columns(trades: pd.DataFrame) -> None:
-        """
-        Validate that required columns are present in the DataFrame.
-
-        :param trades: DataFrame to validate.
-        :raises ValueError: If required columns are missing.
-        """
-        required_columns = ['timestamp', 'price', 'amount']
-        missing_columns = [col for col in required_columns if col not in trades.columns]
-
-        if missing_columns:
-            raise ValueError(f"Missing columns in trades data: {', '.join(missing_columns)}")
-
-        logger.info("Input trades data OK. Required columns are present.")
-
-    @staticmethod
-    def _sort_trades(trades: pd.DataFrame) -> None:
+    def _sort_trades(self) -> None:
         """
         Sort trades by timestamp to ensure correct order for processing.
         For large datasets, uses a fast Numba-based sorting algorithm.
 
         :param trades: DataFrame to sort.
         """
-        if trades.timestamp.is_monotonic_increasing:
+        if self.data.timestamp.is_monotonic_increasing:
             logger.info('Trades data is already in ascending order. Skipping sort.')
             return
 
         logger.info('Sorting by timestamp...')
+        self.data.sort_values('timestamp', inplace=True)
+        # We are memory bound here, not compute bound, plus writer thread is slower.
 
-        # Extract numpy arrays for sorting
-        timestamps = trades['timestamp'].values.astype(np.int64)
-        prices = trades['price'].values.astype(np.float64)
-        amounts = trades['amount'].values.astype(np.float32)
-
-        # Check if side info is available
-        is_buyer_maker = None
-        if 'is_buyer_maker' in trades.columns:
-            is_buyer_maker = trades['is_buyer_maker'].values.astype(np.bool_)
-
-        # Sort using numba
-        sorted_timestamps, sorted_prices, sorted_amounts, sorted_is_buyer_maker = fast_sort_trades(
-            timestamps, prices, amounts, is_buyer_maker
-        )
-
-        # Update the DataFrame with sorted values
-        trades['timestamp'] = sorted_timestamps
-        trades['price'] = sorted_prices
-        trades['amount'] = sorted_amounts
-        if is_buyer_maker is not None:
-            trades['is_buyer_maker'] = sorted_is_buyer_maker
+        # # Sort using numba
+        # sorted_timestamps, sorted_prices, sorted_amounts, sorted_is_buyer_maker = fast_sort_trades(
+        #     self.data['timestamp'].values.astype(np.int64),
+        #     self.data['price'].values.astype(np.float64),
+        #     self.data['amount'].values.astype(np.float32),
+        #     self.is_buyer_maker,
+        # )
+        #
+        # # Update the DataFrame with sorted values
+        # self.data['timestamp'] = sorted_timestamps
+        # self.data['price'] = sorted_prices
+        # self.data['amount'] = sorted_amounts
+        # if self.is_buyer_maker is not None:
+        #     self.is_buyer_maker = sorted_is_buyer_maker
 
         # Reset index
-        trades.reset_index(drop=True, inplace=True)
+        self.data.reset_index(drop=True, inplace=True)
 
-
-    def _merge_trades(self, trades: pd.DataFrame) -> pd.DataFrame:
+    def _merge_trades(self):
         """
         Merge trades that occur at the same timestamp and price level.
 
@@ -150,30 +123,22 @@ class TradesData:
         :return: Merged DataFrame.
         """
         logger.info('Merging split trades (same timestamps) on same price level...')
-        # if self.is_side:
-        #     trades = trades.groupby(['timestamp', 'price', 'is_buyer_maker'],
-        #                                    as_index=False).agg({'amount': 'sum'})
-        # else:
-        #     trades = trades.groupby(['timestamp', 'price'],
-        #                                    as_index=False).agg({'amount': 'sum'})
 
-        ts, px, am, side = merge_trades(
-            trades['timestamp'].values.astype(np.int64),
-            trades['price'].values.astype(np.float64),
-            trades['amount'].values.astype(np.float32),
-            trades['is_buyer_maker'].values.astype(np.bool_) if self.is_side else None
+        ts, px, am, side = merge_split_trades(
+            self.data['timestamp'].values.astype(np.int64),
+            self.data['price'].values.astype(np.float64),
+            self.data['amount'].values.astype(np.float32),
+            self.is_buyer_maker,
         )
-        trades = pd.DataFrame({
+        self.data = pd.DataFrame({
             'timestamp': ts,
             'price': px,
             'amount': am
         })
-        if self.is_side:
-            trades['side'] = side
+        if self.is_buyer_maker is not None:
+            self.data['side'] = side
 
-        return trades
-
-    def _convert_timestamps_to_ns(self, trades: pd.DataFrame, timestamp_unit: Optional[str]) -> str:
+    def _convert_timestamps_to_ns(self):
         """
         Convert timestamps to nanosecond representation.
 
@@ -183,13 +148,11 @@ class TradesData:
         :raises ValueError: If timestamp format is invalid.
         """
         # Infer or validate timestamp unit
-        if timestamp_unit is None:
-            timestamp_unit = self.infer_ts_unit(trades)
         valid_units = ['s', 'ms', 'us', 'ns']
-        if timestamp_unit not in valid_units:
+        if self.orig_timestamp_unit not in valid_units:
             raise ValueError(f"Invalid timestamp format! Must be one of: {', '.join(valid_units)}")
 
-        nanosec_multiplier_dict = {
+        unit_scale_factor = {
             's': 1_000_000_000,
             'ms': 1_000_000,
             'us': 1_000,
@@ -198,13 +161,10 @@ class TradesData:
 
         # Convert timestamp to nanoseconds
         logger.info('Converting timestamp to nanoseconds units for processing...')
-        #trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
-        trades.timestamp = (trades.timestamp * nanosec_multiplier_dict[timestamp_unit]).astype(np.int64)
+        # trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
+        self.data.timestamp = (self.data.timestamp * unit_scale_factor[self.orig_timestamp_unit]).astype(np.int64)
 
-        return timestamp_unit
-
-    @staticmethod
-    def _apply_timestamp_resolution(trades: pd.DataFrame, timestamp_unit: str, proc_res: Optional[str]) -> None:
+    def _apply_timestamp_resolution(self, proc_res: Optional[str]) -> None:
         """
         Apply processing resolution to timestamps if specified.
 
@@ -213,7 +173,7 @@ class TradesData:
         :param proc_res: Target processing resolution for timestamps.
         :raises ValueError: If processing resolution is invalid.
         """
-        if proc_res and proc_res != timestamp_unit:
+        if proc_res and proc_res != self.orig_timestamp_unit:
             logger.info(f"Processing resolution: {proc_res} -> converting timestamps...")
 
             # Convert proc_res to nanoseconds scale factor
@@ -224,31 +184,24 @@ class TradesData:
 
             # Round timestamps to the specified resolution
             resolution_ns = scale_factors[proc_res]
-            trades.timestamp = (trades.timestamp // resolution_ns) * resolution_ns
+            self.data.timestamp = (self.data.timestamp // resolution_ns) * resolution_ns
 
-    def _extract_trade_side_info(self, trades: pd.DataFrame) -> None:
+    def _add_trade_side_info(self) -> None:
         """
         Extract trade side information from the trades data.
 
         :param trades: DataFrame to process.
         :returns: None - modifies the trades DataFrame in place to include a 'side' column.
         """
-        if not self.is_side:
-            logger.info("No trade side information found. Inferring trade side from price movements.")
-            trades['side'] = comp_trade_side_vector(trades['price'].values)
+        logger.info("No trade side information found. Inferring trade side from price movements.")
+        self.data['side'] = comp_trade_side_vector(self.data['price'].values)
 
-    @staticmethod
-    def infer_ts_unit(trades: pd.DataFrame) -> str:
+    def infer_timestamp_unit(self) -> str:
         """
         Infer the unit of timestamps in the trades data if not explicitly provided.
-        :param trades: DataFrame containing timestamp data.
         :return: Inferred or provided timestamp unit.
         """
-        if trades.empty:
-            logger.warning("Empty trades DataFrame, defaulting to millisecond timestamps.")
-            return 'ms'
-
-        max_ts = trades['timestamp'].max()
+        max_ts = self.data['timestamp'].max()
 
         if max_ts > 1e18:  # Likely in nanoseconds
             timestamp_unit = 'ns'
@@ -264,15 +217,281 @@ class TradesData:
 
         return timestamp_unit
 
-    @property
-    def timestamp_unit(self) -> str:
+    def save_h5(
+            self,
+            filepath: str,
+            *,
+            month_key: Optional[str] = None,
+            complib: str = "blosc:zstd",
+            complevel: int = 5,
+            mode: str = "a",
+            chunksize: int = 1_000_000,
+            overwrite_month: bool = True,
+    ) -> str:
         """
-        Get the timestamp unit used for processing.
+        Persist the raw trades to an on-disk HDF5 store.
+        The data of **each calendar month** lives under ``/trades/YYYY-MM`` in the file.
 
-        :return: Timestamp unit string.
+        - When adding new monthly data, it will be stored in a new group.
+        - When adding data for an existing month, you can either append to it or overwrite it with confirmation.
+
+        :param filepath: Destination `.h5` file. The parent directories are created automatically when missing.
+        :param month_key: Override the key of the form ``"YYYY-MM"``. When ``None`` the key is derived from the first timestamp of ``self.data``.
+        :param complib: Compression backend used by PyTables. Default is ``blosc:zstd``.
+        :param complevel: Compression level. Default is 5.
+        :param mode: File mode – ``"a"`` to create or append, ``"w"`` to start fresh. Default is ``"a"``.
+        :param chunksize: Row chunk size used by PyTables when writing large frames. Default is 1000000.
+        :param overwrite_month: If True and the month data exists, prompts for confirmation to overwrite. Default is True.
+
+        :returns: The full key used inside the store, e.g. ``"/trades/2025-02"``.
+        :raises: ValueError if user declines to overwrite existing data.
         """
-        return self._timestamp_unit
+        # ------------------------------------------------------------------
+        #  Derive the monthly key and ensure output path exists
+        # ------------------------------------------------------------------
+        if month_key is None:
+            first_dt = pd.to_datetime(self.data["timestamp"].iloc[0], unit="ns")
+            month_key = f"{first_dt.year:04d}-{first_dt.month:02d}"
 
+        h5_key = f"/trades/{month_key}"
+        meta_key = f"/meta/{month_key}"
+
+        os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+
+        # ------------------------------------------------------------------
+        #  Build an *indexed* frame for fast time‑slice queries
+        # ------------------------------------------------------------------
+        frame = self.data.copy()
+        frame["datetime"] = pd.to_datetime(frame["timestamp"], unit="ns")
+        frame.set_index("datetime", inplace=True)
+
+        # ------------------------------------------------------------------
+        #  Write / append to the store
+        # ------------------------------------------------------------------
+        with pd.HDFStore(
+                filepath,
+                mode=mode,
+                complib=complib,
+                complevel=complevel,
+        ) as store:
+            # Check if month data already exists
+            month_exists = h5_key in store
+            should_overwrite = False
+
+            if month_exists and overwrite_month:
+                # Prompt user for confirmation
+                #record_count = store.get_storer(h5_key).nrows
+                #user_input = input(
+                #    f"WARNING: Data for {month_key} already exists with {record_count:,} records.\n"
+                #    f"Do you want to overwrite it? [y/N]: "
+                #).lower()
+                #should_overwrite = user_input in ('y', 'yes')
+
+                should_overwrite = True
+                if not should_overwrite:
+                    user_input = input("Do you want to append to existing data instead? [Y/n]: ").lower()
+                    if user_input in ('n', 'no'):
+                        logger.info(f"Operation cancelled by user. No changes made to {month_key} data.")
+                        return h5_key
+
+            # Handle data writing
+            if month_exists and should_overwrite:
+                logger.info(f"Overwriting existing data for {month_key}...")
+                store.remove(h5_key)
+                store.remove(meta_key)
+                store.put(
+                    key=h5_key,
+                    value=frame,
+                    format="table",
+                    data_columns=["timestamp"],
+                    index=False,
+                    min_itemsize={"side": 1},
+                )
+            elif month_exists:
+                # Append using PyTables row‑wise interface (fast)
+                logger.info(f"Appending to existing data for {month_key}...")
+                store.append(
+                    key=h5_key,
+                    value=frame,
+                    format="table",
+                    data_columns=["timestamp"],
+                    index=False,
+                    min_itemsize={"side": 1},
+                    chunksize=chunksize,
+                )
+            else:
+                # Create new month data
+                logger.info(f"Creating new data for {month_key}...")
+                store.put(
+                    key=h5_key,
+                    value=frame,
+                    format="table",
+                    data_columns=["timestamp"],
+                    index=False,
+                    min_itemsize={"side": 1},
+                )
+
+            # ------------------------------------------------------------------
+            #  Update lightweight per‑group metadata (fast group discovery later)
+            # ------------------------------------------------------------------
+            meta = pd.Series(
+                {
+                    "record_count": len(frame) if should_overwrite else (
+                        store.get_storer(h5_key).nrows if month_exists else len(frame)),
+                    "first_timestamp": int(frame["timestamp"].iloc[0]),
+                    "last_timestamp": int(frame["timestamp"].iloc[-1]),
+                }
+            )
+            store.put(meta_key, meta, format="fixed")
+
+            logger.info(f"Successfully saved {len(frame):,} records for {month_key}")
+
+        return h5_key
+
+    # ------------------------------------------------------------------
+    #  Reading helpers
+    # ------------------------------------------------------------------
+    @classmethod
+    def _keys_for_timerange(
+        cls, store: pd.HDFStore, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]
+    ) -> list[str]:
+        """Internal helper – determine which monthly groups intersect the
+        *[start, end]* interval by consulting the per‑group metadata.
+        """
+        candidate_keys: list[str] = []
+        for meta_key in (k for k in store.keys() if k.startswith("/meta/")):
+            meta = store[meta_key]
+            first = pd.to_datetime(meta["first_timestamp"], unit="ns")
+            last = pd.to_datetime(meta["last_timestamp"], unit="ns")
+            if (end is None or first <= end) and (start is None or last >= start):
+                candidate_keys.append(meta_key.replace("/meta", "/trades"))
+        return sorted(candidate_keys)
+
+    @classmethod
+    def load_h5(
+        cls,
+        filepath: str,
+        *,
+        key: Optional[str] = None,
+        start_time: Optional[Union[str, pd.Timestamp]] = None,
+        end_time: Optional[Union[str, pd.Timestamp]] = None,
+    ) -> "TradesData":
+        """Load trades from *filepath*.
+
+        Three usage modes exist:
+        1. ``key`` only – load the full monthly partition ``/trades/<key>``.
+        2. ``start_time`` / ``end_time`` – assemble the minimal set of monthly
+           groups touching the range, slice **at read time** for maximum speed.
+        3. Combination – constrain selection *within* the chosen "key".
+
+        :returns: `TradesData`
+        """
+        # ------------------------------------------------------------------
+        #  Normalise temporal boundaries
+        # ------------------------------------------------------------------
+        if isinstance(start_time, str):
+            start_time = pd.Timestamp(start_time)
+        if isinstance(end_time, str):
+            end_time = pd.Timestamp(end_time)
+
+        frames: list[pd.DataFrame] = []
+
+        logger.info(f"Loading trades from {filepath}...")
+        with pd.HDFStore(filepath, mode="r") as store:
+            available_keys = [k for k in store.keys() if k.startswith('/trades/')]
+
+            # Determine which groups to read -----------------------------------------------------
+            if key is not None:
+                h5_keys = [f"/trades/{key}"]
+                # Check if key is available
+                if h5_keys[0] not in store:
+                    logger.info(f"Available keys in the store: {available_keys}")
+                    raise KeyError(f"HDF5 group '{h5_keys[0]}' not found in the store.")
+            else:
+                h5_keys = cls._keys_for_timerange(store, start_time, end_time)
+
+            if not h5_keys:
+                raise KeyError("No HDF5 group matches the requested slice.")
+
+            # Retrieve each group with on‑store slicing ----------------------------------------
+            where_clause = []
+            if start_time is not None:
+                where_clause.append(f"index >= Timestamp('{start_time}')")
+            if end_time is not None:
+                where_clause.append(f"index <= Timestamp('{end_time}')")
+            where = " & ".join(where_clause) if where_clause else None
+
+            for h5_key in h5_keys:
+                if where:
+                    frames.append(store.select(h5_key, where=where))
+                else:
+                    frames.append(store[h5_key])
+
+        # ------------------------------------------------------------------
+        #  Concatenate & restore original column order
+        # ------------------------------------------------------------------
+        df = pd.concat(frames, copy=False)
+
+        side = df["side"] if "side" in df.columns else None
+        return cls(df["timestamp"].values, df["price"].values, df["amount"].values, side=side.values)
+
+
+class H5Inspector:
+    """
+    Class to inspect HDF5 files containing trades data.
+
+    This class provides methods to list available keys, check metadata,
+    and retrieve basic statistics about the trades data stored in HDF5 format.
+    """
+
+    def __init__(self, filepath: str):
+        """
+        Initialize the H5Inspector with the path to the HDF5 file.
+
+        :param filepath: Path to the HDF5 file.
+        """
+        self.filepath = filepath
+
+    def list_keys(self) -> list[str]:
+        """
+        List all available keys in the HDF5 file.
+
+        :return: List of keys.
+        """
+        with pd.HDFStore(self.filepath, mode='r') as store:
+            return [k for k in store.keys() if k.startswith('/trades/')]
+
+    def get_metadata(self, key: str) -> Dict[str, any]:
+        """
+        Get metadata for a specific key in the HDF5 file.
+
+        :param key: Key to retrieve metadata for.
+        :return: Metadata dictionary.
+        """
+        with pd.HDFStore(self.filepath, mode='r') as store:
+            if key not in store.keys():
+                raise KeyError(f"Key '{key}' not found in the store.")
+            meta_key = key.replace('/trades/', '/meta/')
+            return store[meta_key].to_dict()
+
+    def get_statistics(self, key: str) -> Dict[str, any]:
+        """
+        Get basic statistics for a specific key in the HDF5 file.
+
+        :param key: Key to retrieve statistics for.
+        :return: Statistics dictionary.
+        """
+        with pd.HDFStore(self.filepath, mode='r') as store:
+            if key not in store.keys():
+                raise KeyError(f"Key '{key}' not found in the store.")
+            df = store[key]
+            return {
+                'record_count': len(df),
+                'first_timestamp': df['timestamp'].min(),
+                'last_timestamp': df['timestamp'].max(),
+                'price_range': (df['price'].min(), df['price'].max()),
+                'amount_range': (df['amount'].min(), df['amount'].max())
+            }
 
 @dataclass
 class FootprintData:
@@ -532,3 +751,4 @@ class FootprintData:
             if len(attr) != expected_length:
                 return False
         return True
+

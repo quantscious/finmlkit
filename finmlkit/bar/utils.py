@@ -236,11 +236,37 @@ def check_timestamps_order(timestamps: NDArray[np.int64]) -> bool:
             return False
     return True
 
+@njit(nogil=True)
+def fast_sort_trades(timestamps: NDArray[np.int64],
+                     prices: NDArray[np.float64],
+                     amounts: NDArray[np.float32],
+                     is_buyer_maker: Optional[NDArray[np.bool_]] = None) -> \
+                     tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], Optional[NDArray[np.bool_]]]:
+    """
+    Fast sorting of trade data by timestamps using Numba.
+    For very large datasets, this is much faster than pandas sorting.
+
+    :param timestamps: nanosec timestamp array
+    :param prices: raw trades price array
+    :param amounts: raw trades amount array
+    :param is_buyer_maker: Optional array for trade side
+    :return: tuple of sorted (timestamps, prices, amounts, is_buyer_maker)
+    """
+    idxs = np.argsort(timestamps)  # quicksort algorithm
+
+    return (timestamps[idxs],
+            prices[idxs],
+            amounts[idxs],
+            is_buyer_maker[idxs] if is_buyer_maker is not None else None)
+
 
 @njit(nogil=True)
-def merge_trades(timestamps: NDArray[np.int64], prices: NDArray[np.float64], amounts: NDArray[np.float32],
-                 is_buyer_maker: Optional[NDArray[np.bool_]]) \
-        -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], NDArray[np.int8]]:
+def merge_split_trades(
+        timestamps: NDArray[np.int64],
+        prices: NDArray[np.float64],
+        amounts: NDArray[np.float32],
+        is_buyer_maker: Optional[NDArray[np.bool_]]
+) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], NDArray[np.int8]]:
     """
     Merge split transaction trades. Inputs must already be ordered by (timestamp, price, side).
 
@@ -301,26 +327,3 @@ def merge_trades(timestamps: NDArray[np.int64], prices: NDArray[np.float64], amo
             merged_prices,
             merged_amounts,
             merged_side if with_side else np.empty(0, dtype=np.int8))
-
-
-@njit(nogil=True)
-def fast_sort_trades(timestamps: NDArray[np.int64],
-                     prices: NDArray[np.float64],
-                     amounts: NDArray[np.float32],
-                     is_buyer_maker: Optional[NDArray[np.bool_]] = None) -> \
-                     tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float32], Optional[NDArray[np.bool_]]]:
-    """
-    Fast sorting of trade data by timestamps using Numba.
-    For very large datasets, this is much faster than pandas sorting.
-
-    :param timestamps: nanosec timestamp array
-    :param prices: raw trades price array
-    :param amounts: raw trades amount array
-    :param is_buyer_maker: Optional array for trade side
-    :return: tuple of sorted (timestamps, prices, amounts, is_buyer_maker)
-    """
-    idxs = np.argsort(timestamps)
-
-    return (timestamps[idxs],
-            prices[idxs], amounts[idxs],
-            is_buyer_maker[idxs] if is_buyer_maker is not None else None)

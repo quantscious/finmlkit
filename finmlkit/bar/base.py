@@ -11,6 +11,7 @@ from typing import Tuple, Optional
 import pandas as pd
 from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
+from numpy.typing import NDArray
 
 from .data_model import FootprintData
 from .utils import comp_price_tick_size, comp_trade_side
@@ -34,8 +35,10 @@ class BarBuilderBase(ABC):
         """
         self.trades_df = trades.data
 
-        self._open_ts = self._open_indices = None
-        self._highs = self._lows = None
+        self._close_ts:      Optional[NDArray[np.int64]] = None
+        self._close_indices: Optional[NDArray[np.int64]] = None
+        self._highs:        Optional[NDArray[np.float64]] = None
+        self._lows:         Optional[NDArray[np.float64]] = None
 
     def __str__(self):
         return (f"Class: {self.__class__.__name__} with members:\n"
@@ -43,7 +46,7 @@ class BarBuilderBase(ABC):
                 f"\nRaw trades data:\n{self.trades_df.info()}")
 
     @abstractmethod
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Abstract method to generate bar open timestamps and indices.
         :returns: Tuple of open timestamps and their corresponding indices.
@@ -54,9 +57,9 @@ class BarBuilderBase(ABC):
         """
         Calculate and sets the open timestamps and indices if not already calculated.
         """
-        if self._open_indices is None:
+        if self._close_indices is None:
             logger.info("Calculating bar open tick indices and timestamps...")
-            self._open_ts, self._open_indices = self._generate_bar_opens()
+            self._close_ts, self._close_indices = self._comp_bar_close()
 
     @property
     def close_indices(self) -> Optional[NDArray[np.int64]]:
@@ -64,10 +67,10 @@ class BarBuilderBase(ABC):
         Return the bar close indices in the raw trades data.
         :return:
         """
-        if self._open_indices is None:
+        if self._close_indices is None:
             print("Bar open indices are not calculated yet. Call _calc_bar_open_values() first.")
             return None
-        return self._open_indices[1:]
+        return self._close_indices[1:]
 
 
     def build_ohlcv(self) -> pd.DataFrame:
@@ -80,13 +83,13 @@ class BarBuilderBase(ABC):
         ohlcv_tuple = comp_bar_ohlcv(
             self.trades_df['price'].values,
             self.trades_df['amount'].values,
-            self._open_indices
+            self._close_indices
         )
         self._highs, self._lows = ohlcv_tuple[1], ohlcv_tuple[2]
         logger.info("OHLCV bar calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
-            'timestamp': self._open_ts[1:],   # Close bar timestamps convention!!
+            'timestamp': self._close_ts[1:],   # Close bar timestamps convention!!
             'open': ohlcv_tuple[0],
             'high': ohlcv_tuple[1],
             'low': ohlcv_tuple[2],
@@ -118,13 +121,13 @@ class BarBuilderBase(ABC):
         directional_tuple = comp_bar_directional_features(
             self.trades_df['price'].values,
             self.trades_df['amount'].values,
-            self._open_indices,
+            self._close_indices,
             self.trades_df['side'].values.astype(np.int8),
         )
         logger.info("Directional features calculated successfully.")
 
         directional_df = pd.DataFrame({
-            'timestamp': self._open_ts[1:],     # Close bar timestamps convention!!
+            'timestamp': self._close_ts[1:],     # Close bar timestamps convention!!
             'ticks_buy': directional_tuple[0],
             'ticks_sell': directional_tuple[1],
             'volume_buy': directional_tuple[2],
@@ -167,8 +170,8 @@ class BarBuilderBase(ABC):
         footprint_data = comp_bar_footprints(
             self.trades_df['price'].values,
             self.trades_df['amount'].values,
-            self._open_indices,
-            self._open_ts,
+            self._close_indices,
+            self._close_ts,
             price_tick_size,
             self._lows,
             self._highs,

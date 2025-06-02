@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Union, Optional, Sequence
+from typing import Union, Optional, Sequence, Callable
 import pandas as pd
-from utils.log import get_logger
+from finmlkit.utils.log import get_logger
 import numpy as np
 from numpy.typing import NDArray
 
@@ -364,3 +364,82 @@ class Compose(BaseTransform):
         assert backend == "pd" or backend == "nb", "Backend must be either 'pd' or 'nb'."
 
         return self._run_pipeline(x, backend=backend)
+
+class BinaryOpTransform(BaseTransform):
+    """Transform that applies binary operations between two transforms"""
+    def __init__(self, left: BaseTransform, right: BaseTransform, op_name: str, op_func: Callable):
+        # Combine all input requirements from both transforms
+        combined_inputs = list(set(left.requires + right.requires))
+        output_name = f"{op_name}({left.output_name},{right.output_name})"
+        super().__init__(combined_inputs, output_name)
+        self.left = left
+        self.right = right
+        self.op_func = op_func
+
+    def _validate_input(self, x):
+        # binary operations are valid for SISO and MISO transforms
+        if not isinstance(self.left, (SISOTransform, MISOTransform)):
+            raise TypeError(f"Left transform must be SISO or MISO for binary OP, got {type(self.left)}")
+        if not isinstance(self.right, (SISOTransform, MISOTransform)):
+            raise TypeError(f"Right transform must be SISO or MISO for binary OP, got {type(self.right)}")
+        return self.left._validate_input(x) and self.right._validate_input(x)
+
+    @property
+    def output_name(self) -> str:
+        if isinstance(self.produces, list) and len(self.produces) == 1:
+            return self.produces[0]
+        return self.produces
+
+    def __call__(self, x, *, backend="nb"):
+        left_result = self.left(x, backend=backend)
+        right_result = self.right(x, backend=backend)
+        result = self.op_func(left_result, right_result)
+        result.name = self.output_name
+        return result
+
+
+class ConstantOpTransform(BaseTransform):
+    """Transform that applies operations between a transform and a constant"""
+    def __init__(self, transform: BaseTransform, constant: float, op_name: str, op_func: Callable):
+        super().__init__(transform.requires, f"{op_name}({transform.output_name},{constant})")
+        self.transform = transform
+        self.constant = constant
+        self.op_func = op_func
+
+    def _validate_input(self, x):
+        return self.transform._validate_input(x)
+
+    @property
+    def output_name(self) -> str:
+        if isinstance(self.produces, list) and len(self.produces) == 1:
+            return self.produces[0]
+        return self.produces
+
+    def __call__(self, x, *, backend="nb"):
+        result = self.transform(x, backend=backend)
+        result = self.op_func(result, self.constant)
+        result.name = self.output_name
+        return result
+
+
+class UnaryOpTransform(BaseTransform):
+    """Transform that applies unary operations to a transform"""
+    def __init__(self, transform: BaseTransform, op_name: str, op_func: Callable):
+        super().__init__(transform.requires, f"{op_name}({transform.output_name})")
+        self.transform = transform
+        self.op_func = op_func
+
+    def _validate_input(self, x):
+        return self.transform._validate_input(x)
+
+    @property
+    def output_name(self) -> str:
+        if isinstance(self.produces, list) and len(self.produces) == 1:
+            return self.produces[0]
+        return self.produces
+
+    def __call__(self, x, *, backend="nb"):
+        result = self.transform(x, backend=backend)
+        result = self.op_func(result)
+        result.name = self.output_name
+        return result

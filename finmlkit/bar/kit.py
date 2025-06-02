@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from typing import Dict, Tuple, Any
 from numpy.typing import NDArray
 from .base import BarBuilderBase
@@ -26,10 +25,10 @@ class TimeBarKit(BarBuilderBase):
 
         logger.info(f"Time bar builder initialized with interval: {interval_sec} seconds.")
 
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate time bar indices using the time bar indexer.
-        :returns: Open timestamps and corresponding open indices in the raw trades data.
+        :returns: Close timestamps and corresponding Close indices in the raw trades data.
         """
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         return _time_bar_indexer(timestamps, self.interval)
@@ -54,17 +53,17 @@ class TickBarKit(BarBuilderBase):
 
         logger.info(f"Tick bar builder initialized with tick count: {tick_count_thrs}.")
 
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate tick bar indices using the tick bar indexer.
-        :returns: Open timestamps and corresponding open indices in the raw trades data.
+        :returns: Close timestamps and corresponding close indices in the raw trades data.
         """
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
-        open_indices = _tick_bar_indexer(timestamps, self.tick_count_thrs)
-        open_indices = np.array(open_indices, dtype=np.int64)
-        open_ts = timestamps[open_indices]
+        close_indices = _tick_bar_indexer(timestamps, self.tick_count_thrs)
+        close_indices = np.array(close_indices, dtype=np.int64)
+        close_ts = timestamps[close_indices]
 
-        return open_ts, open_indices
+        return close_ts, close_indices
 
 
 class VolumeBarKit(BarBuilderBase):
@@ -86,7 +85,7 @@ class VolumeBarKit(BarBuilderBase):
 
         logger.info(f"Volume bar builder initialized with volume: {volume_thrs}.")
 
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate volume bar indices using the volume bar indexer.
         :returns: Open timestamps and corresponding open indices in the raw trades data.
@@ -94,11 +93,11 @@ class VolumeBarKit(BarBuilderBase):
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         volumes = self.trades_df['amount'].values
 
-        open_indices = _volume_bar_indexer(volumes, self.volume_thrs)
-        open_indices = np.array(open_indices, dtype=np.int64)
-        open_ts = timestamps[open_indices]
+        close_indices = _volume_bar_indexer(volumes, self.volume_thrs)
+        close_indices = np.array(close_indices, dtype=np.int64)
+        close_ts = timestamps[close_indices]
 
-        return open_ts, open_indices
+        return close_ts, close_indices
 
 
 class DollarBarKit(BarBuilderBase):
@@ -120,7 +119,7 @@ class DollarBarKit(BarBuilderBase):
 
         logger.info(f"Dollar bar builder initialized with dollar amount: {dollar_thrs}.")
 
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate dollar bar indices using the dollar bar indexer.
         :returns: Open timestamps and corresponding open indices in the raw trades data.
@@ -129,11 +128,11 @@ class DollarBarKit(BarBuilderBase):
         prices = self.trades_df['price'].values
         volumes = self.trades_df['amount'].values
 
-        open_indices = _dollar_bar_indexer(prices, volumes, self.dollar_thrs)
-        open_indices = np.array(open_indices, dtype=np.int64)
-        open_ts = timestamps[open_indices]
+        close_indices = _dollar_bar_indexer(prices, volumes, self.dollar_thrs)
+        close_indices = np.array(close_indices, dtype=np.int64)
+        close_ts = timestamps[close_indices]
 
-        return open_ts, open_indices
+        return close_ts, close_indices
 
 
 class CUSUMBarKit(BarBuilderBase):
@@ -158,7 +157,7 @@ class CUSUMBarKit(BarBuilderBase):
 
         logger.info(f"CUSUM Bar builder initialized with: lambda multiplier={lambda_mult}.")
 
-    def _generate_bar_opens(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+    def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate CUSUM bar indices using the CUSUM bar indexer.
         :returns: Open timestamps and corresponding open indices in the raw trades data.
@@ -166,8 +165,8 @@ class CUSUMBarKit(BarBuilderBase):
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         prices = self.trades_df['price'].values
 
-        open_indices = _cusum_bar_indexer(prices, self.sigma, self.sigma_floor, self.lambda_mult)
-        open_indices = np.array(open_indices, dtype=np.int64)
-        open_ts = timestamps[open_indices]
+        close_indices = _cusum_bar_indexer(prices, self.sigma, self.sigma_floor, self.lambda_mult)
+        close_indices = np.array(close_indices, dtype=np.int64)
+        close_ts = timestamps[close_indices]
 
-        return open_ts, open_indices
+        return close_ts, close_indices

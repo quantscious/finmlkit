@@ -8,7 +8,6 @@ from numba import njit
 from numba.typed import List as NumbaList
 from numpy.typing import NDArray
 
-from .utils import median3
 
 @njit(nogil=True)
 def _time_bar_indexer(
@@ -21,8 +20,8 @@ def _time_bar_indexer(
     :param timestamps: Raw sorted trade timestamps in nanoseconds.
     :param interval_seconds: Length of the time bar in seconds.
     :returns: A tuple of:
-        - bar_open_ts: Timestamps at which each bar opens.
-        - bar_open_indices: Indices in the trade data corresponding to bar openings.
+        - bar_close_ts: Timestamps at which each bar closes.
+        - bar_close_indices: Indices in the trade data corresponding to bar closings.
 
     .. note::
         The first bar is aligned to the ceiling of the first timestamp, ensuring consistent bar boundaries.
@@ -37,20 +36,19 @@ def _time_bar_indexer(
     last_ts = timestamps[-1]
 
     # create the array of bar open timestamps
-    bar_open_ts = np.arange(bar_start_ts, last_ts + 1, bar_interval_ns, dtype=np.int64)
+    bar_clock = np.arange(bar_start_ts, last_ts + 1, bar_interval_ns, dtype=np.int64)
 
     # find the indices of the bar open timestamps in the raw trades timestamps
-    # side='left' ensures that the index returned is the first index where the value is greater than or equal to the bar open timestamp
-    bar_open_indices = np.searchsorted(timestamps, bar_open_ts, side='left')
+    bar_close_indices = (np.searchsorted(timestamps, bar_clock, side='right') - 1).astype(np.int64)
 
     # open times and raw trades samples:
-    # |----1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|     -> bar_open_ts
+    # |----1----|----2----|----3----|----4----|----5----|----6----|----7----|----8----|----9----|     -> bar_clock
     # ..  . . .... . .. . . ... .. . . ... ... ... ...   . .  .    .  .... .            .  ... ....   -> raw trades timestamps
-    # ^         ^         ^          ^         ^         ^         ^                    ^       ^     -> open indices
-    #                                                                                   ^             -> open indices (empty bar)
+    # ^         ^         ^        ^         ^       ^        ^            ^                    ^     -> close indices
+    #                                                                      ^                          -> close indices (empty bar)
     # 0         6         12         19        26        32        35                   41,41   46    -> raw trades indices
 
-    return bar_open_ts, bar_open_indices
+    return bar_clock, bar_close_indices
 
 
 @njit(nogil=True)
