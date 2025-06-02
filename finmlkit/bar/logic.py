@@ -61,7 +61,7 @@ def _tick_bar_indexer(
 
     :param timestamps: Raw trade timestamps.
     :param threshold: The tick count threshold for opening a new bar.
-    :returns: open_timestamps: Timestamps at which each tick bar opens.
+    :returns: close_indices: Timestamps at which each tick bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -93,7 +93,7 @@ def _volume_bar_indexer(
     Determine the volume bar open indices using cumulative volume.
     :param volumes: Trade volumes.
     :param threshold: Volume threshold for opening a new bar.
-    :returns: open_timestamps: Timestamps at which each volume bar opens.
+    :returns: close_indices: Timestamps at which each volume bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -127,7 +127,7 @@ def _dollar_bar_indexer(
     :param prices: Trade prices.
     :param volumes: Trade volumes.
     :param threshold: Dollar value threshold for opening a new bar.
-    :returns: open_timestamps: Timestamps at which each dollar bar opens.
+    :returns: close_indices: Timestamps at which each dollar bar opens.
 
     .. note::
         The first trade is always the start of a bar.
@@ -168,7 +168,7 @@ def _cusum_bar_indexer(
     :param sigma: Threshold vector for CUSUM (e.g. calculated EWMS volatility or constant).
     :param sigma_floor: Minimum value for sigma to avoid division by zero.
     :param lambda_mult: λ multiplier for the CUSUM filter (threshold will be lambda_mult*sigma).
-    :returns: (open_timestamps, open_indices)
+    :returns: close_indices
     """
     n = len(prices)
 

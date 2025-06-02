@@ -88,7 +88,7 @@ class VolumeBarKit(BarBuilderBase):
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate volume bar indices using the volume bar indexer.
-        :returns: Open timestamps and corresponding open indices in the raw trades data.
+        :returns: Close timestamps and corresponding close indices in the raw trades data.
         """
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         volumes = self.trades_df['amount'].values
@@ -122,7 +122,7 @@ class DollarBarKit(BarBuilderBase):
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Generate dollar bar indices using the dollar bar indexer.
-        :returns: Open timestamps and corresponding open indices in the raw trades data.
+        :returns: Close timestamps and corresponding close indices in the raw trades data.
         """
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         prices = self.trades_df['price'].values
