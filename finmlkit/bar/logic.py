@@ -38,7 +38,7 @@ def _time_bar_indexer(
     # create the array of bar open timestamps
     bar_clock = np.arange(bar_start_ts, last_ts + 1, bar_interval_ns, dtype=np.int64)
 
-    # find the indices of the bar open timestamps in the raw trades timestamps
+    # find the indices of the bar close timestamps in the raw trades timestamps
     bar_close_indices = (np.searchsorted(timestamps, bar_clock, side='right') - 1).astype(np.int64)
 
     # open times and raw trades samples:

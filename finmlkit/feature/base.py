@@ -343,7 +343,11 @@ class Compose(BaseTransform):
         for i, tfs in enumerate(self.transforms):
             if i == 0:
                 # First transform on the input DataFrame
-                series_out = tfs(x)
+                # Check if the first product is already in the DataFrame (Often the case for the first transform in the chain)
+                if tfs.produces[0] in x.columns:
+                    series_out = x[tfs.produces[0]]
+                else:
+                    series_out = tfs(x)
             else:
                 # Subsequent transforms on the output of the previous transform
                 print(tfs.requires[0])
