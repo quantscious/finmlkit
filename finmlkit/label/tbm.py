@@ -33,7 +33,7 @@ def triple_barrier(
     :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs. None for side predication.
     :param min_ret: The minimum target value for meta-labeling. If the return is below this value, the label will be 0, otherwise 1.
 
-    :returns: A tuple of 5 elements containing:
+    :returns: A tuple of 4 elements containing:
         - The label (-1, 1) for side prediction (barriers should be symmetric); If side is provided, the meta-labels are (0, 1)
         - The first barrier touch index,
         - The return,
@@ -132,13 +132,16 @@ def triple_barrier(
             labels[i_event] = sign if sign != 0 else 1
 
 
-        # Calculate the maximum return-barrier ratio based sample weight
-        if ret > 0.:
-            max_rbr = max_urbr / (1 + max_lrbr)
-            max_rbr = max_rbr if upper_valid else np.nan
+        if touch_idx == t1_idx:
+            # Calculate the maximum return-barrier ratio based sample weight
+            if ret > 0.:
+                max_rbr = max_urbr / (1 + max_lrbr)
+                max_rbr = max_rbr if upper_valid else np.nan
+            else:
+                max_rbr = max_lrbr / (1 + max_urbr)
+                max_rbr = max_rbr if lower_valid else np.nan
+            max_rb_ratios[i_event] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
         else:
-            max_rbr = max_lrbr / (1 + max_urbr)
-            max_rbr = max_rbr if lower_valid else np.nan
-        max_rb_ratios[i_event] = min(max_rbr, 1.) # Ensure the weight is capped at 1.0
+            max_rb_ratios[i_event] = 1.
 
     return labels, touch_idxs, rets, max_rb_ratios

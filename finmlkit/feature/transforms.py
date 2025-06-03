@@ -10,7 +10,7 @@ from .core.time import time_cues
 from .core.ma import ewma, sma
 from .core.momentum import roc, rsi_wilder, stoch_k
 from typing import Union
-from utils.log import get_logger
+from finmlkit.utils.log import get_logger
 import pandas as pd
 import numpy as np
 

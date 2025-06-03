@@ -225,9 +225,10 @@ class TBMLabel:
 
         # Construct the output DataFrame
         self._out = pd.DataFrame({
-            'labels': labels,
+            'touch_time': pd.to_datetime(trades.data.timestamp.values[touch_idxs]),
             'event_idxs': self.features.event_idx.values,
             'touch_idxs': touch_idxs,
+            'labels': labels,
             'returns': rets,
             'vertical_touch_weights': max_rb_ratios
         }, index=self.features.index)
@@ -327,7 +328,7 @@ class SampleWeights:
         self.time_decay_intercept = time_decay_intercept
         self.class_balancing = class_balancing
 
-    def __call__(self, base_w: pd.Series, labels: pd.Series, avg_uniqueness: pd.Series):
+    def __call__(self, base_w: pd.Series, avg_uniqueness: pd.Series, labels: pd.Series = None) -> NDArray[np.float64]:
         """
         Compute the sample weights based on the base weights, labels, and average uniqueness.
 
@@ -343,7 +344,7 @@ class SampleWeights:
         )
 
         # Combine base weights with time decay
-        combined_weights = base_w * weight_decay
+        combined_weights = base_w.values * weight_decay
 
         # Normalize the weights to have a mean of 1.0
         mean_combined_weights = combined_weights.mean()

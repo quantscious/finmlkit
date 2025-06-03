@@ -1,4 +1,4 @@
-from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform
+from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform, MISOTransform
 import pandas as pd
 
 
@@ -83,7 +83,7 @@ class Feature:
 
 
 class Compose(BaseTransform):
-    def __init__(self, *transforms: SISOTransform):
+    def __init__(self, *transforms: SISOTransform|MISOTransform):
         requires = transforms[0].requires[0]  # First tfs determines the source column
         first_output = transforms[0].output_name
         produces = "_".join([first_output] + [t.produces[0] for t in transforms[1:]])
@@ -157,15 +157,18 @@ class FeatureKit:
 
     def build(self, df, *, backend="nb"):
         out = df[self.retain].copy()
+        df = df.copy()
         for feat in self.features:
             res = feat.transform(df, backend=backend)
             if isinstance(res, pd.Series):
                 # Single output transform case
                 out[feat.name] = res
+                df[feat.transform.output_name] = res  # cache the result in the DataFrame (for compose transforms)
             elif isinstance(res, tuple):
                 # Multi output transform case
                 for item in res:
                     out[item.name] = item
+                    df[item.name] = item # cache the result in the DataFrame (for compose transforms)
             else:
                 raise TypeError(f"Transform {feat} returned unexpected type: {type(res)}")
 
