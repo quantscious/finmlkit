@@ -179,6 +179,16 @@ class TBMLabel:
             raise ValueError("Log returns have not been computed yet. Call `compute_labels()` first.")
         return self._out['returns']
 
+    @property
+    def full_output(self) -> pd.DataFrame:
+        """
+        Get the full output DataFrame containing labels, event indices, touch indices, returns, and weights.
+        :return: A pandas DataFrame containing the full output.
+        """
+        if self._out is None:
+            raise ValueError("Labels have not been computed yet. Call `compute_labels()` and `compute_weights` first.")
+        return self._out
+
     def _drop_trailing_events(self, trades: TradesData) -> pd.DataFrame:
         """
         We should drop the trailing events which cannot be evaluated on the full temporal window.
@@ -226,9 +236,9 @@ class TBMLabel:
 
     def compute_weights(self, trades: TradesData,
                         apply_return_attribution: bool = True,
-                        time_decay_last_weight: float = 0.5,
+                        time_decay_last_weight: float = 1.,
                         apply_vertical_touch_weights: bool = True,
-                        apply_class_balance: bool = True,
+                        apply_class_balance: bool = False,
                         ) -> pd.Series:
         """
         Computes the sample weights for the triple barrier labels.
@@ -262,6 +272,7 @@ class TBMLabel:
                 close=trades.data.price.values,
                 concurrency=concurrency
             )
+            self._out["return_attribution"] = info_w
         else:
             info_w = avg_u
 
@@ -270,6 +281,7 @@ class TBMLabel:
             avg_uniqueness=avg_u,
             last_weight=time_decay_last_weight
         )
+        self._out["time_decay_weight"] = weight_decay
 
         # Apply vertical touch weights if specified
         vertical_touch_weights = self._out.vertical_touch_weights.values if apply_vertical_touch_weights else 1.0
@@ -288,8 +300,15 @@ class TBMLabel:
                 labels=self.labels.values,
                 base_w=base_w
             )
-            logger.info(f"Class balance weights: {dict(zip(unique_labels, class_weights))}")
-            logger.info(f"Sum of class weights: {dict(zip(unique_labels, class_weights))}")
+            # Display class balance weights in a readable format
+            weight_info = "\n".join(
+                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, class_weights)])
+            logger.info(f"Class balance weights:\n{weight_info}")
+
+            # Display sum of weights per class
+            sum_info = "\n".join(
+                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
+            logger.info(f"Sum of weights per class:\n{sum_info}")
 
             self._out['weights'] = final_weights
         else:
@@ -297,3 +316,57 @@ class TBMLabel:
             self._out['weights'] = base_w
 
         return self.sample_weights
+
+
+class SampleWeights:
+    """
+    A wrapper class for time decay and class balance weights calculation.
+    These weights should be run on the training window part of the full dataset.
+    """
+    def __init__(self, time_decay_intercept: float = 0.5, class_balancing: bool = True):
+        self.time_decay_intercept = time_decay_intercept
+        self.class_balancing = class_balancing
+
+    def __call__(self, base_w: pd.Series, labels: pd.Series, avg_uniqueness: pd.Series):
+        """
+        Compute the sample weights based on the base weights, labels, and average uniqueness.
+
+        :param base_w: Base weights to be adjusted.
+        :param labels: Labels for class balancing.
+        :param avg_uniqueness: Average uniqueness weights.
+        :return: A pandas Series containing the computed sample weights.
+        """
+        # Apply time decay
+        weight_decay = time_decay(
+            avg_uniqueness=avg_uniqueness.values,
+            last_weight=self.time_decay_intercept
+        )
+
+        # Combine base weights with time decay
+        combined_weights = base_w * weight_decay
+
+        # Normalize the weights to have a mean of 1.0
+        mean_combined_weights = combined_weights.mean()
+        if mean_combined_weights <= 0:
+            raise ValueError("Mean of combined weights is zero or negative, cannot normalize.")
+
+        combined_weights /= mean_combined_weights
+
+        if self.class_balancing:
+            unique_labels, class_weights, sum_w_class, final_weights = class_balance_weights(
+                labels=labels.values,
+                base_w=combined_weights
+            )
+            # Display class balance weights in a readable format
+            weight_info = "\n".join(
+                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, class_weights)])
+            logger.info(f"Class balance weights:\n{weight_info}")
+
+            # Display sum of weights per class
+            sum_info = "\n".join(
+                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
+            logger.info(f"Sum of weights per class:\n{sum_info}")
+
+            return final_weights
+        else:
+            return combined_weights

@@ -1,4 +1,4 @@
-from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform
+from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform
 import pandas as pd
 
 
@@ -80,6 +80,74 @@ class Feature:
         if isinstance(other, (int, float)):
             return Feature(ConstantOpTransform(self.transform, other, "rdiv", lambda x, c: c / x))
         return NotImplemented
+
+
+class Compose(BaseTransform):
+    def __init__(self, *transforms: SISOTransform):
+        requires = transforms[0].requires[0]  # First tfs determines the source column
+        first_output = transforms[0].output_name
+        produces = "_".join([first_output] + [t.produces[0] for t in transforms[1:]])
+        super().__init__(requires, produces)
+        self.transforms = transforms
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        """
+        Validate that the input DataFrame contains the required columns for all transforms.
+        :param x: DataFrame to validate
+        :return: True if the input is valid
+        """
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        if self.requires[0] not in x.columns:
+            raise ValueError(f"Input column {self.requires} not found in DataFrame")
+        return True
+
+    @property
+    def output_name(self) -> str:
+        """
+        Get the output name of the composed transform.
+        The output name is a combination of the first transform's output and the subsequent transforms' produces.
+        :return: Output name
+        """
+        return self.produces[0]
+
+    def _run_pipeline(self, x: pd.DataFrame, *, backend) -> pd.Series:
+        """
+        Apply the composed transforms to the input DataFrame.
+        :param x: DataFrame to transform
+        :param backend: Backend is already specified in the transforms
+        :return: Transformed Series
+        """
+        self._validate_input(x)
+        series_out = None
+        for i, tfs in enumerate(self.transforms):
+            if i == 0:
+                # First transform on the input DataFrame
+                # Check if the first product is already in the DataFrame (Often the case for the first transform in the chain)
+                if tfs.produces[0] in x.columns:
+                    series_out = x[tfs.produces[0]]
+                else:
+                    series_out = tfs(x)
+            else:
+                # Subsequent transforms on the output of the previous transform
+                print(tfs.requires[0])
+                series_out = tfs(pd.DataFrame(series_out.values, index=series_out.index, columns=[tfs.requires[0]]), backend=backend)
+
+        # Return the final output Series with the composed name
+        series_out.name = self.output_name
+
+        return series_out
+
+    def __call__(self, x: pd.DataFrame, *, backend="nb") -> pd.Series:
+        """
+        Apply the composed transforms to the input DataFrame.
+        :param x: DataFrame to transform
+        :param backend: Backend to use for the transform. Can be "pd" or "nb". Default is "nb".
+        :return: Transformed Series
+        """
+        assert backend == "pd" or backend == "nb", "Backend must be either 'pd' or 'nb'."
+
+        return self._run_pipeline(x, backend=backend)
 
 
 class FeatureKit:
