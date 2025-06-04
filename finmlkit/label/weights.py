@@ -53,7 +53,9 @@ def average_uniqueness(
 def return_attribution(event_idxs: NDArray[np.int64],
                        touch_idxs: NDArray[np.int64],
                        close: NDArray[np.float64],
-                       concurrency: NDArray[np.int16]) -> NDArray[np.float64]:
+                       concurrency: NDArray[np.int16],
+                       normalize: bool
+                       ) -> NDArray[np.float64]:
     """
     Assign more weights to samples with higher return attribution.
     Advances in Financial Machine Learning, Chapter 4, page 68.
@@ -62,6 +64,7 @@ def return_attribution(event_idxs: NDArray[np.int64],
     :param touch_idxs: Touch indices where the label ends.
     :param close: Close price array.
     :param concurrency: Concurrency array indicating how many labels overlap at each timestamp. From `label_average_uniqueness` function.
+    :param normalize: If True, normalize the returned weights to sum to the number of events.
     :return: NDArray[np.float64]
         An array of return attribution weights for each event.
 
@@ -90,12 +93,12 @@ def return_attribution(event_idxs: NDArray[np.int64],
 
         weights[i] = abs(weight)
 
-    # Todo: optionally do not normalize (It can be handy in case of chunk processing)
-    # Normalize the weight to sum up to n_events
-    sum_weights = np.sum(weights)
-    if sum_weights <= 0.:
-        raise ValueError("Sum of weights is zero or negative, cannot normalize.")
-    weights *= n_events / sum_weights
+    if normalize:
+        # Normalize the weight to sum up to n_events
+        sum_weights = np.sum(weights)
+        if sum_weights <= 0.:
+            raise ValueError("Sum of weights is zero or negative, cannot normalize.")
+        weights *= n_events / sum_weights
 
     return weights
 

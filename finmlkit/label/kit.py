@@ -150,26 +150,6 @@ class TBMLabel:
         return self._out['labels']
 
     @property
-    def sample_weights(self) -> pd.Series:
-        """
-        Get the sample weights for the events.
-        :return: A pandas Series containing the sample weights.
-        """
-        if self._out is None or 'weights' not in self._out.columns:
-            raise ValueError("Sample weights have not been computed yet. Call `compute_weights()` first.")
-        return self._out['weights']
-
-    @property
-    def sample_avg_uniqueness(self) -> pd.Series:
-        """
-        Get the average uniqueness weights for the events.
-        :return: A pandas Series containing the average uniqueness weights.
-        """
-        if self._out is None or 'avg_uniqueness' not in self._out.columns:
-            raise ValueError("Average uniqueness weights have not been computed yet. Call `compute_weights()` first.")
-        return self._out['avg_uniqueness']
-
-    @property
     def event_returns(self) -> pd.Series:
         """
         Get the log returns associated with each event.
@@ -199,13 +179,12 @@ class TBMLabel:
         return self._orig_features[self.features.index + pd.Timedelta(self.vertical_barrier, unit="s") <= last_timestamp]
 
 
-    def compute_labels(self, trades: TradesData) -> pd.Series:
+    def compute_labels(self, trades: TradesData) -> pd.DataFrame:
         """
         Compute the labels for the events using the triple barrier method.
         
         :param trades: The raw trades data the events will be evaluated
-        :param event_idxs: The event indices in the trades data.
-        :return: A pandas Series containing the labels.
+        :return: A pandas Dataframe containing the labels and other related information.
         """
         if not isinstance(trades, TradesData):
             raise ValueError("Trades must be an instance of TradesData.")
@@ -226,97 +205,14 @@ class TBMLabel:
         # Construct the output DataFrame
         self._out = pd.DataFrame({
             'touch_time': pd.to_datetime(trades.data.timestamp.values[touch_idxs]),
-            'event_idxs': self.features.event_idx.values,
-            'touch_idxs': touch_idxs,
+            'event_idx': self.features.event_idx.values,
+            'touch_idx': touch_idxs,
             'labels': labels,
             'returns': rets,
             'vertical_touch_weights': max_rb_ratios
         }, index=self.features.index)
 
-        return self.labels
-
-    def compute_weights(self, trades: TradesData,
-                        apply_return_attribution: bool = True,
-                        time_decay_last_weight: float = 1.,
-                        apply_vertical_touch_weights: bool = True,
-                        apply_class_balance: bool = False,
-                        ) -> pd.Series:
-        """
-        Computes the sample weights for the triple barrier labels.
-        This method combines average uniqueness (default), return attribution, time decay, and class balance weights.
-
-        :param trades: The raw trades on which the events are evaluated
-        :param apply_return_attribution: If True, apply return attribution weights else only average uniqueness weights will be used.
-        :param time_decay_last_weight: The weight assigned to the last sample in time decay. Should be in the range [0, 1].
-               If 1.0, there is no decay, If negative the oldest portion (n_events * last_weight) will be erased
-        :param apply_vertical_touch_weights: If True, apply vertical touch weights to the labels.
-        :param apply_class_balance: If True, apply class balance weights to the labels.
-        :return:  A pandas Series containing the combined sample weights for the events.
-        """
-
-        if self._out is None:
-            raise ValueError("Labels have not been computed yet. Call `compute_labels()` first.")
-
-        # Compute average uniqueness weights
-        avg_u, concurrency = average_uniqueness(
-            timestamps=trades.data.timestamp.values,
-            event_idxs=self._out.event_idxs.values,
-            touch_idxs=self._out.touch_idxs.values
-        )
-        self._out["avg_uniqueness"] = avg_u
-
-        if apply_return_attribution:
-            # Compute return attribution weights
-            info_w = return_attribution(
-                event_idxs=self._out.event_idxs.values,
-                touch_idxs=self._out.touch_idxs.values,
-                close=trades.data.price.values,
-                concurrency=concurrency
-            )
-            self._out["return_attribution"] = info_w
-        else:
-            info_w = avg_u
-
-        # Apply time decay
-        weight_decay = time_decay(
-            avg_uniqueness=avg_u,
-            last_weight=time_decay_last_weight
-        )
-        self._out["time_decay_weight"] = weight_decay
-
-        # Apply vertical touch weights if specified
-        vertical_touch_weights = self._out.vertical_touch_weights.values if apply_vertical_touch_weights else 1.0
-
-        # Combine weights
-        base_w = info_w * weight_decay * vertical_touch_weights
-
-        # Ensure that the mean of the weights is 1.0
-        mean_base_w = base_w.mean()
-        if mean_base_w <= 0:
-            raise ValueError("Something went wrong! Mean of base weights is zero or negative, cannot normalize.")
-        base_w /= mean_base_w
-
-        if apply_class_balance:
-            unique_labels, class_weights, sum_w_class, final_weights = class_balance_weights(
-                labels=self.labels.values,
-                base_w=base_w
-            )
-            # Display class balance weights in a readable format
-            weight_info = "\n".join(
-                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, class_weights)])
-            logger.info(f"Class balance weights:\n{weight_info}")
-
-            # Display sum of weights per class
-            sum_info = "\n".join(
-                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
-            logger.info(f"Sum of weights per class:\n{sum_info}")
-
-            self._out['weights'] = final_weights
-        else:
-            # If class balance is not applied, just return the base weights
-            self._out['weights'] = base_w
-
-        return self.sample_weights
+        return self.full_output
 
 
 class SampleWeights:
@@ -324,39 +220,137 @@ class SampleWeights:
     A wrapper class for time decay and class balance weights calculation.
     These weights should be run on the training window part of the full dataset.
     """
-    def __init__(self, time_decay_intercept: float = 0.5, class_balancing: bool = True):
-        self.time_decay_intercept = time_decay_intercept
-        self.class_balancing = class_balancing
 
-    def __call__(self, base_w: pd.Series, avg_uniqueness: pd.Series, labels: pd.Series = None) -> NDArray[np.float64]:
+    @staticmethod
+    def compute_info_weights(
+            trades: TradesData,
+            events: pd.DataFrame,
+    ) -> pd.DataFrame:
         """
-        Compute the sample weights based on the base weights, labels, and average uniqueness.
+        Computes the average uniqueness and (non-normalized) return attribution for the events.
 
-        :param base_w: Base weights to be adjusted.
-        :param labels: Labels for class balancing.
-        :param avg_uniqueness: Average uniqueness weights.
-        :return: A pandas Series containing the computed sample weights.
+        :param trades: The raw trades on which the events are evaluated
+        :param events: Events dataframe containing event indices and touch indices (output of `compute_labels` method).
+        :return:  A pandas DataFrame containing the average uniqueness and return attribution and vertical touch weights.
         """
-        # Apply time decay
-        weight_decay = time_decay(
-            avg_uniqueness=avg_uniqueness.values,
-            last_weight=self.time_decay_intercept
+
+        if not isinstance(trades, TradesData):
+            raise ValueError("Trades must be an instance of TradesData.")
+        if not isinstance(events, pd.DataFrame):
+            raise ValueError("Events must be a pandas DataFrame.")
+        if 'event_idx' not in events.columns or 'touch_idx' not in events.columns:
+            raise ValueError("Events DataFrame must contain 'event_idx' and 'touch_idxs' columns.")
+
+
+        # Compute average uniqueness weights
+        avg_u, concurrency = average_uniqueness(
+            timestamps=trades.data.timestamp.values,
+            event_idxs=events.event_idx.values,
+            touch_idxs=events.touch_idx.values
         )
 
-        # Combine base weights with time decay
-        combined_weights = base_w.values * weight_decay
+        out_df = pd.DataFrame({
+            'avg_uniqueness': avg_u,
+        }, index=events.index)
+
+
+        # Compute return attribution weights
+        info_w = return_attribution(
+            event_idxs=events.event_idx.values,
+            touch_idxs=events.touch_idx.values,
+            close=trades.data.price.values,
+            concurrency=concurrency,
+            normalize=False
+        )
+        out_df["return_attribution"] = info_w
+        out_df["vertical_touch_weights"] = events.vertical_touch_weights.values
+
+        return out_df
+
+    @staticmethod
+    def compute_final_weights(
+            avg_uniqueness: pd.Series,
+            time_decay_intercept: float = 1.,
+            return_attribution: pd.Series = None,
+            vertical_touch_weights: pd.Series = None,
+            labels: pd.Series = None
+    ) -> pd.DataFrame:
+        """
+        Compute the time decay and class balance weights based on the average uniqueness and return attribution.
+        Normalizes return attribution to sum up to event count.
+
+        :param avg_uniqueness: Average uniqueness weights for the events.
+        :param return_attribution: Provide unnormalized return attribution if use this as info weights instead of average uniqueness.
+        :param vertical_touch_weights: Provide vertical touch weights if you want to apply them to the final weights.
+        :param time_decay_intercept: The intercept for the time decay function. 1.0 means no decay, 0.0 means full decay. Negative values will erase the oldest portion of the weights.
+        :param labels: Provide labels if you want to apply class balancing to the final weights.
+        :return: A pandas Dataframe containing the weight parts and the combined weights.
+        """
+        if not isinstance(avg_uniqueness, pd.Series):
+            raise ValueError("avg_uniqueness must be a pandas Series.")
+        if not isinstance(time_decay_intercept, (int, float)):
+            raise ValueError("time_decay_intercept must be a numeric value.")
+        if not -1.0 <= time_decay_intercept <= 1.0:
+            raise ValueError("time_decay_intercept must lie in [-1, 1]")
+
+            # Check optional parameters only if provided
+        if return_attribution is not None and not isinstance(return_attribution, pd.Series):
+            raise ValueError("return_attribution must be a pandas Series.")
+        if vertical_touch_weights is not None and not isinstance(vertical_touch_weights, pd.Series):
+            raise ValueError("vertical_touch_weights must be a pandas Series.")
+        if labels is not None and not isinstance(labels, pd.Series):
+            raise ValueError("labels must be a pandas Series.")
+
+            # Ensure provided Series have matching indices
+        if return_attribution is not None and not avg_uniqueness.index.equals(return_attribution.index):
+            raise ValueError("avg_uniqueness and return_attribution must have the same index.")
+        if vertical_touch_weights is not None and not avg_uniqueness.index.equals(vertical_touch_weights.index):
+            raise ValueError("avg_uniqueness and vertical_touch_weights must have the same index.")
+        if labels is not None and not avg_uniqueness.index.equals(labels.index):
+            raise ValueError("avg_uniqueness and labels must have the same index.")
+
+
+        n_events = len(avg_uniqueness)
+
+        # Apply time decay
+        time_decay_weights = time_decay(
+            avg_uniqueness=avg_uniqueness.values,
+            last_weight=time_decay_intercept
+        )
+
+        out_df = pd.DataFrame({
+            'time_decay_weights': time_decay_weights
+        }, index=avg_uniqueness.index)
+
+        # Normalize return attribution to sum up to event count
+        if return_attribution is not None:
+            if return_attribution.sum() <= 0:
+                raise ValueError("Return attribution sum is zero or negative, cannot normalize.")
+            return_attribution = return_attribution.values * n_events / return_attribution.sum()
+
+            out_df["return_attribution"] = return_attribution
+
+            # Combine base weights with time decay
+            combined_weights = time_decay_weights * return_attribution
+        else:
+            # If return attribution is not provided, just use time decay weights
+            combined_weights = time_decay_weights * avg_uniqueness.values
+
+        if vertical_touch_weights is not None:
+            out_df["vertical_touch_weights"] = vertical_touch_weights.values
+            combined_weights = combined_weights * vertical_touch_weights.values
 
         # Normalize the weights to have a mean of 1.0
         mean_combined_weights = combined_weights.mean()
         if mean_combined_weights <= 0:
             raise ValueError("Mean of combined weights is zero or negative, cannot normalize.")
 
-        combined_weights /= mean_combined_weights
+        base_weights = combined_weights / mean_combined_weights
 
-        if self.class_balancing:
+        if labels is not None:
             unique_labels, class_weights, sum_w_class, final_weights = class_balance_weights(
                 labels=labels.values,
-                base_w=combined_weights
+                base_w=base_weights
             )
             # Display class balance weights in a readable format
             weight_info = "\n".join(
@@ -367,7 +361,9 @@ class SampleWeights:
             sum_info = "\n".join(
                 [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
             logger.info(f"Sum of weights per class:\n{sum_info}")
-
-            return final_weights
         else:
-            return combined_weights
+            final_weights = base_weights
+
+        out_df["weights"] = final_weights
+
+        return out_df
