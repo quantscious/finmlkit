@@ -25,7 +25,7 @@ class TradesData:
     """
 
     def __init__(self,
-                 ts: NDArray, px: NDArray, qty: NDArray, id: NDArray, *,
+                 ts: NDArray, px: NDArray, qty: NDArray, *, id: NDArray = None,
                  is_buyer_maker: NDArray = None,
                  side = None,
                  timestamp_unit: Optional[str] = None,
@@ -53,7 +53,7 @@ class TradesData:
             raise TypeError("px must be a np.ndarray")
         if not isinstance(qty, np.ndarray):
             raise TypeError("qty must be a np.ndarray")
-        if not isinstance(id, np.ndarray):
+        if id is not None and not isinstance(id, np.ndarray):
             raise TypeError("id must be a np.ndarray")
         if is_buyer_maker is not None and not isinstance(is_buyer_maker, np.ndarray):
             raise TypeError("is_buyer_maker must be None or np.ndarray")
@@ -72,6 +72,8 @@ class TradesData:
         self.data_ok = None
         self.discontinuities = []  # List to store discontinuity information
         if preprocess:
+            if id is None:
+                raise ValueError("id is required if preprocess is True")
             self._convert_timestamps_to_ns()
             self._sort_trades()
             self._merge_trades()
@@ -80,6 +82,9 @@ class TradesData:
                 # If side info is not provided, infer it from trades data
                 self._add_trade_side_info()
 
+        # Add datetime_idx
+        self.data.set_index(pd.to_datetime(self.data['timestamp'], unit='ns'), inplace=True)
+        self.data.index.name = "datetime"
         logger.info("TradesData prepared successfully.")
 
     @property
@@ -269,8 +274,8 @@ class TradesData:
             filepath: str,
             *,
             month_key: Optional[str] = None,
-            complib: str = "blosc:zstd",
-            complevel: int = 5,
+            complib: str = "blosc:lz4",
+            complevel: int = 1,
             mode: str = "a",
             chunksize: int = 1_000_000,
             overwrite_month: bool = True,
@@ -309,9 +314,10 @@ class TradesData:
         # ------------------------------------------------------------------
         #  Build an *indexed* frame for fast time‑slice queries
         # ------------------------------------------------------------------
-        frame = self.data.copy()
-        frame["datetime"] = pd.to_datetime(frame["timestamp"], unit="ns")
-        frame.set_index("datetime", inplace=True)
+        # frame = self.data.copy()
+        # frame["datetime"] = pd.to_datetime(frame["timestamp"], unit="ns")
+        # frame.set_index("datetime", inplace=True)
+        # It is already indexed!
 
         # ------------------------------------------------------------------
         #  Write / append to the store
@@ -596,7 +602,7 @@ class H5Inspector:
             if integrity_key in store:
                 disc_df = store[integrity_key]
 
-                return disc_df.T
+                return disc_df
             else:
                 return None
 

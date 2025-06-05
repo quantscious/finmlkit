@@ -4,8 +4,6 @@ from .weights import average_uniqueness, return_attribution, time_decay, class_b
 from finmlkit.utils.log import get_logger
 from finmlkit.bar.data_model import TradesData
 import pandas as pd
-import numpy as np
-from numpy.typing import NDArray
 
 logger = get_logger(__name__)
 
@@ -16,7 +14,7 @@ class TBMLabel:
                  target_ret_col: str,
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
-                 vertical_barrier: float,
+                 vertical_barrier: pd.Timedelta,
                  is_meta: bool = False):
         """
         Triple barrier labeling method
@@ -31,7 +29,7 @@ class TBMLabel:
         :param horizontal_barriers: Bottom and Top (SL/TP) horizontal barrier multipliers.
             The return target will be multiplied by these multipliers. Determines the width of the horizontal barriers.
             If you want to disable the barriers, set it to -np.inf or +np.inf, respectively.
-        :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
+        :param vertical_barrier: The temporal barrier as timedelta. Set it to a large value to disable the vertical barrier (eg. 1000 years)
         :param is_meta: Side or meta labeling.
             If `True` `features` must contain `side` column containing the predictions of the primary model.
         """
@@ -58,7 +56,7 @@ class TBMLabel:
         self.target_ret_col = target_ret_col
         self.min_ret = min_ret
         self.horizontal_barriers = horizontal_barriers
-        self.vertical_barrier = vertical_barrier
+        self.vertical_barrier = vertical_barrier.seconds  # get vertical barrier in seconds
         self.is_meta = is_meta
 
         self._out = None

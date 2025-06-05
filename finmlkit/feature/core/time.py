@@ -7,14 +7,13 @@ def time_cues(timestamps: NDArray[np.int64]):
     """
     :param timestamps : int64 nanoseconds UTC
     :returns: tuple of arrays for the block-7 features
-              (sin_td, cos_td, sin_dw, cos_dw, asia, eu, us, sess_x, top_hr)
+              (sin_td, cos_td, dow,, asia, eu, us, sess_x, top_hr)
     """
     n = timestamps.size
     # pre-allocate
     sin_td  = np.empty(n, np.float64)
     cos_td  = np.empty(n, np.float64)
-    sin_dw  = np.empty(n, np.float64)
-    cos_dw  = np.empty(n, np.float64)
+    dow     = np.empty(n, np.int8)    # day of week
     asia    = np.zeros(n, np.bool_)
     eu      = np.zeros(n, np.bool_)
     us      = np.zeros(n, np.bool_)
@@ -34,11 +33,10 @@ def time_cues(timestamps: NDArray[np.int64]):
         cos_td[i] = np.cos(phase)
 
         # ---------- day-of-week cyclical ----------
-        day_week = (ts // 86400 + 3) % 7       # Unix epoch was Thu(=4)
-        phase_w  = twopi * (day_week / 7.0)
-        sin_dw[i] = np.sin(phase_w)
-        cos_dw[i] = np.cos(phase_w)
-
+        # Unix epoch (Jan 1, 1970) was a Thursday
+        # To get day of week where Monday=0, we offset by 3
+        day_week = ((ts // 86400) + 3) % 7
+        dow[i] = day_week
         # ---------- session flags ---------------
         hour = (sec_in_day // 3600)
         if 0 <= hour < 8:
@@ -57,4 +55,5 @@ def time_cues(timestamps: NDArray[np.int64]):
         if minute == 0:
             top_hr[i] = 1
 
-    return sin_td, cos_td, sin_dw, cos_dw, asia, eu, us, trans, top_hr
+    return sin_td, cos_td, dow, asia, eu, us, trans, top_hr
+

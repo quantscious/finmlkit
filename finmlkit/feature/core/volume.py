@@ -14,11 +14,11 @@ class VolumePro:
     Encapsulates numba functions for smoother calling and parameter setting.
     """
 
-    def __init__(self, window_size_sec: int=1800, n_bins: int=27, va_pct: float=68.34):
+    def __init__(self, window_size: pd.Timedelta, n_bins: int=27, va_pct: float=68.34):
         """
         Initialize the Volume Profile calculator with the given parameters.
 
-        :param window_size_sec: Size of the rolling window in seconds.
+        :param window_size: Size of the rolling windows.
         :param n_bins: Number of bins for price level bucketing.
         :param va_pct: Value area percentage.
         :note:
@@ -26,7 +26,7 @@ class VolumePro:
             used for determining the high and low value areas (HVA and LVA).
             Default values are window_size_sec=1800, n_bins=27, va_pct=68.34.
         """
-        self.window_size_sec = window_size_sec
+        self.window_size_sec = window_size.seconds
         self.n_bins = n_bins
         self.va_pct = va_pct
 

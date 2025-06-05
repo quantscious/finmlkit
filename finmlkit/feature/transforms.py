@@ -420,7 +420,7 @@ class TimeCues(SIMOTransform):
 
         :param input_col: If DataFrame is passed, this is the column name to compute returns on.
         """
-        produces=["sin_td", "cos_td", "sin_dw", "cos_dw", "asia", "eu", "us", "sess_x", "top_hr"]
+        produces=["sin_td", "cos_td", "dow", "asia", "eu", "us", "sess_x", "top_hr"]
         super().__init__(input_col, produces)
 
     def _pd(self, x):
@@ -430,8 +430,12 @@ class TimeCues(SIMOTransform):
     def _nb(self, x: pd.DataFrame) -> tuple[pd.Series, ...]:
         ts = self._get_timestamps(x)
         result = time_cues(ts)
+        result = list(self._prepare_output_nb(x.index, result))
 
-        return self._prepare_output_nb(x.index, result)
+        # set dow as categorical column
+        result[2] = result[2].astype("category")
+
+        return tuple(result)
 
     @property
     def output_name(self):

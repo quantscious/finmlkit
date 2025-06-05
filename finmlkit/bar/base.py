@@ -223,17 +223,16 @@ def comp_bar_ohlcv(
     bar_volume = np.zeros(n_bars, dtype=np.float32)
     bar_vwap = np.zeros(n_bars, dtype=np.float64)
 
-    last_price = prices[0]
     for i in prange(n_bars):
         start = bar_open_indices[i]
         end = bar_open_indices[i + 1]
 
         # Handle empty bar
         if start == end:
-            bar_open[i] = last_price
-            bar_close[i] = last_price
-            bar_high[i] = last_price
-            bar_low[i] = last_price
+            bar_open[i] = prices[end]
+            bar_close[i] = prices[end]
+            bar_high[i] = prices[end]
+            bar_low[i] = prices[end]
             bar_volume[i] = 0.0
             bar_vwap[i] = 0.0
             continue
@@ -265,8 +264,6 @@ def comp_bar_ohlcv(
         bar_low[i] = low_price
         bar_volume[i] = total_volume
         bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
-
-        last_price = prices[end]
 
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
 

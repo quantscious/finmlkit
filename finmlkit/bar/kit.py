@@ -5,6 +5,7 @@ from .base import BarBuilderBase
 from .logic import _time_bar_indexer, _tick_bar_indexer, _volume_bar_indexer, _dollar_bar_indexer, _cusum_bar_indexer, _imbalance_bar_indexer, _run_bar_indexer
 from finmlkit.utils.log import get_logger
 from .data_model import TradesData
+import pandas as pd
 logger = get_logger(__name__)
 
 
@@ -13,17 +14,17 @@ class TimeBarKit(BarBuilderBase):
     Time bar builder class.
     """
 
-    def __init__(self,trades: TradesData, interval_sec: int):
+    def __init__(self,trades: TradesData, period: pd.Timedelta):
         """
         Initialize the time bar builder with raw trades data and time interval.
 
         :param trades: DataFrame of raw trades with 'timestamp', 'price', and 'amount'.
-        :param interval_sec: Time interval in seconds for the time bar.
+        :param period: The time interval of a bar.
         """
         super().__init__(trades)
-        self.interval = interval_sec
+        self.interval = period.seconds
 
-        logger.info(f"Time bar builder initialized with interval: {interval_sec} seconds.")
+        logger.info(f"Time bar builder initialized with interval: {self.interval} seconds.")
 
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
