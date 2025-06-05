@@ -130,7 +130,7 @@ class Compose(BaseTransform):
                     series_out = tfs(x)
             else:
                 # Subsequent transforms on the output of the previous transform
-                print(tfs.requires[0])
+                # print(tfs.requires[0])
                 series_out = tfs(pd.DataFrame(series_out.values, index=series_out.index, columns=[tfs.requires[0]]), backend=backend)
 
         # Return the final output Series with the composed name

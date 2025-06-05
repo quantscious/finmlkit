@@ -92,6 +92,7 @@ def triple_barrier(
         t1_idx = np.searchsorted(timestamps, t1, side='right') - 1
         if t1_idx <= t0_idx:
             print("Warning: Vertical barrier index is less than or equal to event index. Skipping this event.")
+            print(t0, t1)
             continue
 
         # ---------- Evaluate the path -----------

@@ -34,7 +34,7 @@ def time_cues(timestamps: NDArray[np.int64]):
         cos_td[i] = np.cos(phase)
 
         # ---------- day-of-week cyclical ----------
-        day_week = (ts // 86400 + 4) % 7       # Unix epoch was Thu(=4)
+        day_week = (ts // 86400 + 3) % 7       # Unix epoch was Thu(=4)
         phase_w  = twopi * (day_week / 7.0)
         sin_dw[i] = np.sin(phase_w)
         cos_dw[i] = np.cos(phase_w)

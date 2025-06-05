@@ -14,35 +14,35 @@ class VolumePro:
     Encapsulates numba functions for smoother calling and parameter setting.
     """
 
-    def __init__(self, window_size_sec: int=1800, bin_size: int=5, va_pct: float=68.34):
+    def __init__(self, window_size_sec: int=1800, n_bins: int=27, va_pct: float=68.34):
         """
         Initialize the Volume Profile calculator with the given parameters.
 
         :param window_size_sec: Size of the rolling window in seconds.
-        :param bin_size: Size of the price level bins.
+        :param n_bins: Number of bins for price level bucketing.
         :param va_pct: Value area percentage.
         :note:
             This sets the rolling window size, the bin size for price level bucketing, and the value area percentage
             used for determining the high and low value areas (HVA and LVA).
-            Default values are window_size_sec=1800, bin_size=5, va_pct=68.34.
+            Default values are window_size_sec=1800, n_bins=27, va_pct=68.34.
         """
         self.window_size_sec = window_size_sec
-        self.bin_size = bin_size
+        self.n_bins = n_bins
         self.va_pct = va_pct
 
-    def reset_parameters(self, window_size_sec: int=None, bin_size: int=None, va_pct: float=None):
+    def reset_parameters(self, window_size_sec: int=None, n_bins: int=None, va_pct: float=None):
         """
         Reset the parameters of the Volume Profile calculator.
 
         :param window_size_sec: Optional new window size in seconds. If None, the existing value is retained.
-        :param bin_size: Optional new bin size for price level bucketing. If None, the existing value is retained.
+        :param n_bins: Optional number of bins for price level bucketing. If None, the existing value is retained.
         :param va_pct: Optional new value area percentage. If None, the existing value is retained.
         :note:
             This method allows dynamic reconfiguration of the rolling window size, price bin size, or value area percentage
             for the Volume Profile calculations. Any parameter left as None will retain its prior value.
         """
         self.window_size_sec = window_size_sec if window_size_sec is not None else self.window_size_sec
-        self.bin_size = bin_size if bin_size is not None else self.bin_size
+        self.n_bins = n_bins if n_bins is not None else self.n_bins
         self.va_pct = va_pct if va_pct is not None else self.va_pct
 
     def compute(self, bars: pd.DataFrame, fp_data: FootprintData) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -68,7 +68,7 @@ class VolumePro:
         poc_prices, hva_prices, lva_prices = volume_profile_rolling(
             fp_data.bar_timestamps, bars.high.values, bars.low.values,
             fp_data.price_levels, fp_data.buy_volumes, fp_data.sell_volumes,
-            window_size_sec=self.window_size_sec, bin_size=self.bin_size, price_tick=fp_data.price_tick,
+            window_size_sec=self.window_size_sec, n_bins=self.n_bins, price_tick=fp_data.price_tick,
             va_pct=self.va_pct
         )
 
@@ -203,31 +203,34 @@ def aggregate_footprint(ts: np.ndarray,
 
 
 @njit(nogil=True)
-def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray, bin_size: int) -> tuple[np.ndarray, np.ndarray]:
+def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray, n_bins: int) -> tuple[np.ndarray, np.ndarray]:
     """
     Bucket the price levels and associated volumes using a fixed-size bin to reduce noise.
 
     :param all_price_levels: Array of all price levels.
     :param total_volumes: Corresponding total volumes.
-    :param bin_size: Width of each bin (should be odd).
+    :param n_bins: number of bins to create for bucketing the price levels.
     :returns: Tuple of:
         - binned_price_levels: Midpoints of each bucket.
         - binned_volumes: Aggregated volumes per bucket.
     :raises AssertionError: If input arrays are empty or of mismatched length.
     :raises ValueError: If a price level falls outside defined bins.
     """
-    assert bin_size >= 3, "Bin size should be larger than 3"
+    assert n_bins >= 3, "Bin size should be larger than 3"
     assert len(all_price_levels) == len(
         total_volumes) > 0, "Price levels and volumes should have the same length and non-empty"
-
-    # Ensure bin_size is odd
-    if bin_size % 2 == 0:
-        bin_size += 1
 
     # Define the bin edges
     min_price = np.min(all_price_levels)  # integer in price_tick units
     max_price = np.max(all_price_levels)  # integer in price_tick units
-    bin_edges = np.arange(min_price, max_price + bin_size, bin_size, dtype=np.int32)
+
+    # Calculate bin edges based on the number of bins
+    price_range = max_price - min_price
+    bin_width = max(1, price_range // n_bins)  # Ensure minimum bin width of 1
+    # Ensure bin width is odd
+    if bin_width % 2 == 0:
+        bin_width += 1
+    bin_edges = np.arange(min_price, max_price + bin_width, bin_width, dtype=np.int32)
     n_bins = len(bin_edges) - 1
 
     # Ensure that there is at least one bin
@@ -364,7 +367,7 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
 def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                            price_levels: list[np.ndarray], buy_volumes: list[np.ndarray],
                            sell_volumes: list[np.ndarray],
-                           window_size_sec: float, bin_size: int = None, price_tick: float = None,
+                           window_size_sec: float, n_bins: int = None, price_tick: float = None,
                            va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute rolling volume profiles over a fixed-width time window.
@@ -376,7 +379,7 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     :param buy_volumes: List of buy volumes per bar.
     :param sell_volumes: List of sell volumes per bar.
     :param window_size_sec: Width of the rolling time window.
-    :param bin_size: Optional price level binning width.
+    :param n_bins: Optional number of bins for bucketing price levels.
     :param price_tick: Price tick size for discretization.
     :param va_pct: Value area percentage.
     :returns: Tuple of POC, HVA, LVA price series aligned to input bars.
@@ -408,9 +411,9 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
         # TODO: Further volume profile calculations: 1.) Volume+Delta 2.) Ticks+Delta 3.) Min/max 4.) Imbalance
 
         # Bucket price levels
-        if bin_size is not None:
+        if n_bins is not None:
             assert price_tick is not None, "Price tick should be provided for bucketing price levels correctly..."
-            all_price_levels, total_volumes = bucket_price_levels(all_price_levels, total_volumes, bin_size)
+            all_price_levels, total_volumes = bucket_price_levels(all_price_levels, total_volumes, n_bins)
 
         # Calculate the POC, HVA, and LVA
         poc_price, hva_price, lva_price = comp_poc_hva_lva(all_price_levels, total_volumes, va_pct)
@@ -458,7 +461,7 @@ def trim_trailing_zeros(price_levels: np.ndarray, volumes: np.ndarray) -> tuple[
 @njit(nogil=True)
 def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                               price_levels: list[np.ndarray], buy_volumes: list[np.ndarray], sell_volumes: list[np.ndarray],
-                              start_ts: int, end_ts: int, bin_size: int = None, price_tick: float = None,
+                              start_ts: int, end_ts: int, n_bins: int = None, price_tick: float = None,
                               va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute a developing volume profile between two timestamps using cumulative aggregation.
@@ -471,7 +474,7 @@ def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarra
     :param sell_volumes: List of sell volumes per bar.
     :param start_ts: Start time in nanoseconds.
     :param end_ts: End time in nanoseconds.
-    :param bin_size: Optional price level bucketing bin width.
+    :param n_bins: Optional number of bins for bucketing price levels.
     :param price_tick: Tick size for price bucketing.
     :param va_pct: Value area percentage.
     :returns: Tuple of timestamps, POC, HVA, and LVA series for the range.
@@ -510,7 +513,7 @@ def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarra
         developing_total_volumes = developing_buy_volumes + developing_sell_volumes
 
         # Bucket price levels
-        if bin_size is not None:
+        if n_bins is not None:
             assert price_tick is not None, "Price tick should be provided for bucketing price levels correctly..."
 
             # Before bucketing, we have to trim the trailing zeros
@@ -518,7 +521,7 @@ def volume_profile_developing(ts: np.ndarray, highs: np.ndarray, lows: np.ndarra
                                                                                  developing_total_volumes)
             # Bucket the price levels and volumes
             bucketed_price_levels, bucketed_total_volumes = bucket_price_levels(current_price_levels,
-                                                                                developing_total_volumes, bin_size)
+                                                                                developing_total_volumes, n_bins)
 
             # Calculate the POC, HVA, and LVA
             poc_price, hva_price, lva_price = comp_poc_hva_lva(bucketed_price_levels, bucketed_total_volumes,

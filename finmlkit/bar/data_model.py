@@ -10,6 +10,7 @@ from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
 from .utils import comp_trade_side_vector, fast_sort_trades, merge_split_trades
 import os
+import multiprocessing
 
 logger = get_logger(__name__)
 
@@ -24,23 +25,25 @@ class TradesData:
     """
 
     def __init__(self,
-                 ts: NDArray, px: NDArray, qty: NDArray, *,
+                 ts: NDArray, px: NDArray, qty: NDArray, id: NDArray, *,
                  is_buyer_maker: NDArray = None,
                  side = None,
                  timestamp_unit: Optional[str] = None,
                  preprocess: bool = False,
-                 proc_res: Optional[str] = None):
+                 proc_res: Optional[str] = None, name= None):
         """
         Initialize the TradesData with raw trades data.
 
         :param ts: array of timestamps
         :param px: array of prices
         :param qty: array of quantity or amount of trades
+        :param id: array of trades id
         :param is_buyer_maker: Optional Array of side info: True if buyer maker, False otherwise. If None side information will be inferred from data.
         :param side: Optional Array Market order side information (-1: sell, 1: buy)
         :param timestamp_unit: (Optional) timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
         :param proc_res: (Optional) processing resolution for timestamps (e.g., 'ms' cuts us to ms resolution).
         :param preprocess: If True, runs the preprocessing pipeline (sorting, merging split trades etc...)
+        :param name: Optional name for the trades data instance (logging purposes).
         :raises ValueError: If required columns are missing or timestamp format is invalid.
 
         """
@@ -50,22 +53,28 @@ class TradesData:
             raise TypeError("px must be a np.ndarray")
         if not isinstance(qty, np.ndarray):
             raise TypeError("qty must be a np.ndarray")
+        if not isinstance(id, np.ndarray):
+            raise TypeError("id must be a np.ndarray")
         if is_buyer_maker is not None and not isinstance(is_buyer_maker, np.ndarray):
             raise TypeError("is_buyer_maker must be None or np.ndarray")
         if side is not None and not isinstance(side, np.ndarray):
             raise TypeError("side must be None or np.ndarray")
 
-        self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
+        self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
         self.is_buyer_maker = is_buyer_maker
         if side is not None:
             self.data['side'] = side
         self._orig_timestamp_unit = timestamp_unit if timestamp_unit else self.infer_timestamp_unit()
+        self.name = name
 
         # Process the trades data
+        self.missing_pct = 0
+        self.data_ok = None
+        self.discontinuities = []  # List to store discontinuity information
         if preprocess:
+            self._convert_timestamps_to_ns()
             self._sort_trades()
             self._merge_trades()
-            self._convert_timestamps_to_ns()
             self._apply_timestamp_resolution(proc_res)
             if "side" not in self.data.columns:
                 # If side info is not provided, infer it from trades data
@@ -85,32 +94,68 @@ class TradesData:
     def _sort_trades(self) -> None:
         """
         Sort trades by timestamp to ensure correct order for processing.
-        For large datasets, uses a fast Numba-based sorting algorithm.
-
-        :param trades: DataFrame to sort.
+        Also performs data integrity checks by identifying discontinuities in trade IDs.
         """
-        if self.data.timestamp.is_monotonic_increasing:
-            logger.info('Trades data is already in ascending order. Skipping sort.')
-            return
+        self.data_ok = True
+        self.discontinuities = []  # Reset discontinuities list
 
-        logger.info('Sorting by timestamp...')
-        self.data.sort_values('timestamp', inplace=True)
-        # We are memory bound here, not compute bound, plus writer thread is slower.
+        # Sort by ID to inspect data integrity
+        self.data.sort_values(by=['id'], inplace=True)
+        # Reset index
+        self.data.reset_index(drop=True, inplace=True)
 
-        # # Sort using numba
-        # sorted_timestamps, sorted_prices, sorted_amounts, sorted_is_buyer_maker = fast_sort_trades(
-        #     self.data['timestamp'].values.astype(np.int64),
-        #     self.data['price'].values.astype(np.float64),
-        #     self.data['amount'].values.astype(np.float32),
-        #     self.is_buyer_maker,
-        # )
-        #
-        # # Update the DataFrame with sorted values
-        # self.data['timestamp'] = sorted_timestamps
-        # self.data['price'] = sorted_prices
-        # self.data['amount'] = sorted_amounts
-        # if self.is_buyer_maker is not None:
-        #     self.is_buyer_maker = sorted_is_buyer_maker
+        # Check duplicates in trade IDs
+        if self.data['id'].duplicated().any():
+            logger.warning(f"{self.name} | Trade IDs contain duplicates. This may indicate data corruption.")
+            # Drop duplicates while keeping the first occurrence
+            self.data.drop_duplicates(subset='id', keep='first', inplace=True)
+            logger.info("Duplicates in trade IDs have been removed.")
+            self.data_ok = False
+
+        # Check for gaps in trade IDs
+        # First convert to numeric to handle potential string IDs
+        id_diffs = np.diff(self.data['id'].values)
+        gap_indices = np.where(id_diffs > 1)[0]
+
+        cum_gap_size = 0
+        if len(gap_indices) > 0:
+            logger.warning(f"{self.name} | Found {len(gap_indices):,} discontinuities in trade IDs. "
+                           f"This indicates missing trades.")
+            # Record detailed information about each discontinuity
+            n_large_gaps = 0
+            for idx in gap_indices:
+                gap_start_id = int(self.data['id'].iloc[idx])
+                gap_end_id = int(self.data['id'].iloc[idx + 1])
+                gap_size = gap_end_id - gap_start_id - 1
+                cum_gap_size += gap_size
+
+                # Get timestamps for the trades before and after the gap
+                pre_gap_time = pd.to_datetime(self.data['timestamp'].iloc[idx], unit='ns')
+                post_gap_time = pd.to_datetime(self.data['timestamp'].iloc[idx + 1], unit='ns')
+                time_diff = post_gap_time - pre_gap_time
+
+                # Record the discontinuity if gap is greater than 1 min
+                if time_diff > pd.Timedelta(minutes=1):
+                    self.data_ok = False
+                    n_large_gaps += 1
+                    self.discontinuities.append({
+                        'start_id': gap_start_id,
+                        'end_id': gap_end_id,
+                        'missing_ids': gap_size,
+                        'pre_gap_time': pre_gap_time,
+                        'post_gap_time': post_gap_time,
+                        'time_interval': time_diff
+                    })
+            if n_large_gaps > 0:
+                logger.warning(f"{self.name} | Found {n_large_gaps} large gaps greater than 1 minute.")
+            logger.info(f"Recorded {len(self.discontinuities)} trade ID discontinuities with corresponding time intervals.")
+            self.missing_pct = cum_gap_size / len(self.data) * 100
+
+        # Now sort by timestamp for chronological order if needed
+        if not self.data.timestamp.is_monotonic_increasing:
+            logger.warning(f"{self.name} | Trades timestamps are not monotonic increasing after sorting by trade IDs. "
+                         f"Sorting by timestamp for chronological order...")
+            self.data.sort_values(by=['timestamp', 'id'], inplace=True)
 
         # Reset index
         self.data.reset_index(drop=True, inplace=True)
@@ -162,7 +207,9 @@ class TradesData:
         # Convert timestamp to nanoseconds
         logger.info('Converting timestamp to nanoseconds units for processing...')
         # trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
-        self.data.timestamp = (self.data.timestamp * unit_scale_factor[self.orig_timestamp_unit]).astype(np.int64)
+        # Work directly on the underlying NumPy array for better performance
+        factor = unit_scale_factor[self.orig_timestamp_unit]
+        self.data['timestamp'].values[:] = np.multiply(self.data['timestamp'].values, factor, dtype=np.int64)
 
     def _apply_timestamp_resolution(self, proc_res: Optional[str]) -> None:
         """
@@ -255,6 +302,7 @@ class TradesData:
 
         h5_key = f"/trades/{month_key}"
         meta_key = f"/meta/{month_key}"
+        integrity_key = f"/integrity/{month_key}"
 
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
 
@@ -299,6 +347,8 @@ class TradesData:
                 logger.info(f"Overwriting existing data for {month_key}...")
                 store.remove(h5_key)
                 store.remove(meta_key)
+                if integrity_key in store:
+                    store.remove(integrity_key)
                 store.put(
                     key=h5_key,
                     value=frame,
@@ -340,9 +390,35 @@ class TradesData:
                         store.get_storer(h5_key).nrows if month_exists else len(frame)),
                     "first_timestamp": int(frame["timestamp"].iloc[0]),
                     "last_timestamp": int(frame["timestamp"].iloc[-1]),
+                    "data_integrity_ok": self.data_ok,  # Add integrity flag to main metadata
+                    "missing_pct": self.missing_pct     # Add count of discontinuities
                 }
             )
             store.put(meta_key, meta, format="fixed")
+
+            # ------------------------------------------------------------------
+            #  Store data integrity information if discontinuities were found
+            # ------------------------------------------------------------------
+            if self.discontinuities:
+                # Convert discontinuities list to a DataFrame with string representation of objects
+                discontinuity_data = []
+                for disc in self.discontinuities:
+                    # Convert pandas Timestamp and Timedelta objects to strings to ensure serialization works
+                    disc_dict = {
+                        'start_id': disc['start_id'],
+                        'end_id': disc['end_id'],
+                        'missing_ids': disc['missing_ids'],
+                        'pre_gap_time_str': str(disc['pre_gap_time']),
+                        'post_gap_time_str': str(disc['post_gap_time']),
+                        'time_interval_str': str(disc['time_interval'])
+                    }
+                    discontinuity_data.append(disc_dict)
+
+                # Save discontinuity data as DataFrame
+                if discontinuity_data:
+                    disc_df = pd.DataFrame(discontinuity_data)
+                    store.put(integrity_key, disc_df, format="table")
+                    logger.info(f"Saved {len(disc_df)} trade ID discontinuities to metadata.")
 
             logger.info(f"Successfully saved {len(frame):,} records for {month_key}")
 
@@ -364,6 +440,7 @@ class TradesData:
             first = pd.to_datetime(meta["first_timestamp"], unit="ns")
             last = pd.to_datetime(meta["last_timestamp"], unit="ns")
             if (end is None or first <= end) and (start is None or last >= start):
+                # If there is intersection, add the corresponding trades key
                 candidate_keys.append(meta_key.replace("/meta", "/trades"))
         return sorted(candidate_keys)
 
@@ -432,8 +509,36 @@ class TradesData:
         # ------------------------------------------------------------------
         df = pd.concat(frames, copy=False)
 
+        # Ensure the DataFrame index is sorted
+        if not df.index.is_monotonic_increasing:
+            logger.warning("Dataframe index is not indexing after concat. Sorting the DataFrame index...")
+            df.sort_index(inplace=True)
+
+
         side = df["side"] if "side" in df.columns else None
         return cls(df["timestamp"].values, df["price"].values, df["amount"].values, side=side.values)
+
+
+def _find_gaps(key: str, filepath: str, max_gap: pd.Timedelta) -> Tuple[str, list[Tuple[pd.Timestamp, pd.Timedelta]]]:
+    """
+    Find gaps in the trades data for a specific key.
+
+    :param key: HDF5 key to inspect.
+    :param filepath: Path to the HDF5 file.
+    :param max_gap: Maximum allowable gap between consecutive timestamps.
+    :return: Tuple containing the key and a list of tuples, each with (gap timestamp, gap size).
+    """
+    with pd.HDFStore(filepath, mode='r') as store:
+        df = store[key]
+        diff_series = df.index.to_series().diff()
+        gap_mask = diff_series > max_gap
+        gap_timestamps = df.index[gap_mask].tolist()
+        gap_sizes = diff_series[gap_mask].tolist()
+
+        # Combine timestamps and gap sizes into tuples
+        gaps_with_sizes = list(zip(gap_timestamps, gap_sizes))
+
+        return key, gaps_with_sizes
 
 
 class H5Inspector:
@@ -465,7 +570,7 @@ class H5Inspector:
         """
         Get metadata for a specific key in the HDF5 file.
 
-        :param key: Key to retrieve metadata for.
+        :param key: Key to retrieve metadata for (Eg.: /trades/2023-02)
         :return: Metadata dictionary.
         """
         with pd.HDFStore(self.filepath, mode='r') as store:
@@ -473,6 +578,27 @@ class H5Inspector:
                 raise KeyError(f"Key '{key}' not found in the store.")
             meta_key = key.replace('/trades/', '/meta/')
             return store[meta_key].to_dict()
+
+    def get_integrity_info(self, key: str) -> Optional[pd.DataFrame]:
+        """
+        Get data integrity information for a specific key in the HDF5 file.
+        This retrieves discontinuity information stored during the save_h5 process.
+
+        :param key: Key to retrieve integrity information for (e.g., '/trades/2023-01').
+        :return: DataFrame with discontinuity information or None if no integrity issues were found.
+        """
+        with pd.HDFStore(self.filepath, mode='r') as store:
+            if key not in store.keys():
+                raise KeyError(f"Key '{key}' not found in the store.")
+
+            integrity_key = key.replace('/trades/', '/integrity/')
+
+            if integrity_key in store:
+                disc_df = store[integrity_key]
+
+                return disc_df.T
+            else:
+                return None
 
     def get_statistics(self, key: str) -> Dict[str, any]:
         """
@@ -492,6 +618,103 @@ class H5Inspector:
                 'price_range': (df['price'].min(), df['price'].max()),
                 'amount_range': (df['amount'].min(), df['amount'].max())
             }
+
+    def inspect_gaps(self, max_gap: pd.Timedelta = pd.Timedelta(minutes=1), processes: int = 4) -> Dict[str, list[tuple[pd.Timestamp, pd.Timedelta]]]:
+        """
+        Inspect gaps in trades data across all keys in the HDF5 file.
+
+        :param max_gap: Maximum allowable gap between consecutive timestamps.
+        :param processes: Number of processes to use for multiprocessing.
+        :return: Dictionary with keys as HDF5 groups and values as lists of gap timestamps.
+        """
+        keys = self.list_keys()
+
+        with multiprocessing.Pool(processes=processes) as pool:
+            results = pool.starmap(_find_gaps, [(key, self.filepath, max_gap) for key in keys])
+
+        return dict(results)
+
+    def get_integrity_summary(self, verbose=True) -> Dict[str, Dict]:
+        """
+        Generate a summary of data integrity issues across all tables in the HDF5 file.
+
+        This function identifies tables with integrity issues (data_integrity_ok=False),
+        collects statistics about the issues (missing percentage, etc.), and retrieves
+        the detailed discontinuity information for affected tables.
+
+        :param verbose: Whether to print the results to console
+        :return: Dictionary with keys as HDF5 groups and values as dictionaries containing:
+                 - 'metadata': Basic metadata about the table including integrity flags
+                 - 'discontinuities': DataFrame with detailed discontinuity information (if available)
+                 - Or None if no integrity issues are found
+        """
+        result = {}
+        all_ok = True
+
+        # Get all available trade keys
+        keys = self.list_keys()
+
+        with pd.HDFStore(self.filepath, mode='r') as store:
+            # Check if there are any keys first
+            if not keys:
+                return None
+
+            # First pass: collect metadata for all tables
+            for key in keys:
+                meta_key = key.replace('/trades/', '/meta/')
+                integrity_key = key.replace('/trades/', '/integrity/')
+
+                if meta_key in store:
+                    metadata = store[meta_key].to_dict()
+                    # Check if the integrity flag is False
+                    if 'data_integrity_ok' in metadata and metadata['data_integrity_ok'] is False:
+                        all_ok = False
+                        month_key = key.split('/')[-1]  # Extract the month part (e.g., '2023-01')
+                        result[month_key] = {
+                            'metadata': metadata,
+                            'key': key
+                        }
+
+                        # Add discontinuity information if available
+                        if integrity_key in store:
+                            disc_df = store[integrity_key]
+                            result[month_key]['discontinuities'] = disc_df
+                        else:
+                            result[month_key]['discontinuities'] = None
+
+        if all_ok:
+            logger.info("All data passed integrity checks. No issues found.")
+            return None
+
+        # Count summary statistics
+        issue_count = len(result)
+        avg_missing_pct = sum(
+            info['metadata'].get('missing_pct', 0) for info in result.values()) / issue_count if issue_count > 0 else 0
+
+        logger.info(f"Found {issue_count} tables with data integrity issues.")
+        logger.info(f"Average missing data percentage: {avg_missing_pct:.2f}%")
+
+        if verbose:
+            # Process the results
+            if result:
+                print(f"Found {len(result)} months with data integrity issues:")
+                for month, info in result.items():
+                    print("\n===================================================================")
+                    print(f"Month: {month}")
+                    print("=====================================================================")
+                    print(f"Missing data: {info['metadata']['missing_pct']:.2f}%")
+                    print(f"First timestamp: {pd.to_datetime(info['metadata']['first_timestamp'], unit='ns')}")
+                    print(f"Last timestamp: {pd.to_datetime(info['metadata']['last_timestamp'], unit='ns')}")
+
+                    if info['discontinuities'] is not None:
+                        print(f"Number of discontinuities: {len(info['discontinuities'])}")
+                        print("\nDiscontinuities:")
+                        print(info['discontinuities'].T)
+            else:
+                print("No data integrity issues found!")
+
+        return result
+
 
 @dataclass
 class FootprintData:

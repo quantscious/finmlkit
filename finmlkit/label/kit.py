@@ -175,16 +175,18 @@ class TBMLabel:
         :param trades: Raw trades data the events will be evaluated.
         :return: Trimmed features DataFrame with events that are within the base series.
         """
-        last_timestamp = pd.Timestamp(trades.data.timestamp.values[-1], unit='ns')
-        return self._orig_features[self.features.index + pd.Timedelta(self.vertical_barrier, unit="s") <= last_timestamp]
+        last_trade_timestamp = pd.Timestamp(trades.data.timestamp.values[-1], unit='ns')
+        return self._orig_features[self._orig_features.index + pd.Timedelta(self.vertical_barrier, unit="s") <= last_trade_timestamp]
 
 
-    def compute_labels(self, trades: TradesData) -> pd.DataFrame:
+    def compute_labels(self, trades: TradesData) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         Compute the labels for the events using the triple barrier method.
         
         :param trades: The raw trades data the events will be evaluated
-        :return: A pandas Dataframe containing the labels and other related information.
+        :return: A tuple containing:
+            - The features DataFrame with the event indices and other features.
+            - A dataframe containing labels, event indices, touch indices, returns, and weights.
         """
         if not isinstance(trades, TradesData):
             raise ValueError("Trades must be an instance of TradesData.")
@@ -212,7 +214,7 @@ class TBMLabel:
             'vertical_touch_weights': max_rb_ratios
         }, index=self.features.index)
 
-        return self.full_output
+        return self.features, self.full_output
 
 
 class SampleWeights:
@@ -224,46 +226,46 @@ class SampleWeights:
     @staticmethod
     def compute_info_weights(
             trades: TradesData,
-            events: pd.DataFrame,
+            labels: pd.DataFrame,
     ) -> pd.DataFrame:
         """
         Computes the average uniqueness and (non-normalized) return attribution for the events.
 
         :param trades: The raw trades on which the events are evaluated
-        :param events: Events dataframe containing event indices and touch indices (output of `compute_labels` method).
+        :param labels: Labels dataframe containing event indices and touch indices (output of `compute_labels` method).
         :return:  A pandas DataFrame containing the average uniqueness and return attribution and vertical touch weights.
         """
 
         if not isinstance(trades, TradesData):
             raise ValueError("Trades must be an instance of TradesData.")
-        if not isinstance(events, pd.DataFrame):
+        if not isinstance(labels, pd.DataFrame):
             raise ValueError("Events must be a pandas DataFrame.")
-        if 'event_idx' not in events.columns or 'touch_idx' not in events.columns:
+        if 'event_idx' not in labels.columns or 'touch_idx' not in labels.columns:
             raise ValueError("Events DataFrame must contain 'event_idx' and 'touch_idxs' columns.")
 
 
         # Compute average uniqueness weights
         avg_u, concurrency = average_uniqueness(
             timestamps=trades.data.timestamp.values,
-            event_idxs=events.event_idx.values,
-            touch_idxs=events.touch_idx.values
+            event_idxs=labels.event_idx.values,
+            touch_idxs=labels.touch_idx.values
         )
 
         out_df = pd.DataFrame({
             'avg_uniqueness': avg_u,
-        }, index=events.index)
+        }, index=labels.index)
 
 
         # Compute return attribution weights
         info_w = return_attribution(
-            event_idxs=events.event_idx.values,
-            touch_idxs=events.touch_idx.values,
+            event_idxs=labels.event_idx.values,
+            touch_idxs=labels.touch_idx.values,
             close=trades.data.price.values,
             concurrency=concurrency,
             normalize=False
         )
         out_df["return_attribution"] = info_w
-        out_df["vertical_touch_weights"] = events.vertical_touch_weights.values
+        out_df["vertical_touch_weights"] = labels.vertical_touch_weights.values
 
         return out_df
 
