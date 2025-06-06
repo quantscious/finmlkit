@@ -353,14 +353,14 @@ class SampleWeights:
                 base_w=base_weights
             )
             # Display class balance weights in a readable format
-            weight_info = "\n".join(
-                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, class_weights)])
-            logger.info(f"Class balance weights:\n{weight_info}")
+            #weight_info = "\n".join(
+            #    [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, class_weights)])
+            #logger.info(f"Class balance weights:\n{weight_info}")
 
             # Display sum of weights per class
-            sum_info = "\n".join(
-                [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
-            logger.info(f"Sum of weights per class:\n{sum_info}")
+            #sum_info = "\n".join(
+            #    [f"  Class {label}: {weight:.4f}" for label, weight in zip(unique_labels, sum_w_class)])
+            #logger.info(f"Sum of weights per class:\n{sum_info}")
         else:
             final_weights = base_weights
 
