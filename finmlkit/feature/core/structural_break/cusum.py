@@ -25,17 +25,26 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
     """
     y = np.asarray(y, dtype=np.float64)
 
-    max_s_n_value_up = np.nan
-    max_s_n_value_down = np.nan
-    max_s_n_critical_value_up = np.nan
-    max_s_n_critical_value_down = np.nan
+    # Initialize with zeros instead of NaN to ensure we have a default value
+    max_s_n_value_up = 0.0
+    max_s_n_value_down = 0.0
+    max_s_n_critical_value_up = 0.0
+    max_s_n_critical_value_down = 0.0
 
     b_alpha = 4.6  # As per Homm and Breitung (2011)
+
+    # Make sure we have at least 2 points to compare
+    if t < 1 or sigma_sq_t <= 0.0:
+        return (max_s_n_value_up, max_s_n_value_down,
+                max_s_n_critical_value_up, max_s_n_critical_value_down)
 
     for n in range(1, t - 1):
         dyn = y[t] - y[n]
 
-        denominator = sigma_sq_t * np.sqrt(t - n) + 1e-16
+        # Add a safety check to avoid division by zero
+        denominator = sigma_sq_t * np.sqrt(t - n)
+        if denominator <= 1e-16:
+            continue
 
         # One-sided tests, abs(dyn) split into positive and negative parts
         s_n_t_up = max(0, dyn) / denominator
@@ -197,6 +206,13 @@ def cusum_test_rolling(
     """
     close_prices = np.asarray(close_prices, dtype=np.float64)
 
+    # Ensure all prices are positive to avoid log(0) or log(negative)
+    if np.any(close_prices <= 0):
+        # Find minimum positive value and add small offset to ensure all values are positive
+        min_positive = np.min(close_prices[close_prices > 0]) if np.any(close_prices > 0) else 1e-5
+        close_prices = close_prices.copy()  # Create a copy to avoid modifying the input
+        close_prices[close_prices <= 0] = min_positive / 10  # Use a value smaller than the minimum positive
+
     n = len(close_prices)
     snt_up = np.empty(n, dtype=np.float64)
     snt_down = np.empty(n, dtype=np.float64)
@@ -208,6 +224,13 @@ def cusum_test_rolling(
     snt_down.fill(np.nan)
     critical_values_up.fill(np.nan)
     critical_values_down.fill(np.nan)
+
+    # Ensure window_size and warmup_period are reasonable
+    if window_size < warmup_period + 2:
+        window_size = warmup_period + 2  # Minimum window size to allow for calculations
+
+    if n < warmup_period + 2:
+        return snt_up, snt_down, critical_values_up, critical_values_down  # Not enough data to process
 
     if n > window_size:
         for current_idx in prange(window_size, n):

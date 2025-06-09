@@ -247,7 +247,7 @@ class SIMOTransform(CoreTransform, ABC):
         """
         return [f"{self.requires[0]}_{col}" for col in self.produces]
 
-    def _prepare_output_nb(self, idx: pd.Index, y: tuple[NDArray]) -> tuple[pd.Series, ...]:
+    def _prepare_output_nb(self, idx: pd.Index, y: tuple[NDArray, ...]) -> tuple[pd.Series, ...]:
         """
         Prepare the output data for numba functions.
         :param idx: index of the original DataFrame

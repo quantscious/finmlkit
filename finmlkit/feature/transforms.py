@@ -9,6 +9,7 @@ from .core.reversion import vwap_distance
 from .core.time import time_cues
 from .core.ma import ewma, sma
 from .core.momentum import roc, rsi_wilder, stoch_k
+from .core.structural_break.cusum import cusum_test_rolling
 from typing import Union
 from finmlkit.utils.log import get_logger
 import pandas as pd
@@ -618,4 +619,38 @@ class FlowAcceleration(SISOTransform):
         result = comp_flow_acceleration(input_arr, self.window, self.recent_periods)
 
         return self._prepare_output_nb(x.index, result)
+
+
+class CUSUMTest(SIMOTransform):
+    """
+    Computes the CUSUM test statistics for structural breaks in time series.
+    """
+    def __init__(self, window_size: int = 50, warmup_period: int = 30, input_col: str = "close"):
+        """
+        Compute the CUSUM test statistics for structural breaks in time series.
+
+        :param input_col: If DataFrame is passed, this is the column name to compute the CUSUM test on.
+        :param window_size: Size of the rolling window for CUSUM test, by default 50.
+        :param warmup_period: Minimum number of observations before the first statistic is calculated, by default 30.
+        """
+        produces = [f"cmo_up{window_size}", f"cumo_down{window_size}"]
+        super().__init__(input_col, produces)
+        self.window_size = window_size
+        self.warmup_period = warmup_period
+
+    def _pd(self, x):
+        logger.info(f"Fall back to numba for {self.__class__.__name__}")
+        return self._nb(x)
+
+    def _nb(self, x: pd.DataFrame) -> tuple[pd.Series, ...]:
+        input_arr = self._prepare_input_nb(x)
+        snt_up, snt_down, critical_values_up, critical_values_down = cusum_test_rolling(
+            input_arr, self.window_size, self.warmup_period
+        )
+
+        return self._prepare_output_nb(x.index, (snt_up-critical_values_up, snt_down-critical_values_down))
+
+    @property
+    def output_name(self):
+        return self.produces
 

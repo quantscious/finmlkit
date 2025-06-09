@@ -1,7 +1,7 @@
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.structural_break.cusum import cusum_test_developing, cusum_test_last, cusum_test_rolling
+from finmlkit.feature.core.structural_break.cusum import cusum_test_developing, cusum_test_last, cusum_test_rolling
 import numpy as np
 
 def test_chu_stinchcombe_white_developing_basic():
@@ -104,3 +104,6 @@ def test_chu_stinchcombe_white_rolling_large_window():
     assert np.all(snt_up[50:] > critical_values_up[50:])
     # snt_down should be close to zero
     assert np.allclose(snt_down[30:], 0, atol=1e-8, equal_nan=True)
+
+if __name__ == "__main__":
+    pytest.main()
