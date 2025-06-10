@@ -4,7 +4,7 @@ Feature transform wrapper for financial time series data.
 from .base import SISOTransform, SIMOTransform, MISOTransform, BaseTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
 from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range, atr
-from .core.volume import comp_flow_acceleration
+from .core.volume import comp_flow_acceleration, vpin
 from .core.reversion import vwap_distance
 from .core.time import time_cues
 from .core.ma import ewma, sma
@@ -757,5 +757,56 @@ class PriceVolumeCorrelation(MISOTransform):
         volume = input_dict[self.requires[1]]
 
         result = rolling_price_volume_correlation(close, volume, self.window)
+
+        return self._prepare_output_nb(x.index, result)
+
+
+class VPIN(MISOTransform):
+    """
+    Calculates the VPIN (Volume-synchronized Probability of Informed Trading) metric.
+    VPIN measures the fraction of signed volume imbalance to total volume in a rolling window.
+    """
+    def __init__(self, window: int = 32, input_cols: list[str] = None):
+        """
+        Compute the VPIN metric over a specified window.
+
+        :param window: int, lookback period for VPIN calculation, default is 32
+        :param input_cols: list of column names for [volume_buy, volume_sell], defaults to ["volume_buy", "volume_sell"]
+        """
+        if input_cols is None:
+            input_cols = ["volume_buy", "volume_sell"]
+
+        # Create appropriate output column name
+        output_name = f"vpin_{window}"
+
+        super().__init__(input_cols, output_name)
+        self.window = window
+
+    def _pd(self, x):
+        """Pandas implementation of VPIN calculation"""
+        buy_col = self.requires[0]
+        sell_col = self.requires[1]
+
+        # Calculate absolute volume imbalance and total volume for each bar
+        abs_imbalance = abs(x[buy_col] - x[sell_col])
+        total_volume = x[buy_col] + x[sell_col]
+
+        # Calculate rolling sum of imbalance and total volume
+        rolling_imbalance = abs_imbalance.rolling(window=self.window).sum()
+        rolling_total_volume = total_volume.rolling(window=self.window).sum()
+
+        # Calculate VPIN as the ratio of imbalance to total volume
+        result = rolling_imbalance / rolling_total_volume
+        result.name = self.output_name
+
+        return result
+
+    def _nb(self, x: pd.DataFrame) -> pd.Series:
+        """Numba implementation of VPIN calculation"""
+        input_dict = self._prepare_input_nb(x)
+        volume_buy = input_dict[self.requires[0]]
+        volume_sell = input_dict[self.requires[1]]
+
+        result = vpin(volume_buy, volume_sell, self.window)
 
         return self._prepare_output_nb(x.index, result)

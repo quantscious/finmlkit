@@ -575,3 +575,47 @@ def comp_flow_acceleration(
 
     return out
 
+
+@njit(nogil=True)
+def vpin(volume_buy: NDArray[np.float64],
+         volume_sell: NDArray[np.float64],
+         window: int) -> NDArray[np.float64]:
+    """
+    Calculate VPIN (Volume-synchronized Probability of Informed Trading),
+    which is the fraction of signed volume imbalance to total volume in a rolling window.
+
+    :param volume_buy: Array of buy volume values
+    :param volume_sell: Array of sell volume values
+    :param window: Window size for rolling calculation
+    :return: Array of VPIN values
+    """
+    n = len(volume_buy)
+    result = np.empty(n, dtype=np.float64)
+    result.fill(np.nan)
+
+    # Need at least window observations to calculate
+    for i in range(window - 1, n):
+        total_volume = 0.0
+        abs_imbalance = 0.0
+        valid_points = 0
+        has_nans = False
+
+        # Calculate over the rolling window
+        for j in range(i - window + 1, i + 1):
+            if np.isnan(volume_buy[j]) or np.isnan(volume_sell[j]):
+                has_nans = True
+                break  # If any value in window is NaN, result is NaN
+            else:
+                total_volume += volume_buy[j] + volume_sell[j]
+                abs_imbalance += abs(volume_buy[j] - volume_sell[j])
+                valid_points += 1
+
+        # Skip calculation if we found NaN values in the window
+        if has_nans:
+            continue
+
+        # Calculate VPIN only if there was trading activity and all points are valid
+        if total_volume > 0 and valid_points == window:
+            result[i] = abs_imbalance / total_volume
+
+    return result
