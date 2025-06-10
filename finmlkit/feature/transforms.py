@@ -1,7 +1,7 @@
 """
 Feature transform wrapper for financial time series data.
 """
-from .base import SISOTransform, SIMOTransform, MISOTransform, BaseTransform
+from .base import SISOTransform, SIMOTransform, MISOTransform, BaseTransform, MIMOTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
 from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range, atr, variance_ratio_1_4_core
 from .core.volume import comp_flow_acceleration, vpin
@@ -9,6 +9,7 @@ from .core.reversion import vwap_distance
 from .core.time import time_cues
 from .core.ma import ewma, sma
 from .core.momentum import roc, rsi_wilder, stoch_k
+from .core.trend import adx_core
 from .core.structural_break.cusum import cusum_test_rolling
 from .core.correlation import rolling_price_volume_correlation
 from typing import Union
@@ -930,9 +931,228 @@ class TrendSlope(SISOTransform):
             # Store result
             result.iloc[i] = angle
 
+        result.name = self.output_name
         return result
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         """Numba implementation would be more complex - falling back to pandas for now"""
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
+
+
+class ADX(MISOTransform):
+    """
+    Computes the Average Directional Index (ADX) of price data.
+
+    ADX measures the strength of a trend (regardless of direction) on a scale from 0 to 100.
+    Values below 20 indicate a weak trend, above 25 indicate a strong trend.
+
+    This implementation uses Wilder's smoothing method for calculations.
+    """
+    def __init__(self, length: int = 14, input_cols: list[str] = None):
+        """
+        Compute the Average Directional Index (ADX) of price data.
+
+        :param length: Period for ADX calculation, default is 14
+        :param input_cols: List of column names for [high, low, close], defaults to ["high", "low", "close"]
+        """
+        if input_cols is None:
+            input_cols = ["high", "low", "close"]
+
+        # Create appropriate output column name
+        output_name = f"adx_{length}"
+
+        super().__init__(input_cols, output_name)
+        self.length = length
+
+    def _pd(self, x):
+        """Pandas implementation of ADX calculation (falls back to numba)"""
+        logger.info(f"Fall back to numba for {self.__class__.__name__}")
+        return self._nb(x)
+
+    def _nb(self, x: pd.DataFrame) -> pd.Series:
+        """Numba implementation of ADX calculation"""
+        input_dict = self._prepare_input_nb(x)
+        high = input_dict[self.requires[0]]
+        low = input_dict[self.requires[1]]
+        close = input_dict[self.requires[2]]
+
+        result = adx_core(high, low, close, self.length)
+
+        return self._prepare_output_nb(x.index, result)
+
+
+class MeanReversionZScore(SISOTransform):
+    """
+    Calculates the z-score of price relative to its simple moving average.
+    Formula: (close - SMA_window)/std_window
+    Used as a mean-reversion filter to identify potential mean-reversion opportunities.
+    """
+    def __init__(self, window: int = 48, input_col: str = "close"):
+        """
+        Calculate the z-score of price relative to its simple moving average.
+
+        :param window: The window size for SMA and standard deviation calculation
+        :param input_col: If DataFrame is passed, this is the column name to compute z-score on
+        """
+        super().__init__(input_col, f"mr_z_{window}")
+        self.window = window
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        series = x[self.requires[0]]
+        # Calculate SMA
+        sma = series.rolling(window=self.window).mean()
+        # Calculate standard deviation
+        std = series.rolling(window=self.window).std()
+        # Calculate z-score: (close - SMA) / std
+        z_score = (series - sma) / std
+
+        return pd.Series(z_score, index=series.index, name=self.output_name)
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+
+class DailyGap(SISOTransform):
+    """
+    Calculates the overnight UTC gap between the close price at 00:00 and the previous day's close at 23:45.
+    Formula: (close_{00:00} - close_{23:45_prev}) / close_{23:45_prev}
+
+    This assumes the input data is in 15-minute intervals and is UTC-aligned.
+    """
+    def __init__(self, input_col: str = "close"):
+        """
+        Calculate the overnight (UTC) gap in price.
+
+        :param input_col: If DataFrame is passed, this is the column name to compute the gap on
+        """
+        super().__init__(input_col, "daily_gap")
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        # Extract the close price series
+        series = x[self.requires[0]]
+
+        # Create a Series with the same index as the input but filled with NaN
+        result = pd.Series(np.nan, index=series.index, name=self.output_name)
+
+        # Convert index to datetime if not already
+        if not isinstance(series.index, pd.DatetimeIndex):
+            raise ValueError("Input DataFrame must have a DatetimeIndex for DailyGap calculation")
+
+        # Ensure the index is sorted
+        series = series.sort_index()
+
+        # Get close prices at 00:00 UTC (first value of each day)
+        midnight_close = series.resample('D').first()
+
+        # Get close prices at 23:45 UTC from previous day (last value of each day after shifting)
+        prev_2345_close = series.shift(1).resample('D').last()
+
+        # Calculate the gap as percentage change
+        daily_gap = (midnight_close - prev_2345_close) / prev_2345_close
+
+        # Map the daily gaps back to the original time series
+        # We'll set the gap value for each day at midnight
+        for date, gap in daily_gap.items():
+            if not np.isnan(gap):
+                # Find the first timestamp in the original series for this day
+                day_start = pd.Timestamp(date.year, date.month, date.day)
+
+                # If this timestamp exists in the original index, set the gap value
+                if day_start in result.index:
+                    result.loc[day_start] = gap
+
+        return result
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+
+class ORBBreak(MIMOTransform):
+    """
+    Detects Opening Range Breakout (ORB) signals within a UTC day.
+
+    An ORB occurs when the price breaks above the high or below the low of the first hour of trading.
+    The transform returns two signals: a long signal (1 when price breaks above opening range high,
+    otherwise 0) and a short signal (1 when price breaks below opening range low, otherwise 0).
+
+    This implementation assumes the input data is in 15-minute intervals and is UTC-aligned.
+    The opening range is defined as the first 4 bars (first hour) of each UTC day.
+    """
+    def __init__(self, input_cols: list[str] = None):
+        """
+        Calculate Opening Range Breakout signals
+
+        :param input_cols: List of column names for [high, low, close], defaults to ["high", "low", "close"]
+        """
+        if input_cols is None:
+            input_cols = ["high", "low", "close"]
+
+        produces = ["orb_long", "orb_short"]
+        super().__init__(input_cols, produces)
+
+    def _pd(self, x: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+        # Extract input series
+        high = x[self.requires[0]]
+
+        # Check if index is a DatetimeIndex
+        if not isinstance(high.index, pd.DatetimeIndex):
+            raise ValueError("Input DataFrame must have a DatetimeIndex for ORB calculation")
+
+        # Ensure the index is sorted
+        x = x.sort_index()
+        high = x[self.requires[0]]
+        low = x[self.requires[1]]
+        close = x[self.requires[2]]
+
+        # Create result series filled with zeros
+        orb_long = pd.Series(0, index=high.index, name=self.produces[0], dtype=bool)
+        orb_short = pd.Series(0, index=low.index, name=self.produces[1], dtype=bool)
+
+        # Process each day
+        for day, day_data in x.groupby(pd.Grouper(freq='D')):
+            # Skip days with no data
+            if len(day_data) == 0:
+                continue
+
+            # Get timestamp of the first bar of the day
+            first_timestamp = day_data.index[0]
+
+            # Only process if we actually have the beginning of the day
+            # (to handle weekend-reopen edges and first day of dataset)
+            if first_timestamp.hour == 0 and first_timestamp.minute == 0:
+                # Get the first 4 bars (first hour) of the day
+                first_hour_data = day_data.iloc[:4]
+
+                # Skip if we don't have 4 complete bars for the first hour
+                if len(first_hour_data) < 4:
+                    continue
+
+                # Calculate the opening range high and low
+                opening_range_high = first_hour_data[self.requires[0]].max()
+                opening_range_low = first_hour_data[self.requires[1]].min()
+
+                # Check for breakouts in the rest of the day (after the first hour)
+                for i in range(4, len(day_data)):
+                    timestamp = day_data.index[i]
+                    close_price = day_data[self.requires[2]].iloc[i]
+
+                    # Check for upward breakout
+                    if close_price > opening_range_high:
+                        orb_long.loc[timestamp] = True
+
+                    # Check for downward breakout
+                    if close_price < opening_range_low:
+                        orb_short.loc[timestamp] = True
+
+        return orb_long, orb_short
+
+    def _nb(self, x: pd.DataFrame) -> tuple[pd.Series, ...]:
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+    @property
+    def output_name(self):
+        return self.produces

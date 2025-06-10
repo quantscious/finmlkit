@@ -259,7 +259,7 @@ class SIMOTransform(CoreTransform, ABC):
         return tuple(pd.Series(y_i, index=idx, name=name) for y_i, name in zip(y, self.output_name))
 
 
-class MIMO(CoreTransform, ABC):
+class MIMOTransform(CoreTransform, ABC):
     """
     Implement a multiple input, multiple output transform on a DataFrame.
     """
