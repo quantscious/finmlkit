@@ -480,7 +480,7 @@ def rolling_variance_nb(series: NDArray[np.float64], window: int, ddof: int = 1,
 
 
 @njit(nogil=True)
-def variance_ratio_1_4_core(price: NDArray[np.float64], window: int = 32, ddof: int = 1, ret_type: str = "simple") -> NDArray[np.float64]:
+def variance_ratio_1_4_core(price: NDArray[np.float64], window: int, ddof: int, ret_type: str) -> NDArray[np.float64]:
     """
     Calculate the variance ratio: var(1-bar return) / var(4×1-bar return).
 
@@ -489,9 +489,9 @@ def variance_ratio_1_4_core(price: NDArray[np.float64], window: int = 32, ddof: 
     either mean-reversion (<0.25) or momentum/trending (>0.25).
 
     :param price: Input price array
-    :param window: Window size for variance calculation (default: 32)
-    :param ddof: Delta degrees of freedom for variance (default: 1 for sample variance)
-    :param ret_type: Type of returns to use: "simple" or "log" (default: "simple")
+    :param window: Window size for variance calculation
+    :param ddof: Delta degrees of freedom for variance
+    :param ret_type: Type of returns to use: "simple" or "log"
     :return: Array of variance ratios, same length as input price
     """
     n = len(price)
