@@ -3,7 +3,7 @@ Feature transform wrapper for financial time series data.
 """
 from .base import SISOTransform, SIMOTransform, MISOTransform, BaseTransform
 from .core.utils import comp_lagged_returns, comp_zscore, comp_burst_ratio, pct_change
-from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range, atr
+from .core.volatility import ewmst, realized_vol, bollinger_percent_b, parkinson_range, atr, variance_ratio_1_4_core
 from .core.volume import comp_flow_acceleration, vpin
 from .core.reversion import vwap_distance
 from .core.time import time_cues
@@ -808,5 +808,38 @@ class VPIN(MISOTransform):
         volume_sell = input_dict[self.requires[1]]
 
         result = vpin(volume_buy, volume_sell, self.window)
+
+        return self._prepare_output_nb(x.index, result)
+
+
+class VarianceRatio14(SISOTransform):
+    """
+    Computes the Variance Ratio of 1-bar returns to 4-bar returns: var(1-bar) / var(4×1-bar).
+
+    This is a useful metric to detect microstructure noise vs trending behavior.
+    For random walks, the ratio should be close to 0.25 (1/4).
+    Values < 0.25 suggest mean reversion, while values > 0.25 suggest trending/momentum.
+    """
+    def __init__(self, window: int = 32, input_col: str = "close", ret_type: str = "log", ddof: int = 0):
+        """
+        Compute the variance ratio var(1-bar return) / var(4×1-bar return)
+
+        :param window: Window size for variance calculation, default is 32
+        :param input_col: Column to compute the ratio on, default is "close"
+        :param ret_type: Type of returns, "simple" or "log", default is "log"
+        :param ddof: Delta degrees of freedom for variance calculation, default is 0 (sample variance)
+        """
+        super().__init__(input_col, f"var_ratio_1_4_{window}")
+        self.window = window
+        self.ret_type = ret_type
+        self.ddof = ddof
+
+    def _pd(self, x):
+        logger.info(f"Fall back to numba for {self.__class__.__name__}")
+        return self._nb(x)
+
+    def _nb(self, x: pd.DataFrame) -> pd.Series:
+        input_arr = self._prepare_input_nb(x)
+        result = variance_ratio_1_4_core(input_arr, self.window, self.ddof, self.ret_type)
 
         return self._prepare_output_nb(x.index, result)

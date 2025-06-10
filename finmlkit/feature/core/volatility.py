@@ -436,3 +436,107 @@ def atr(high: NDArray[np.float64],
                 atr_values[i] = atr_values[i] / mid_price[i]
 
     return atr_values
+
+
+@njit(nogil=True)
+def rolling_variance_nb(series: NDArray[np.float64], window: int, ddof: int = 1, min_periods: int = 1) -> NDArray[np.float64]:
+    """
+    Calculate rolling variance of a series with NaN handling.
+
+    :param series: Input array
+    :param window: Window size for rolling calculation
+    :param ddof: Delta degrees of freedom (1 for sample variance, 0 for population variance)
+    :param min_periods: Minimum number of valid observations required to calculate result
+    :return: Array of rolling variances, same length as input series
+    """
+    n = len(series)
+    result = np.full(n, np.nan)
+
+    if n < window:
+        return result
+
+    for i in range(window - 1, n):
+        window_data = series[i - window + 1:i + 1]
+        valid_count = 0
+        sum_val = 0.0
+        sum_sq = 0.0
+
+        # Calculate sum and sum of squares for valid values
+        for j in range(window):
+            if not np.isnan(window_data[j]):
+                valid_count += 1
+                sum_val += window_data[j]
+                sum_sq += window_data[j] * window_data[j]
+
+        # Calculate variance if we have enough observations
+        if valid_count >= min_periods:
+            if valid_count > ddof:
+                mean_val = sum_val / valid_count
+                variance = (sum_sq / valid_count) - (mean_val * mean_val)
+                variance *= (valid_count / (valid_count - ddof))  # Adjustment for sample variance
+                result[i] = max(0.0, variance)  # Ensure non-negative variance
+
+    return result
+
+
+@njit(nogil=True)
+def variance_ratio_1_4_core(price: NDArray[np.float64], window: int = 32, ddof: int = 1, ret_type: str = "simple") -> NDArray[np.float64]:
+    """
+    Calculate the variance ratio: var(1-bar return) / var(4×1-bar return).
+
+    This ratio helps detect microstructure noise vs trending. Values closer to 0.25 suggest
+    a random walk (efficient market), while values significantly different from 0.25 suggest
+    either mean-reversion (<0.25) or momentum/trending (>0.25).
+
+    :param price: Input price array
+    :param window: Window size for variance calculation (default: 32)
+    :param ddof: Delta degrees of freedom for variance (default: 1 for sample variance)
+    :param ret_type: Type of returns to use: "simple" or "log" (default: "simple")
+    :return: Array of variance ratios, same length as input price
+    """
+    n = len(price)
+    result = np.full(n, np.nan)
+
+    if n < window + 4:  # Need enough data for 4-bar returns plus window
+        return result
+
+    # Calculate 1-bar returns
+    returns_1bar = np.empty(n)
+    returns_1bar[0] = np.nan
+
+    if ret_type == "log":
+        for i in range(1, n):
+            if np.isnan(price[i]) or np.isnan(price[i-1]) or price[i-1] <= 0 or price[i] <= 0:
+                returns_1bar[i] = np.nan
+            else:
+                returns_1bar[i] = np.log(price[i] / price[i-1])
+    else:  # simple returns
+        for i in range(1, n):
+            if np.isnan(price[i]) or np.isnan(price[i-1]) or price[i-1] <= 0:
+                returns_1bar[i] = np.nan
+            else:
+                returns_1bar[i] = price[i] / price[i-1] - 1.0
+
+    # Calculate variance of 1-bar returns
+    var_1bar = rolling_variance_nb(returns_1bar, window, ddof)
+
+    # Calculate non-overlapping 4-bar returns by summing 1-bar returns
+    returns_4bar = np.zeros(n)
+    returns_4bar.fill(np.nan)
+
+    for i in range(4, n):
+        if not np.isnan(returns_1bar[i]) and not np.isnan(returns_1bar[i-1]) and not np.isnan(returns_1bar[i-2]) and not np.isnan(returns_1bar[i-3]):
+            returns_4bar[i] = returns_1bar[i] + returns_1bar[i-1] + returns_1bar[i-2] + returns_1bar[i-3]
+
+    # Calculate variance of 4-bar returns
+    var_4bar = rolling_variance_nb(returns_4bar, window, ddof)
+
+    # Calculate variance ratio (with handling for zeros)
+    for i in range(n):
+        if not np.isnan(var_1bar[i]) and not np.isnan(var_4bar[i]) and var_4bar[i] > 0:
+            # Divide variance of 1-bar returns by variance of 4-bar returns
+            # For a random walk, we expect var(4-bar) = 4 * var(1-bar), so ratio = 1/4 = 0.25
+            result[i] = var_1bar[i] / (var_4bar[i] / 4)
+
+    return result
+
