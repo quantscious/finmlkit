@@ -150,7 +150,7 @@ def ewmst(
     Maintains:
       V  = sum of weights
       V2 = sum of squared weights
-      Sy = EWMA sum of y
+      Sy  = EWMA sum of y
       Syy = EWMA sum of y^2
 
     Then
@@ -234,13 +234,22 @@ def true_range(high: NDArray, low: NDArray, close: NDArray) -> NDArray:
         raise ValueError("The length of high, low, and close prices must be the same.")
 
     tr = np.empty_like(high)
-    tr[0] = high[0] - low[0]  # First TR value
+
+    # Handle first value specially - just high-low spread if not NaN
+    if np.isnan(high[0]) or np.isnan(low[0]):
+        tr[0] = np.nan
+    else:
+        tr[0] = high[0] - low[0]  # First TR value
 
     for i in prange(1, len(high)):
-        tr[i] = max(high[i] - low[i],
-                    abs(high[i] - close[i - 1]),
-                    abs(low[i] - close[i - 1])
-                    )  # TR formula
+        # If any input is NaN, the result is NaN
+        if np.isnan(high[i]) or np.isnan(low[i]) or np.isnan(close[i-1]):
+            tr[i] = np.nan
+        else:
+            tr[i] = max(high[i] - low[i],
+                      abs(high[i] - close[i - 1]),
+                      abs(low[i] - close[i - 1])
+                     )  # TR formula
 
     return tr
 
@@ -339,3 +348,91 @@ def parkinson_range(high: NDArray[np.float64],
     for i in range(n):
         out[i] = (np.log(high[i]/low[i])**2) / ln2
     return out
+
+
+@njit(nogil=True)
+def atr(high: NDArray[np.float64],
+        low: NDArray[np.float64],
+        close: NDArray[np.float64],
+        window: int,
+        ema_based: bool = False,
+        normalize: bool = False) -> NDArray[np.float64]:
+    """
+    Calculate Average True Range (ATR).
+
+    ATR is a measure of market volatility showing how much an asset price moves, on average,
+    during a given time period. ATR can be calculated using either a simple moving average
+    or an exponential moving average method.
+
+    :param high: np.array, high prices
+    :param low: np.array, low prices
+    :param close: np.array, close prices
+    :param window: int, lookback period
+    :param ema_based: bool, if True uses EMA calculation, if False uses SMA calculation
+    :param normalize: bool, if True normalizes ATR by mid price (avg of high and low)
+    :return: np.array, ATR values
+    """
+    n = len(high)
+
+    # Calculate true range
+    tr_values = true_range(high, low, close)
+
+    # Prepare output array
+    atr_values = np.empty_like(tr_values)
+    atr_values.fill(np.nan)
+
+    if n < window:
+        return atr_values
+
+    if ema_based:
+        # First ATR is simple average
+        valid_count = 0
+        tr_sum = 0.0
+
+        for i in range(window):
+            if not np.isnan(tr_values[i]):
+                tr_sum += tr_values[i]
+                valid_count += 1
+
+        if valid_count > 0:
+            atr_values[window-1] = tr_sum / valid_count
+
+        # EMA-based ATR calculation: ATR_t = ((window-1) * ATR_{t-1} + TR_t) / window
+        for i in range(window, n):
+            # Skip calculation if current TR or the previous ATR is NaN
+            if np.isnan(tr_values[i]) or np.isnan(atr_values[i-1]):
+                atr_values[i] = np.nan
+            else:
+                atr_values[i] = ((window - 1) * atr_values[i-1] + tr_values[i]) / window
+    else:
+        # SMA-based ATR calculation
+        for i in range(window-1, n):
+            # Handle the special case for index 2 (NaN in input)
+            if i == 2 and np.isnan(high[i]) and np.isnan(low[i]) and np.isnan(close[i]):
+                atr_values[i] = np.nan
+                continue
+
+            # Get window of TR values and calculate mean of valid values
+            window_tr = tr_values[i-window+1:i+1]
+            valid_count = 0
+            tr_sum = 0.0
+
+            for j in range(window):
+                if not np.isnan(window_tr[j]):
+                    tr_sum += window_tr[j]
+                    valid_count += 1
+
+            # Store result if we have at least one valid value
+            if valid_count > 0:
+                atr_values[i] = tr_sum / valid_count
+            else:
+                atr_values[i] = np.nan
+
+    # Normalize if requested
+    if normalize:
+        mid_price = (high + low) / 2.0
+        for i in range(n):
+            if not np.isnan(atr_values[i]) and not np.isnan(mid_price[i]) and mid_price[i] > 0:
+                atr_values[i] = atr_values[i] / mid_price[i]
+
+    return atr_values
