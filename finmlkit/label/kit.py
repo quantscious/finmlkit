@@ -4,6 +4,8 @@ from .weights import average_uniqueness, return_attribution, time_decay, class_b
 from finmlkit.utils.log import get_logger
 from finmlkit.bar.data_model import TradesData
 import pandas as pd
+import numpy as np
+from numpy.typing import NDArray
 
 logger = get_logger(__name__)
 
@@ -15,11 +17,12 @@ class TBMLabel:
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
                  vertical_barrier: pd.Timedelta,
+                 event_idx: NDArray|None,
                  is_meta: bool = False):
         """
         Triple barrier labeling method
 
-        :param features: The events dataframe containing the event indices ("event_idx" column) and features
+        :param features: The events dataframe the return target column and optionally containing the event indices ("event_idx" column) and features. If not it will be computed based on timestamps.
         :param target_ret_col: The name of the target return column in the `features` dataframe.
             Typically, a volatility estimator output.
             This will be used to determine the horizontal barriers.
@@ -48,8 +51,6 @@ class TBMLabel:
                 raise ValueError("For meta labeling, 'side' column must be present in features DataFrame.")
             if not pd.api.types.is_integer_dtype(features['side']):
                 raise ValueError("The 'side' column must be of integer type (e.g., -1, 0, 1).")
-        if "event_idx" not in features.columns:
-            raise ValueError("The 'event_idx' column must be present in features DataFrame.")
 
         self._orig_features = self._preprocess_features(features, target_ret_col, min_ret)
         self._features = self._orig_features
@@ -94,7 +95,7 @@ class TBMLabel:
         return len(self._features)
 
     @property
-    def first_event_timestamp(self) -> pd.Timestamp:
+    def first_event_timestamp(self) -> pd.Timestamp|None:
         """
         Get the timestamp of the first event.
         :return: The timestamp of the first event.
@@ -102,7 +103,7 @@ class TBMLabel:
         return self._features.index[0] if not self._features.empty else None
 
     @property
-    def last_event_timestamp(self) -> pd.Timestamp:
+    def last_event_timestamp(self) -> pd.Timestamp|None:
         """
         Get the timestamp of the last event.
         :return: The timestamp of the last event.
@@ -190,11 +191,16 @@ class TBMLabel:
             raise ValueError("Trades must be an instance of TradesData.")
         self._features = self._drop_trailing_events(trades)
 
+        if "event_idx" in self._features.columns:
+            event_idx = self._features.event_idx.values
+        else:
+            event_idx = np.searchsorted(trades.data.timestamp.values, self._features.index.values.astype(np.int64))
+
         # Call the triple_barrier function
-        labels, touch_idxs, rets, max_rb_ratios = triple_barrier(
+        labels, touch_idx, rets, max_rb_ratios = triple_barrier(
             timestamps=trades.data.timestamp.values,
             close=trades.data.price.values,
-            event_idxs=self.features.event_idx.values,
+            event_idxs=event_idx,
             targets=self.target_returns.values,
             horizontal_barriers=self.horizontal_barriers,
             vertical_barrier=self.vertical_barrier,
@@ -204,15 +210,24 @@ class TBMLabel:
 
         # Construct the output DataFrame
         self._out = pd.DataFrame({
-            'touch_time': pd.to_datetime(trades.data.timestamp.values[touch_idxs]),
-            'event_idx': self.features.event_idx.values,
-            'touch_idx': touch_idxs,
+            'touch_time': pd.to_datetime(trades.data.timestamp.values[touch_idx]),
+            'event_idx': event_idx,
+            'touch_idx': touch_idx,
             'labels': labels,
             'returns': rets,
             'vertical_touch_weights': max_rb_ratios
         }, index=self.features.index)
 
         return self.features, self.full_output
+
+    def compute_weights(self, trades: TradesData, normalized: bool = False) -> pd.DataFrame:
+        """
+        Computes the sample average uniqueness and return attribution.
+        :param trades: Same Raw trades data passed to `compute_labels()`.
+        :param normalized: Whether to normalize the weights.
+        :return: DataFrame containing the sample average uniqueness and return attribution.
+        """
+        return SampleWeights.compute_info_weights(trades, self._out, normalized)
 
 
 class SampleWeights:
@@ -225,12 +240,14 @@ class SampleWeights:
     def compute_info_weights(
             trades: TradesData,
             labels: pd.DataFrame,
+            normalize: bool = False,
     ) -> pd.DataFrame:
         """
         Computes the average uniqueness and (non-normalized) return attribution for the events.
 
         :param trades: The raw trades on which the events are evaluated
         :param labels: Labels dataframe containing event indices and touch indices (output of `compute_labels` method).
+        :param normalize: Whether to normalize the returned weights.
         :return:  A pandas DataFrame containing the average uniqueness and return attribution and vertical touch weights.
         """
 
@@ -260,10 +277,10 @@ class SampleWeights:
             touch_idxs=labels.touch_idx.values,
             close=trades.data.price.values,
             concurrency=concurrency,
-            normalize=False
+            normalize=normalize
         )
         out_df["return_attribution"] = info_w
-        out_df["vertical_touch_weights"] = labels.vertical_touch_weights.values
+        # out_df["vertical_touch_weights"] = labels.vertical_touch_weights.values
 
         return out_df
 

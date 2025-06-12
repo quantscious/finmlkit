@@ -171,3 +171,10 @@ class CUSUMBarKit(BarBuilderBase):
         close_ts = timestamps[close_indices]
 
         return close_ts, close_indices
+
+    def get_sigma(self) -> NDArray[np.float64]:
+        """
+        The sigma threshold used for the CUSUM at close indices.
+        :return: sigma vector
+        """
+        return self.sigma[self.close_indices]

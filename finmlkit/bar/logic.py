@@ -30,13 +30,13 @@ def _time_bar_indexer(
     bar_interval_ns = interval_seconds * 1e9
 
     # determine the first bar start time (closest integer multiple of bar_interval_ns)
-    bar_start_ts = np.ceil(timestamps[0] / bar_interval_ns) * bar_interval_ns
+    bar_start_ts = timestamps[0] // bar_interval_ns * bar_interval_ns
 
     # last tick timestamp
-    last_ts = timestamps[-1]
+    last_ts = np.ceil(timestamps[-1] / bar_interval_ns) * bar_interval_ns
 
-    # create the array of bar open timestamps
-    bar_clock = np.arange(bar_start_ts, last_ts + 1, bar_interval_ns, dtype=np.int64)
+    # create the array of bar close timestamps
+    bar_clock = np.arange(bar_start_ts, last_ts + bar_interval_ns + 1, bar_interval_ns, dtype=np.int64)
 
     # find the indices of the bar close timestamps in the raw trades timestamps
     bar_close_indices = (np.searchsorted(timestamps, bar_clock, side='right') - 1).astype(np.int64)

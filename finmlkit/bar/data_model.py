@@ -8,9 +8,8 @@ from numba.typed import List as NumbaList
 
 from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
-from .utils import comp_trade_side_vector, fast_sort_trades, merge_split_trades
+from .utils import comp_trade_side_vector, merge_split_trades
 import os
-import multiprocessing
 
 logger = get_logger(__name__)
 
@@ -60,7 +59,10 @@ class TradesData:
         if side is not None and not isinstance(side, np.ndarray):
             raise TypeError("side must be None or np.ndarray")
 
-        self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
+        if id is not None:
+            self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
+        else:
+            self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
         self.is_buyer_maker = is_buyer_maker
         if side is not None:
             self.data['side'] = side
@@ -318,6 +320,7 @@ class TradesData:
         # frame["datetime"] = pd.to_datetime(frame["timestamp"], unit="ns")
         # frame.set_index("datetime", inplace=True)
         # It is already indexed!
+        frame = self.data
 
         # ------------------------------------------------------------------
         #  Write / append to the store
@@ -451,7 +454,7 @@ class TradesData:
         return sorted(candidate_keys)
 
     @classmethod
-    def load_h5(
+    def load_trades_h5(
         cls,
         filepath: str,
         *,
@@ -523,204 +526,6 @@ class TradesData:
 
         side = df["side"] if "side" in df.columns else None
         return cls(df["timestamp"].values, df["price"].values, df["amount"].values, side=side.values)
-
-
-def _find_gaps(key: str, filepath: str, max_gap: pd.Timedelta) -> Tuple[str, list[Tuple[pd.Timestamp, pd.Timedelta]]]:
-    """
-    Find gaps in the trades data for a specific key.
-
-    :param key: HDF5 key to inspect.
-    :param filepath: Path to the HDF5 file.
-    :param max_gap: Maximum allowable gap between consecutive timestamps.
-    :return: Tuple containing the key and a list of tuples, each with (gap timestamp, gap size).
-    """
-    with pd.HDFStore(filepath, mode='r') as store:
-        df = store[key]
-        diff_series = df.index.to_series().diff()
-        gap_mask = diff_series > max_gap
-        gap_timestamps = df.index[gap_mask].tolist()
-        gap_sizes = diff_series[gap_mask].tolist()
-
-        # Combine timestamps and gap sizes into tuples
-        gaps_with_sizes = list(zip(gap_timestamps, gap_sizes))
-
-        return key, gaps_with_sizes
-
-
-class H5Inspector:
-    """
-    Class to inspect HDF5 files containing trades data.
-
-    This class provides methods to list available keys, check metadata,
-    and retrieve basic statistics about the trades data stored in HDF5 format.
-    """
-
-    def __init__(self, filepath: str):
-        """
-        Initialize the H5Inspector with the path to the HDF5 file.
-
-        :param filepath: Path to the HDF5 file.
-        """
-        self.filepath = filepath
-
-    def list_keys(self) -> list[str]:
-        """
-        List all available keys in the HDF5 file.
-
-        :return: List of keys.
-        """
-        with pd.HDFStore(self.filepath, mode='r') as store:
-            return [k for k in store.keys() if k.startswith('/trades/')]
-
-    def get_metadata(self, key: str) -> Dict[str, any]:
-        """
-        Get metadata for a specific key in the HDF5 file.
-
-        :param key: Key to retrieve metadata for (Eg.: /trades/2023-02)
-        :return: Metadata dictionary.
-        """
-        with pd.HDFStore(self.filepath, mode='r') as store:
-            if key not in store.keys():
-                raise KeyError(f"Key '{key}' not found in the store.")
-            meta_key = key.replace('/trades/', '/meta/')
-            return store[meta_key].to_dict()
-
-    def get_integrity_info(self, key: str) -> Optional[pd.DataFrame]:
-        """
-        Get data integrity information for a specific key in the HDF5 file.
-        This retrieves discontinuity information stored during the save_h5 process.
-
-        :param key: Key to retrieve integrity information for (e.g., '/trades/2023-01').
-        :return: DataFrame with discontinuity information or None if no integrity issues were found.
-        """
-        with pd.HDFStore(self.filepath, mode='r') as store:
-            if key not in store.keys():
-                raise KeyError(f"Key '{key}' not found in the store.")
-
-            integrity_key = key.replace('/trades/', '/integrity/')
-
-            if integrity_key in store:
-                disc_df = store[integrity_key]
-
-                return disc_df
-            else:
-                return None
-
-    def get_statistics(self, key: str) -> Dict[str, any]:
-        """
-        Get basic statistics for a specific key in the HDF5 file.
-
-        :param key: Key to retrieve statistics for.
-        :return: Statistics dictionary.
-        """
-        with pd.HDFStore(self.filepath, mode='r') as store:
-            if key not in store.keys():
-                raise KeyError(f"Key '{key}' not found in the store.")
-            df = store[key]
-            return {
-                'record_count': len(df),
-                'first_timestamp': df['timestamp'].min(),
-                'last_timestamp': df['timestamp'].max(),
-                'price_range': (df['price'].min(), df['price'].max()),
-                'amount_range': (df['amount'].min(), df['amount'].max())
-            }
-
-    def inspect_gaps(self, max_gap: pd.Timedelta = pd.Timedelta(minutes=1), processes: int = 4) -> Dict[str, list[tuple[pd.Timestamp, pd.Timedelta]]]:
-        """
-        Inspect gaps in trades data across all keys in the HDF5 file.
-
-        :param max_gap: Maximum allowable gap between consecutive timestamps.
-        :param processes: Number of processes to use for multiprocessing.
-        :return: Dictionary with keys as HDF5 groups and values as lists of gap timestamps.
-        """
-        keys = self.list_keys()
-
-        with multiprocessing.Pool(processes=processes) as pool:
-            results = pool.starmap(_find_gaps, [(key, self.filepath, max_gap) for key in keys])
-
-        return dict(results)
-
-    def get_integrity_summary(self, verbose=True) -> Dict[str, Dict]:
-        """
-        Generate a summary of data integrity issues across all tables in the HDF5 file.
-
-        This function identifies tables with integrity issues (data_integrity_ok=False),
-        collects statistics about the issues (missing percentage, etc.), and retrieves
-        the detailed discontinuity information for affected tables.
-
-        :param verbose: Whether to print the results to console
-        :return: Dictionary with keys as HDF5 groups and values as dictionaries containing:
-                 - 'metadata': Basic metadata about the table including integrity flags
-                 - 'discontinuities': DataFrame with detailed discontinuity information (if available)
-                 - Or None if no integrity issues are found
-        """
-        result = {}
-        all_ok = True
-
-        # Get all available trade keys
-        keys = self.list_keys()
-
-        with pd.HDFStore(self.filepath, mode='r') as store:
-            # Check if there are any keys first
-            if not keys:
-                return None
-
-            # First pass: collect metadata for all tables
-            for key in keys:
-                meta_key = key.replace('/trades/', '/meta/')
-                integrity_key = key.replace('/trades/', '/integrity/')
-
-                if meta_key in store:
-                    metadata = store[meta_key].to_dict()
-                    # Check if the integrity flag is False
-                    if 'data_integrity_ok' in metadata and metadata['data_integrity_ok'] is False:
-                        all_ok = False
-                        month_key = key.split('/')[-1]  # Extract the month part (e.g., '2023-01')
-                        result[month_key] = {
-                            'metadata': metadata,
-                            'key': key
-                        }
-
-                        # Add discontinuity information if available
-                        if integrity_key in store:
-                            disc_df = store[integrity_key]
-                            result[month_key]['discontinuities'] = disc_df
-                        else:
-                            result[month_key]['discontinuities'] = None
-
-        if all_ok:
-            logger.info("All data passed integrity checks. No issues found.")
-            return None
-
-        # Count summary statistics
-        issue_count = len(result)
-        avg_missing_pct = sum(
-            info['metadata'].get('missing_pct', 0) for info in result.values()) / issue_count if issue_count > 0 else 0
-
-        logger.info(f"Found {issue_count} tables with data integrity issues.")
-        logger.info(f"Average missing data percentage: {avg_missing_pct:.2f}%")
-
-        if verbose:
-            # Process the results
-            if result:
-                print(f"Found {len(result)} months with data integrity issues:")
-                for month, info in result.items():
-                    print("\n===================================================================")
-                    print(f"Month: {month}")
-                    print("=====================================================================")
-                    print(f"Missing data: {info['metadata']['missing_pct']:.2f}%")
-                    print(f"First timestamp: {pd.to_datetime(info['metadata']['first_timestamp'], unit='ns')}")
-                    print(f"Last timestamp: {pd.to_datetime(info['metadata']['last_timestamp'], unit='ns')}")
-
-                    if info['discontinuities'] is not None:
-                        print(f"Number of discontinuities: {len(info['discontinuities'])}")
-                        print("\nDiscontinuities:")
-                        print(info['discontinuities'].T)
-            else:
-                print("No data integrity issues found!")
-
-        return result
-
 
 @dataclass
 class FootprintData:
@@ -980,4 +785,6 @@ class FootprintData:
             if len(attr) != expected_length:
                 return False
         return True
+
+
 

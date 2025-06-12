@@ -306,7 +306,7 @@ class EWMST(SISOTransform):
     """
     Computes the exponentially weighted moving standard deviation of a time series.
     """
-    def __init__(self, half_life_sec: float, input_col: str):
+    def __init__(self, half_life_sec: float, input_col: str = "y"):
         """
         Compute the exponentially weighted moving standard deviation.
 
@@ -1015,6 +1015,7 @@ class MeanReversionZScore(SISOTransform):
 
 
 class DailyGap(SISOTransform):
+    # TODO: TEST, returns all nans...
     """
     Calculates the overnight UTC gap between the close price at 00:00 and the previous day's close at 23:45.
     Formula: (close_{00:00} - close_{23:45_prev}) / close_{23:45_prev}
