@@ -348,7 +348,7 @@ class TimeBarReader:
         """
         self.h5_path = h5_path
 
-    def _list_keys(self) -> List[str]:
+    def list_keys(self) -> List[str]:
         """
         List all available klines keys in the HDF5 file.
 

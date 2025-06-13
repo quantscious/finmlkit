@@ -134,11 +134,12 @@ class BarBuilderBase(ABC):
             'volume_sell': directional_tuple[3],
             'dollars_buy': directional_tuple[4],
             'dollars_sell': directional_tuple[5],
-            'max_spread': directional_tuple[6],
-            'cum_volumes_min': directional_tuple[7],
-            'cum_volumes_max': directional_tuple[8],
-            'cum_dollars_min': directional_tuple[9],
-            'cum_dollars_max': directional_tuple[10]
+            'mean_spread': directional_tuple[6],
+            'max_spread': directional_tuple[7],
+            'cum_volumes_min': directional_tuple[8],
+            'cum_volumes_max': directional_tuple[9],
+            'cum_dollars_min': directional_tuple[10],
+            'cum_dollars_max': directional_tuple[11]
         })
         logger.info("Directional features converted to DataFrame.")
 
@@ -278,8 +279,8 @@ def comp_bar_directional_features(
     NDArray[np.int64], NDArray[np.int64],
     NDArray[np.float32], NDArray[np.float32],
     NDArray[np.float32], NDArray[np.float32],
-    NDArray[np.float32],
-    NDArray[np.float64], NDArray[np.float64],
+    NDArray[np.float32], NDArray[np.float32],
+    NDArray[np.int64], NDArray[np.int64],
     NDArray[np.float32], NDArray[np.float32],
     NDArray[np.float32], NDArray[np.float32]
 ]:
@@ -297,6 +298,7 @@ def comp_bar_directional_features(
         - volume_sell: Volume of sell trades per bar.
         - dollars_buy: Dollar value of buy trades per bar.
         - dollars_sell: Dollar value of sell trades per bar.
+        - mean_spread: Mean bid/ask spread within each bar.
         - max_spread: Maximum spread within each bar.
         - cum_ticks_min: Minimum cumulative tick imbalance.
         - cum_ticks_max: Maximum cumulative tick imbalance.
@@ -313,6 +315,7 @@ def comp_bar_directional_features(
     dollars_buy = np.zeros(n_bars, dtype=np.float32)
     dollars_sell = np.zeros(n_bars, dtype=np.float32)
     max_spread = np.zeros(n_bars, dtype=np.float32)
+    mean_spread = np.zeros(n_bars, dtype=np.float32)
 
     # Initialize cumulative min and max arrays with appropriate values
     cum_ticks_min = np.full(n_bars, 1e9, dtype=np.int64)            # inf (large value)
@@ -338,6 +341,7 @@ def comp_bar_directional_features(
         current_cum_volumes = 0.0
         current_cum_dollars = 0.0
         current_max_spread = 0.0
+        current_cum_spread = 0.0
 
         # Initialize previous tick sign for spread calculation
         if end > start:
@@ -345,7 +349,7 @@ def comp_bar_directional_features(
         else:
             prev_tick_sign = 0  # Default value if no trades in bar
 
-        # Iterate over trades in the current bar (start  exclusive, end inclusive)
+        # Iterate over trades in the current bar (start exclusive, end inclusive)
         for j in range(start, end + 1):
             current_tick_sign = trade_sides[j]
 
@@ -354,6 +358,7 @@ def comp_bar_directional_features(
                 spread = abs(prices[j] - prices[j - 1])
                 if spread > current_max_spread:
                     current_max_spread = spread
+                current_cum_spread += spread
             prev_tick_sign = current_tick_sign
 
             if current_tick_sign == 1:
@@ -390,12 +395,13 @@ def comp_bar_directional_features(
         dollars_buy[i] = current_dollars_buy
         dollars_sell[i] = current_dollars_sell
         max_spread[i] = current_max_spread
+        mean_spread[i] = current_cum_spread / (current_tics_buy + current_tics_sell)
 
     return (
         ticks_buy, ticks_sell,
         volume_buy, volume_sell,
         dollars_buy, dollars_sell,
-        max_spread,
+        mean_spread, max_spread,
         cum_ticks_min, cum_ticks_max,
         cum_volumes_min, cum_volumes_max,
         cum_dollars_min, cum_dollars_max
