@@ -195,13 +195,13 @@ class BarBuilderBase(ABC):
 def comp_bar_ohlcv(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
-    bar_open_indices: NDArray[np.int64],
+    bar_close_indices: NDArray[np.int64],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[np.float64]]:
     """
     Build the candlestick bar from raw trades data based in bar open indices.
     :param prices: Trade prices.
     :param volumes: Trade volumes.
-    :param bar_open_indices: Indices marking the start of each bar.
+    :param bar_close_indices: Indices marking the start of each bar.
     :returns: Tuple containing:
         - open: Opening price of each bar.
         - high: Highest price of each bar.
@@ -213,10 +213,10 @@ def comp_bar_ohlcv(
     # Check the input arrays match in length
     if len(prices) != len(volumes):
         raise ValueError("Prices and volumes arrays must have the same length.")
-    if len(bar_open_indices) < 2:
+    if len(bar_close_indices) < 2:
         raise ValueError("Bar open indices must contain at least two elements.")
 
-    n_bars = len(bar_open_indices) - 1  # The last open index determines the last bar's close
+    n_bars = len(bar_close_indices) - 1  # The last open index determines the last bar's close
     bar_high = np.zeros(n_bars, dtype=np.float64)
     bar_low = np.zeros(n_bars, dtype=np.float64)
     bar_open = np.zeros(n_bars, dtype=np.float64)
@@ -225,8 +225,8 @@ def comp_bar_ohlcv(
     bar_vwap = np.zeros(n_bars, dtype=np.float64)
 
     for i in prange(n_bars):
-        start = bar_open_indices[i]
-        end = bar_open_indices[i + 1]
+        start = bar_close_indices[i]
+        end = bar_close_indices[i + 1]
 
         # Handle empty bar
         if start == end:
@@ -273,7 +273,7 @@ def comp_bar_ohlcv(
 def comp_bar_directional_features(
     prices: NDArray[np.float64],
     volumes: NDArray[np.float64],
-    bar_open_indices: NDArray[np.int64],
+    bar_close_indices: NDArray[np.int64],
     trade_sides: NDArray[np.int8]
 ) -> tuple[
     NDArray[np.int64], NDArray[np.int64],
@@ -289,7 +289,7 @@ def comp_bar_directional_features(
 
     :param prices: Trade prices.
     :param volumes: Trade volumes.
-    :param bar_open_indices: Indices marking the start of each bar.
+    :param bar_close_indices: Indices marking the start of each bar.
     :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
     :returns: Tuple containing:
         - **ticks_buy**: Number of buy trades per bar.
@@ -307,7 +307,7 @@ def comp_bar_directional_features(
         - cum_dollars_min: Minimum cumulative dollar imbalance.
         - cum_dollars_max: Maximum cumulative dollar imbalance.
     """
-    n_bars = len(bar_open_indices) - 1
+    n_bars = len(bar_close_indices) - 1
     ticks_buy = np.zeros(n_bars, dtype=np.int64)
     ticks_sell = np.zeros(n_bars, dtype=np.int64)
     volume_buy = np.zeros(n_bars, dtype=np.float32)
@@ -327,8 +327,8 @@ def comp_bar_directional_features(
 
     # Compute the bar directional features
     for i in prange(n_bars):
-        start = bar_open_indices[i] + 1  # Start from the next trade (start=previous bar close)
-        end = bar_open_indices[i + 1]
+        start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
+        end = bar_close_indices[i + 1]
 
         current_tics_buy = 0
         current_tics_sell = 0
@@ -412,7 +412,7 @@ def comp_bar_directional_features(
 def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
-    bar_open_indices: NDArray[np.int64],
+    bar_close_indices: NDArray[np.int64],
     bar_open_timestamps: NDArray[np.int64],
     price_tick_size: float,
     bar_lows: NDArray[np.float64],
@@ -432,7 +432,7 @@ def comp_bar_footprints(
 
     :param prices: Trade prices.
     :param amounts: Trade amounts.
-    :param bar_open_indices: Indices marking the start of each bar.
+    :param bar_close_indices: Indices marking the start of each bar.
     :param bar_open_timestamps: Nanosecond timestamps marking bar openings.
     :param price_tick_size: Tick size used for price level quantization.
     :param bar_lows: Lowest price per bar.
@@ -453,7 +453,7 @@ def comp_bar_footprints(
     """
     # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
 
-    n_bars = len(bar_open_indices) - 1
+    n_bars = len(bar_close_indices) - 1
 
     # Define dynamic lists
     price_levels = NumbaList()
@@ -472,8 +472,8 @@ def comp_bar_footprints(
 
     tick_direction = 0
     for i in prange(n_bars):
-        start = bar_open_indices[i] + 1  # Start from the next trade (start=previous bar close)
-        end = bar_open_indices[i + 1]
+        start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
+        end = bar_close_indices[i + 1]
 
         # Examine current bar price levels
         low = int(round(bar_lows[i] / price_tick_size))
