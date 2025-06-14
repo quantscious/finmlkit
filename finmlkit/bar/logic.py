@@ -92,7 +92,7 @@ def _volume_bar_indexer(
     """
     Determine the volume bar open indices using cumulative volume.
     :param volumes: Trade volumes.
-    :param threshold: Volume threshold for opening a new bar.
+    :param threshold: Volume bucket threshold for opening a new bar.
     :returns: close_indices: Timestamps at which each volume bar opens.
 
     .. note::
@@ -110,7 +110,8 @@ def _volume_bar_indexer(
         cum_volume += volumes[i]
         if cum_volume >= threshold:
             volume_bar_indices.append(i)
-            cum_volume = 0
+            # Carry over excess volume
+            cum_volume = cum_volume - threshold
 
     return volume_bar_indices
 
@@ -144,7 +145,7 @@ def _dollar_bar_indexer(
         cum_dollar += prices[i] * volumes[i]
         if cum_dollar >= threshold:
             dollar_bar_indices.append(i)
-            cum_dollar = 0
+            cum_dollar = cum_dollar - threshold
 
     return dollar_bar_indices
 

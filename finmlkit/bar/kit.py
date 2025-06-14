@@ -74,17 +74,17 @@ class VolumeBarKit(BarBuilderBase):
 
     def __init__(self,
                  trades: TradesData,
-                 volume_thrs: float):
+                 volume_ths: float):
         """
         Initialize the volume bar builder with raw trades data and volume.
 
         :param trades: DataFrame of raw trades with 'timestamp', 'price', and 'amount'.
-        :param volume_thrs: Volume threshold for the volume bar.
+        :param volume_ths: Volume Bucket threshold for the volume bar.
         """
         super().__init__(trades)
-        self.volume_thrs = volume_thrs
+        self.volume_ths = volume_ths
 
-        logger.info(f"Volume bar builder initialized with volume: {volume_thrs}.")
+        logger.info(f"Volume bar builder initialized with volume: {volume_ths}.")
 
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
@@ -94,7 +94,7 @@ class VolumeBarKit(BarBuilderBase):
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         volumes = self.trades_df['amount'].values
 
-        close_indices = _volume_bar_indexer(volumes, self.volume_thrs)
+        close_indices = _volume_bar_indexer(volumes, self.volume_ths)
         close_indices = np.array(close_indices, dtype=np.int64)
         close_ts = timestamps[close_indices]
 
