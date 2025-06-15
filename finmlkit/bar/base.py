@@ -180,8 +180,24 @@ class BarBuilderBase(ABC):
         )
         logger.info("Footprint data calculated successfully.")
 
-        # Create a FootprintData object
-        footprint = FootprintData.from_numba(footprint_data, price_tick_size)
+        # Create a FootprintData object with all metrics
+        footprint = FootprintData(
+            bar_timestamps=footprint_data[0],
+            price_levels=footprint_data[1],
+            price_tick=price_tick_size,
+            buy_volumes=footprint_data[2],
+            sell_volumes=footprint_data[3],
+            buy_ticks=footprint_data[4],
+            sell_ticks=footprint_data[5],
+            buy_imbalances=footprint_data[6],
+            sell_imbalances=footprint_data[7],
+            buy_imbalances_sum=footprint_data[8],
+            sell_imbalances_sum=footprint_data[9],
+            cot_price_levels=footprint_data[10],
+            imb_max_run_signed=footprint_data[11],
+            vp_skew=footprint_data[12],
+            vp_gini=footprint_data[13]
+        )
         footprint.cast_to_numba_list()
         logger.info("Footprint data converted to FootprintData object.")
 
@@ -424,7 +440,8 @@ def comp_bar_footprints(
     NumbaList[NDArray[np.float32]], NumbaList[NDArray[np.float32]],
     NumbaList[NDArray[np.int32]], NumbaList[NDArray[np.int32]],
     NumbaList[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]],
-    NDArray[np.uint16], NDArray[np.uint16], NDArray[np.int32]
+    NDArray[np.uint16], NDArray[np.uint16], NDArray[np.int32],
+    NDArray[np.int16], NDArray[np.float64], NDArray[np.float64]
 ]:
     """
     Compute the footprint features for each bar, including buy/sell volumes and imbalances per price level.
@@ -450,6 +467,9 @@ def comp_bar_footprints(
         - buy_imbalances_sum: Total number of buy imbalances per bar.
         - sell_imbalances_sum: Total number of sell imbalances per bar.
         - cot_price_levels: Price level with highest total volume per bar.
+        - imb_max_run_signed: Longest signed imbalance run for each bar.
+        - vp_skew: Volume profile skew for each bar (positive = buy pressure above VWAP).
+        - vp_gini: Volume profile Gini coefficient for each bar.
     """
     # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
 
@@ -469,6 +489,9 @@ def comp_bar_footprints(
     buy_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
     sell_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
     cot_price_levels = np.zeros(n_bars, dtype=np.int32)
+    imb_max_run_signed_arr = np.zeros(n_bars, dtype=np.int16)
+    vp_skew_arr = np.zeros(n_bars, dtype=np.float64)
+    vp_gini_arr = np.zeros(n_bars, dtype=np.float64)
 
     tick_direction = 0
     for i in prange(n_bars):
@@ -517,17 +540,22 @@ def comp_bar_footprints(
         buy_ticks.append(buy_ticks_i)
         sell_ticks.append(sell_ticks_i)
 
-        # Calculate the footprint features: buy imbalances, sell imbalances, COT price level
-        buy_imbalances_i, sell_imbalances_i, cot_price_level = comp_footprint_features(
+        # Calculate the footprint features:
+        # buy imbalances, sell imbalances, imb_max_run_signed, COT price level, vp_skew, vp_gini
+        (buy_imbalances_i, sell_imbalances_i, imb_max_run_signed,
+         cot_price_level, vp_skew, vp_gini) = comp_footprint_features(
             price_levels_i, buy_volumes_i, sell_volumes_i, imbalance_factor
         )
         buy_imbalances.append(buy_imbalances_i)
         sell_imbalances.append(sell_imbalances_i)
 
-        # Update cumulative imbalances and COT price level
+        # Update cumulative imbalances, COT price level, and other metrics
         buy_imbalances_sum[i] = np.sum(buy_imbalances_i, dtype=np.uint16)
         sell_imbalances_sum[i] = np.sum(sell_imbalances_i, dtype=np.uint16)
         cot_price_levels[i] = cot_price_level
+        imb_max_run_signed_arr[i] = imb_max_run_signed
+        vp_skew_arr[i] = vp_skew
+        vp_gini_arr[i] = vp_gini
 
     return (
         bar_open_timestamps[1:],  # Close bar timestamps convention!!
@@ -535,8 +563,10 @@ def comp_bar_footprints(
         buy_volumes, sell_volumes,
         buy_ticks, sell_ticks,
         buy_imbalances, sell_imbalances,
-        buy_imbalances_sum, sell_imbalances_sum, cot_price_levels
+        buy_imbalances_sum, sell_imbalances_sum, cot_price_levels,
+        imb_max_run_signed_arr, vp_skew_arr, vp_gini_arr
     )
+
 
 
 @njit(nogil=True)
@@ -544,14 +574,17 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
     """
     Calculate footprint statistics such as buy/sell imbalances and Commitment of Traders (COT) level.
 
-    :param price_levels: Array of price levels.
+    :param price_levels: Array of int64 tick unit price levels in ascending order.
     :param buy_volumes: Array of buy volumes at each price level.
     :param sell_volumes: Array of sell volumes at each price level.
     :param imbalance_multiplier: Threshold multiplier to detect imbalance.
     :returns: Tuple containing:
         - buy_imbalances: Boolean array where True indicates buy imbalance at the level.
         - sell_imbalances: Boolean array where True indicates sell imbalance at the level.
+        - imbalance_max_run_signed: Longest  signed imbalance run (number of consecutive imbalanced level)
         - cot_price_level: Price level with the highest total volume.
+        - vp_skew: Volume profile skew (positive = buy pressure above VWAP).
+        - vp_gini: Volume profile Gini coefficient (0 = concentrated, →1 = even distribution).
     """
     n_levels = len(price_levels)
     buy_imbalances = np.zeros(n_levels, dtype=np.bool_)
@@ -576,11 +609,59 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
     # the l-th buy (ask) level corresponds to the (l-1)-th sell (bid) level
 
     if n_levels > 1:
+        # Edge levels cannot be imbalanced by definition (we cannot compare it to the next diagonal level)
         sell_imbalances[:-1] = sell_volumes[:-1] > (buy_volumes[1:] * imbalance_multiplier)
         buy_imbalances[1:] = buy_volumes[1:] > (sell_volumes[:-1] * imbalance_multiplier)
 
-    sum_level_volume = buy_volumes + sell_volumes
-    highest_cot_idx = np.argmax(sum_level_volume)
+
+    # ---------- longest signed run ----------
+    max_run = 0
+    max_sign = 0       # +1 buy, -1 sell
+    run = 0
+    run_sign = 0
+
+    for i in range(n_levels):
+        sign = 1 if buy_imbalances[i] else (-1 if sell_imbalances[i] else 0)
+
+        if sign != 0 and sign == run_sign:
+            run += 1
+        elif sign != 0:          # start new run
+            run = 1
+            run_sign = sign
+        else:                    # level with no imbalance
+            run = 0
+            run_sign = 0
+
+        if run > max_run:
+            max_run  = run
+            max_sign = run_sign
+
+    imb_max_run_signed = max_run * max_sign      # int16
+
+    # ---------- COT & VP stats ----------
+    total_volumes = buy_volumes + sell_volumes
+    sum_total_volume = total_volumes.sum()
+
+    # Calculate Center of Trades (COT)
+    highest_cot_idx = np.argmax(total_volumes)
     cot_price_level = price_levels[highest_cot_idx]
 
-    return buy_imbalances, sell_imbalances, cot_price_level
+    # Calculate VWAP for skew computation
+    vp_skew = 0.0
+    vp_gini = 0.0
+
+    if sum_total_volume > 0 and n_levels > 0:
+        # Calculate VWAP
+        vwap = np.sum(price_levels * total_volumes) / sum_total_volume
+
+        # 1. Calculate volume profile skew
+        # Using the formula: skew = Σ(p-vwap) * vol) / tot_vol
+        price_deviation = price_levels - vwap
+        vp_skew = np.sum(price_deviation * total_volumes) / sum_total_volume
+
+        # 2. Calculate volume profile Gini coefficient
+        # Using the formula: gini = 1 - Σ((vol_i / tot_vol) ** 2)
+        volume_proportions = total_volumes / sum_total_volume
+        vp_gini = 1.0 - np.sum(volume_proportions ** 2)
+
+    return buy_imbalances, sell_imbalances, imb_max_run_signed, cot_price_level, vp_skew, vp_gini

@@ -544,6 +544,9 @@ class FootprintData:
     :param cot_price_levels: Optional Commitment of Traders price levels.
     :param sell_imbalances_sum: Optional total sell imbalance counts per bar.
     :param buy_imbalances_sum: Optional total buy imbalance counts per bar.
+    :param imb_max_run_signed: Optional longest signed imbalance run for each bar.
+    :param vp_skew: Optional volume profile skew for each bar (positive = buy pressure above VWAP).
+    :param vp_gini: Optional volume profile Gini coefficient for each bar (0 = concentrated, →1 = even).
     """
     # Data attributes
     bar_timestamps: NDArray[np.int64]  # 1D int64 array
@@ -560,6 +563,9 @@ class FootprintData:
     cot_price_levels: Optional[NDArray[np.int32]] = None      # 1D int32 array
     sell_imbalances_sum: Optional[NDArray[np.uint16]] = None  # 1D uint16 array
     buy_imbalances_sum: Optional[NDArray[np.uint16]] = None   # 1D uint16 array
+    imb_max_run_signed: Optional[NDArray[np.int16]] = None    # 1D int16 array
+    vp_skew: Optional[NDArray[np.float64]] = None             # 1D float64 array
+    vp_gini: Optional[NDArray[np.float64]] = None             # 1D float64 array
 
     # Private attributes
     _datetime_index: pd.Series = None  # DatetimeIndex for date time slicing (will be set in __post_init__)
@@ -641,7 +647,10 @@ class FootprintData:
                 sell_imbalances=self.sell_imbalances[key],
                 cot_price_levels=self.cot_price_levels[key] if self.cot_price_levels is not None else None,
                 sell_imbalances_sum=self.sell_imbalances_sum[key] if self.sell_imbalances_sum is not None else None,
-                buy_imbalances_sum=self.buy_imbalances_sum[key] if self.buy_imbalances_sum is not None else None
+                buy_imbalances_sum=self.buy_imbalances_sum[key] if self.buy_imbalances_sum is not None else None,
+                imb_max_run_signed=self.imb_max_run_signed[key] if self.imb_max_run_signed is not None else None,
+                vp_skew=self.vp_skew[key] if self.vp_skew is not None else None,
+                vp_gini=self.vp_gini[key] if self.vp_gini is not None else None
             )
         else:
             raise TypeError("Invalid argument type. Expected a slice or integer index.")
@@ -655,20 +664,41 @@ class FootprintData:
         :returns: A validated FootprintData instance.
         :raises ValueError: If data length is inconsistent.
         """
-        instance = cls(
-            bar_timestamps=np.array(data[0], dtype=np.int64),
-            price_levels=np.array(data[1], dtype=object),
-            price_tick=price_tick,
-            buy_volumes=np.array(data[2], dtype=object),
-            sell_volumes=np.array(data[3], dtype=object),
-            buy_ticks=np.array(data[4], dtype=object),
-            sell_ticks=np.array(data[5], dtype=object),
-            buy_imbalances=np.array(data[6], dtype=object),
-            sell_imbalances=np.array(data[7], dtype=object),
-            buy_imbalances_sum=np.array(data[8], dtype=np.int16),
-            sell_imbalances_sum=np.array(data[9], dtype=np.int16),
-            cot_price_levels=np.array(data[10], dtype=np.int32)
-        )
+        # Handle the case when the data tuple includes the new metrics
+        if len(data) >= 14:  # Complete data tuple with all metrics
+            instance = cls(
+                bar_timestamps=np.array(data[0], dtype=np.int64),
+                price_levels=np.array(data[1], dtype=object),
+                price_tick=price_tick,
+                buy_volumes=np.array(data[2], dtype=object),
+                sell_volumes=np.array(data[3], dtype=object),
+                buy_ticks=np.array(data[4], dtype=object),
+                sell_ticks=np.array(data[5], dtype=object),
+                buy_imbalances=np.array(data[6], dtype=object),
+                sell_imbalances=np.array(data[7], dtype=object),
+                buy_imbalances_sum=np.array(data[8], dtype=np.uint16),
+                sell_imbalances_sum=np.array(data[9], dtype=np.uint16),
+                cot_price_levels=np.array(data[10], dtype=np.int32),
+                imb_max_run_signed=np.array(data[11], dtype=np.int16),
+                vp_skew=np.array(data[12], dtype=np.float64),
+                vp_gini=np.array(data[13], dtype=np.float64)
+            )
+        else:
+            # Handle the case when the data tuple has the original fields only
+            instance = cls(
+                bar_timestamps=np.array(data[0], dtype=np.int64),
+                price_levels=np.array(data[1], dtype=object),
+                price_tick=price_tick,
+                buy_volumes=np.array(data[2], dtype=object),
+                sell_volumes=np.array(data[3], dtype=object),
+                buy_ticks=np.array(data[4], dtype=object),
+                sell_ticks=np.array(data[5], dtype=object),
+                buy_imbalances=np.array(data[6], dtype=object),
+                sell_imbalances=np.array(data[7], dtype=object),
+                buy_imbalances_sum=np.array(data[8], dtype=np.uint16),
+                sell_imbalances_sum=np.array(data[9], dtype=np.uint16),
+                cot_price_levels=np.array(data[10], dtype=np.int32)
+            )
 
         # Validate the data
         if not instance.is_valid():
@@ -785,6 +815,4 @@ class FootprintData:
             if len(attr) != expected_length:
                 return False
         return True
-
-
 
