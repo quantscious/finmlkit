@@ -10,17 +10,17 @@ def test_comp_ohlcv():
     prices = np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 150.0, 100.0, 50.0, 25.0], dtype=np.float64)
     # Bar close indices: first bar closes at index 0, second at index 3, third at index 6
-    bar_close_indices = np.array([0, 3, 6], dtype=np.int64)  # Defines two bars
+    bar_close_indices = np.array([0, 3, 5], dtype=np.int64)  # Defines two bars
 
     # Expected outputs
     expected_bar_open = np.array([11.0, 14.0], dtype=np.float64)  # First trade after close
-    expected_bar_high = np.array([12.0, 15.0], dtype=np.float64)
+    expected_bar_high = np.array([13.0, 15.0], dtype=np.float64)
     expected_bar_low = np.array([11.0, 14.0], dtype=np.float64)
-    expected_bar_close = np.array([12.0, 15.0], dtype=np.float64)
-    expected_bar_volume = np.array([350.0, 75.0], dtype=np.float64)
-    expected_bar_vwap = np.array([11.428571, 14.333333], dtype=np.float32)
-    expected_bar_trades = np.array([2, 2], dtype=np.int64)  # Number of trades in each bar
-    expected_bar_median_trade_size = np.array([175.0, 37.5], dtype=np.float64)  # Median trade size in each bar
+    expected_bar_close = np.array([13.0, 15.0], dtype=np.float64)
+    expected_bar_volume = np.array([450.0, 75.0], dtype=np.float64)
+    expected_bar_vwap = np.array([(11*200+12*150+13*100)/450., (14*50+15*25)/75.], dtype=np.float32)
+    expected_bar_trades = np.array([3, 2], dtype=np.int64)  # Number of trades in each bar
+    expected_bar_median_trade_size = np.array([np.median([200., 150., 100.]), np.median([50., 25.])], dtype=np.float64)  # Median trade size in each bar
 
     # Call the function
     bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size = comp_bar_ohlcv(
@@ -43,20 +43,16 @@ def test_single_trade_per_bar():
     # Each bar has exactly one trade
     prices = np.array([10.0, 12.0, 14.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 300.0], dtype=np.float64)
-    bar_close_indices = np.array([0, 1, 2, 3], dtype=np.int64)  # Three bars with closing indices
+    bar_close_indices = np.array([0, 1, 2], dtype=np.int64)  # Three bars with closing indices
 
-    # For single trade bars starting after previous close:
-    # First bar: trade at index 1 (starts after index 0)
-    # Second bar: trade at index 2 (starts after index 1)
-    # Third bar: trade at index 3 (starts after index 2)
-    expected_bar_open = np.array([12.0, 14.0, 0.0], dtype=np.float64)  # Last one is out of bounds
-    expected_bar_high = np.array([12.0, 14.0, 0.0], dtype=np.float64)
-    expected_bar_low = np.array([12.0, 14.0, 0.0], dtype=np.float64)
-    expected_bar_close = np.array([12.0, 14.0, 0.0], dtype=np.float64)
-    expected_bar_volume = np.array([200.0, 300.0, 0.0], dtype=np.float64)
-    expected_bar_vwap = np.array([12.0, 14.0, 0.0], dtype=np.float32)
-    expected_bar_trades = np.array([1, 1, 0], dtype=np.int64)  # One trade per bar, except last
-    expected_bar_median_trade_size = np.array([200.0, 300.0, 0.0], dtype=np.float64)
+    expected_bar_open = np.array([12.0, 14.0], dtype=np.float64)  # Last one is out of bounds
+    expected_bar_high = np.array([12.0, 14.0], dtype=np.float64)
+    expected_bar_low = np.array([12.0, 14.0], dtype=np.float64)
+    expected_bar_close = np.array([12.0, 14.0], dtype=np.float64)
+    expected_bar_volume = np.array([200.0, 300.0], dtype=np.float64)
+    expected_bar_vwap = np.array([12.0, 14.0], dtype=np.float32)
+    expected_bar_trades = np.array([1, 1], dtype=np.int64)  # One trade per bar, except last
+    expected_bar_median_trade_size = np.array([200.0, 300.0], dtype=np.float64)
 
     # Call the function
     bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size = comp_bar_ohlcv(
@@ -77,7 +73,7 @@ def test_zero_volume():
     # Test with zero volume but with correct bar close indices
     prices = np.array([10.0, 12.0], dtype=np.float64)
     volumes = np.array([100.0, 0.0], dtype=np.float64)  # Second trade has zero volume
-    bar_close_indices = np.array([0, 2], dtype=np.int64)  # One bar closing at index 2
+    bar_close_indices = np.array([0, 1], dtype=np.int64)  # One bar closing at index 2
 
     # Expected outputs
     expected_bar_open = np.array([12.0], dtype=np.float64)  # First trade after close (index 1)
@@ -111,17 +107,17 @@ def test_empty_bars():
     # Gap between bar open indices, indicating an empty bar
     prices = np.array([10.0, 12.0, 14.0], dtype=np.float64)
     volumes = np.array([100.0, 200.0, 300.0], dtype=np.float64)
-    bar_close_indices = np.array([0, 1, 1, 3], dtype=np.int64)  # One empty bar in the middle
+    bar_close_indices = np.array([0, 1, 1, 2], dtype=np.int64)  # One empty bar in the middle
 
     # Expected outputs
-    expected_bar_open = np.array([10.0, 10.0, 12.0], dtype=np.float64)
-    expected_bar_high = np.array([10.0, 10.0, 14.0], dtype=np.float64)
-    expected_bar_low = np.array([10.0, 10.0, 12.0], dtype=np.float64)
-    expected_bar_close = np.array([10.0, 10.0, 14.0], dtype=np.float64)
-    expected_bar_volume = np.array([100.0, 0.0, 500.0], dtype=np.float64)
-    expected_bar_vwap = np.array([10.0, 0.0, 13.2], dtype=np.float32)  # The middle bar is empty
-    expected_bar_trades = np.array([1, 0, 2], dtype=np.int64)  # 1 trade, 0 trades (empty bar), 2 trades
-    expected_bar_median_trade_size = np.array([100.0, 0.0, 250.0], dtype=np.float64)  # Median sizes
+    expected_bar_open = np.array([12.0, 12.0, 14.0], dtype=np.float64)
+    expected_bar_high = np.array([12.0, 12.0, 14.0], dtype=np.float64)
+    expected_bar_low = np.array([12.0, 12.0, 14.0], dtype=np.float64)
+    expected_bar_close = np.array([12.0, 12.0, 14.0], dtype=np.float64)
+    expected_bar_volume = np.array([200.0, 0.0, 300.0], dtype=np.float64)
+    expected_bar_vwap = np.array([12.0, 0.0, 14.], dtype=np.float32)  # The middle bar is empty
+    expected_bar_trades = np.array([1, 0, 1], dtype=np.int64)  # 1 trade, 0 trades (empty bar), 2 trades
+    expected_bar_median_trade_size = np.array([200.0, 0.0, 300.], dtype=np.float64)  # Median sizes
 
     # Call the function
     bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size = comp_bar_ohlcv(
