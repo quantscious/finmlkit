@@ -89,13 +89,15 @@ class BarBuilderBase(ABC):
         logger.info("OHLCV bar calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
-            'timestamp': self._close_ts[1:],   # Close bar timestamps convention!!
+            'timestamp': self._close_ts[1:],  # Close bar timestamps convention!!
             'open': ohlcv_tuple[0],
             'high': ohlcv_tuple[1],
             'low': ohlcv_tuple[2],
             'close': ohlcv_tuple[3],
             'volume': ohlcv_tuple[4],
-            'vwap': ohlcv_tuple[5]
+            'vwap': ohlcv_tuple[5],
+            'bar_trades': ohlcv_tuple[6],
+            'bar_median_trade_size': ohlcv_tuple[7]
         })
         logger.info("OHLCV bar converted to DataFrame.")
 
@@ -209,10 +211,12 @@ class BarBuilderBase(ABC):
 # --------------------------------------------------------------------------------------------
 @njit(nogil=True, parallel=True)
 def comp_bar_ohlcv(
-    prices: NDArray[np.float64],
-    volumes: NDArray[np.float64],
-    bar_close_indices: NDArray[np.int64],
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[np.float64]]:
+        prices: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        bar_close_indices: NDArray[np.int64],
+) -> tuple[
+    NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[
+        np.float64], NDArray[np.int64], NDArray[np.float64]]:
     """
     Build the candlestick bar from raw trades data based in bar open indices.
     :param prices: Trade prices.
@@ -225,6 +229,8 @@ def comp_bar_ohlcv(
         - close: Closing price of each bar.
         - volume: Total traded volume in each bar.
         - vwap: Volume-weighted average price of each bar.
+        - bar_trades: Number of trades in each bar.
+        - bar_median_trade_size: Median trade size in each bar.
     """
     # Check the input arrays match in length
     if len(prices) != len(volumes):
@@ -238,6 +244,8 @@ def comp_bar_ohlcv(
     bar_open = np.zeros(n_bars, dtype=np.float64)
     bar_close = np.zeros(n_bars, dtype=np.float64)
     bar_volume = np.zeros(n_bars, dtype=np.float32)
+    bar_trades = np.zeros(n_bars, dtype=np.int64)
+    bar_median_trade_size = np.zeros(n_bars, dtype=np.float64)
     bar_vwap = np.zeros(n_bars, dtype=np.float64)
 
     for i in prange(n_bars):
@@ -252,6 +260,8 @@ def comp_bar_ohlcv(
             bar_low[i] = prices[end]
             bar_volume[i] = 0.0
             bar_vwap[i] = 0.0
+            bar_trades[i] = 0
+            bar_median_trade_size[i] = 0.0
             continue
 
         # Start from the next trade (start=previous bar close)
@@ -262,10 +272,19 @@ def comp_bar_ohlcv(
         total_volume = 0.0
         total_dollar = 0.0
 
+        # Count number of trades and collect trade sizes for median calculation
+        trade_count = end - start + 1
+        trade_sizes = np.zeros(trade_count, dtype=np.float64)
+        trade_idx = 0
+
         # Iterate over trades in the current bar, inclusive for the last trade (bar close)
         for j in range(start, end + 1):
             price = prices[j]
             volume = volumes[j]
+
+            # Store trade size for median calculation
+            trade_sizes[trade_idx] = volume
+            trade_idx += 1
 
             if price > high_price:
                 high_price = price
@@ -276,14 +295,20 @@ def comp_bar_ohlcv(
             total_dollar += price * volume
 
         bar_open[i] = prices[start]  # First trade price in the bar exclusive
-        bar_close[i] = prices[end]   # Last trade price in the bar inclusive
+        bar_close[i] = prices[end]  # Last trade price in the bar inclusive
         bar_high[i] = high_price
         bar_low[i] = low_price
         bar_volume[i] = total_volume
         bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
+        bar_trades[i] = trade_count
 
-    return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap
+        # Calculate median trade size
+        if trade_count > 0:
+            bar_median_trade_size[i] = np.median(trade_sizes)
+        else:
+            bar_median_trade_size[i] = 0.0
 
+    return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size
 
 @njit(nogil=True, parallel=True)
 def comp_bar_directional_features(
@@ -582,7 +607,7 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
         - sell_imbalances: Boolean array where True indicates sell imbalance at the level.
         - imbalance_max_run_signed: Longest  signed imbalance run (number of consecutive imbalanced level)
         - cot_price_level: Price level with the highest total volume.
-        - vp_skew: Volume profile skew (positive = buy pressure above VWAP).
+        - vp_skew: Volume profile skew relative to vwap (positive = buy pressure above VWAP).
         - vp_gini: Volume profile Gini coefficient (0 = concentrated, →1 = even distribution).
     """
     n_levels = len(price_levels)
