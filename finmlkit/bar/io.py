@@ -414,15 +414,18 @@ class TimeBarReader:
         """
         Read time bars from the H5 file, optionally filtering by time range and resampling.
 
-        :param start_time: Start time for filtering (optional)
-        :param end_time: End time for filtering (optional)
+        :param start_time: Start time for filtering (inclusive, optional)
+        :param end_time: End time for filtering (inclusive, optional)
         :param timeframe: Timeframe for resampling (e.g., '5min', '1h', '1d', None for original 1s bars)
         :return: DataFrame with the requested time bars
 
         Examples:
-            # Get all 1-second bars for a specific day
+            # Get all bars for a specific day (inclusive of both start and end dates)
             reader = TimeBarReader('data.h5')
-            df_1s = reader.read('2023-01-01', '2023-01-02')
+            df_1s = reader.read('2023-01-01', '2023-01-01')  # Full day of Jan 1st
+
+            # Get all bars for two full months (Feb 1 through Mar 31 inclusive)
+            df_feb_mar = reader.read('2022-02-01', '2022-03-31')
 
             # Get 5-minute bars for a date range
             df_5min = reader.read('2023-01-01', '2023-01-31', timeframe='5min')
@@ -430,7 +433,7 @@ class TimeBarReader:
             # Get hourly bars for a specific month
             df_1h = reader.read('2023-01-01', '2023-01-31', timeframe='1h')
 
-            # Get daily bars
+            # Get daily bars for all available data
             df_daily = reader.read(timeframe='1D')
         """
         # Normalize input parameters
@@ -438,6 +441,13 @@ class TimeBarReader:
             start_time = pd.Timestamp(start_time)
         if isinstance(end_time, str):
             end_time = pd.Timestamp(end_time)
+
+        # If end_time is provided as a date without time, set it to the end of that day
+        # to make the range inclusive of the entire end date
+        original_end_time = None
+        if end_time is not None and end_time.time() == dt.time(0, 0):
+            original_end_time = end_time  # Store for later use in resampling
+            end_time = end_time + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
 
         # Find relevant keys
         relevant_keys = self._find_relevant_keys(start_time, end_time)
@@ -472,8 +482,20 @@ class TimeBarReader:
         if timeframe is None:
             return df
 
-        # Resample to the requested timeframe
-        return self._resample(df, timeframe)
+        # If we're resampling to a daily timeframe and we have an incomplete last day,
+        # we need to take special care
+        if timeframe.upper().endswith('D') and original_end_time is not None:
+            # Resample to the requested timeframe
+            resampled = self._resample(df, timeframe)
+
+            # For daily bars, if the end date is specified without time component,
+            # exclude the last day if it's incomplete
+            last_valid_day = original_end_time - pd.Timedelta(days=1)
+            resampled = resampled[resampled.index <= last_valid_day]
+            return resampled
+        else:
+            # Resample to the requested timeframe normally
+            return self._resample(df, timeframe)
 
     def _resample(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
         """
@@ -483,25 +505,42 @@ class TimeBarReader:
         :param timeframe: Timeframe for resampling (e.g., '5min', '1h', '1d')
         :return: Resampled DataFrame
         """
-        # Create resampler
-        resampler = df.resample(timeframe)
+        # --- one grouper reused everywhere ---------------------------------
+        grouper = df.index.floor(timeframe)  # fast vectorised
 
-        # Aggregate standard OHLCV values
-        result = resampler.agg({
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last',
-            'volume': 'sum',
-            'bar_trades': 'sum',  # Sum the number of trades in the period
-            'bar_median_trade_size': 'median',  # Take median of median trade sizes
+        # ---------- OHLCV & trade-count aggregation -----------------------
+        resampled = df.groupby(grouper, sort=False).agg({
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+            "trades": "sum",
         })
 
-        # Calculate VWAP properly by accounting for volume
-        vwap = (df['vwap'] * df['volume']).resample(timeframe).sum() / df['volume'].resample(timeframe).sum()
-        result['vwap'] = vwap
+        # ---------------------------- VWAP --------------------------------
+        vol_sum = df["volume"].groupby(grouper, sort=False).sum()
+        vwap = (df["vwap"] * df["volume"]).groupby(grouper, sort=False).sum() / vol_sum
+        resampled["vwap"] = vwap.astype("float32")
 
-        # Filter out rows with NaN values (potentially from missing periods)
-        result = result.dropna(subset=['open', 'high', 'low', 'close'])
+        # ---------- volume-weighted median of per-second medians ----------
+        def w_median(sub: pd.DataFrame) -> float:
+            if sub.empty:
+                return np.nan
+            sort_idx = np.argsort(sub["median_trade_size"].values)
+            sizes = sub["median_trade_size"].values[sort_idx]
+            weights = sub["trades"].values[sort_idx].astype(np.float64)
 
-        return result
+            cum_w = np.cumsum(weights)
+            cutoff = cum_w[-1] * 0.5
+            return float(sizes[np.searchsorted(cum_w, cutoff, side="left")])
+
+        resampled["median_trade_size"] = (
+            df.groupby(grouper, sort=False, observed=True).apply(w_median).astype("float32")
+        )
+
+        # ---------- final cleanup -----------------------------------------
+        # Drop periods with no trades (NaN open). Keeps index monotone.
+        resampled = resampled.dropna(subset=["open"])
+
+        return resampled

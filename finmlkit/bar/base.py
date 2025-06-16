@@ -95,9 +95,9 @@ class BarBuilderBase(ABC):
             'low': ohlcv_tuple[2],
             'close': ohlcv_tuple[3],
             'volume': ohlcv_tuple[4],
-            'vwap': ohlcv_tuple[5],
-            'bar_trades': ohlcv_tuple[6],
-            'bar_median_trade_size': ohlcv_tuple[7]
+            'trades': ohlcv_tuple[6],
+            'median_trade_size': ohlcv_tuple[7],
+            'vwap': ohlcv_tuple[5]
         })
         logger.info("OHLCV bar converted to DataFrame.")
 
