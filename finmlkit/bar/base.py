@@ -568,7 +568,6 @@ def comp_bar_footprints(
     )
 
 
-
 @njit(nogil=True)
 def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_multiplier):
     """
@@ -613,10 +612,9 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
         sell_imbalances[:-1] = sell_volumes[:-1] > (buy_volumes[1:] * imbalance_multiplier)
         buy_imbalances[1:] = buy_volumes[1:] > (sell_volumes[:-1] * imbalance_multiplier)
 
-
     # ---------- longest signed run ----------
     max_run = 0
-    max_sign = 0       # +1 buy, -1 sell
+    max_sign = 0  # +1 buy, -1 sell
     run = 0
     run_sign = 0
 
@@ -625,18 +623,18 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
 
         if sign != 0 and sign == run_sign:
             run += 1
-        elif sign != 0:          # start new run
+        elif sign != 0:  # start new run
             run = 1
             run_sign = sign
-        else:                    # level with no imbalance
+        else:  # level with no imbalance
             run = 0
             run_sign = 0
 
         if run > max_run:
-            max_run  = run
+            max_run = run
             max_sign = run_sign
 
-    imb_max_run_signed = max_run * max_sign      # int16
+    imb_max_run_signed = max_run * max_sign  # int16
 
     # ---------- COT & VP stats ----------
     total_volumes = buy_volumes + sell_volumes
@@ -657,7 +655,7 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
         # 1. Calculate volume profile skew
         # Using the formula: skew = Σ(p-vwap) * vol) / tot_vol
         price_deviation = price_levels - vwap
-        vp_skew = np.sum(price_deviation * total_volumes) / sum_total_volume
+        vp_skew = np.dot(price_deviation, total_volumes) / sum_total_volume
 
         # 2. Calculate volume profile Gini coefficient
         # Using the formula: gini = 1 - Σ((vol_i / tot_vol) ** 2)
