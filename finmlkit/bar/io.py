@@ -493,6 +493,8 @@ class TimeBarReader:
             'low': 'min',
             'close': 'last',
             'volume': 'sum',
+            'bar_trades': 'sum',  # Sum the number of trades in the period
+            'bar_median_trade_size': 'median',  # Take median of median trade sizes
         })
 
         # Calculate VWAP properly by accounting for volume
