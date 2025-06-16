@@ -221,7 +221,7 @@ def comp_bar_ohlcv(
     Build the candlestick bar from raw trades data based in bar open indices.
     :param prices: Trade prices.
     :param volumes: Trade volumes.
-    :param bar_close_indices: Indices marking the start of each bar.
+    :param bar_close_indices: Indices marking the end of each bar.
     :returns: Tuple containing:
         - open: Opening price of each bar.
         - high: Highest price of each bar.
@@ -330,7 +330,7 @@ def comp_bar_directional_features(
 
     :param prices: Trade prices.
     :param volumes: Trade volumes.
-    :param bar_close_indices: Indices marking the start of each bar.
+    :param bar_close_indices: Indices marking the end of each bar.
     :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
     :returns: Tuple containing:
         - **ticks_buy**: Number of buy trades per bar.
@@ -449,12 +449,77 @@ def comp_bar_directional_features(
     )
 
 
-@njit(nogil=True, parallel=False)
+@njit(nogil=True, parallel=True)
+def comp_bar_trade_size_features(
+        amounts: NDArray[np.float64],
+        theta: NDArray[np.float64],
+        bar_close_indices: NDArray[np.int64],
+        theta_mult: float
+) -> tuple[NDArray[np.float32], NDArray[np.float32], NDArray[np.float32], NDArray[np.float32]]:
+    """
+    Compute the size distribution features for each bar, including the mean, 95 percentile, pct_block relative to thehta and size_gini.
+    Are there large trade block prints in the bar?
+
+    :param amounts: Array of trade amounts (raw trade sizes).
+    :param theta: The typical trade size (e.g., 30 day rolling median trade size).
+    :param bar_close_indices: Indices marking the end of each bar.
+    :param theta_mult: Multiplier for theta to define the block size threshold. (eg. 5 times the median trade size)
+    :return: A tuple containing:
+        - mean_size_rel: Mean trade size relative to theta per bar: log1p(mean_size / θ)
+        - size_95_rel: 95th percentile of trade sizes per bar relative to theta: log1p(size_95 / θ)
+        - pct_block: Percentage of trades that are larger than theta per bar: Σ size_i [ size_i>θ ] / volume
+        - size_gini: Gini coefficient of trade sizes per bar.
+    """
+    if len(theta) != len(bar_close_indices):
+        raise ValueError("Theta, and bar_close_indices must have the same length.")
+
+    n_bars = len(bar_close_indices) - 1
+    mean_size_rel = np.full(n_bars, np.nan, dtype=np.float32)
+    size_95_rel = np.full(n_bars, np.nan, dtype=np.float32)
+    pct_block = np.full(n_bars, np.nan, dtype=np.float32)
+    size_gini = np.full(n_bars, np.nan, dtype=np.float32)
+
+
+    for i in prange(n_bars):
+        start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
+        end = bar_close_indices[i + 1]
+
+        # Empty bar guard
+        if start > end: continue
+
+        if theta[i] == 0.0: continue
+        thr = theta[i] * theta_mult  # Block size threshold
+
+        amounts_bar = amounts[start:end + 1]  # End inclusive
+        mean_size_rel[i] = np.log1p(np.mean(amounts_bar) / thr)
+        size_95_rel[i] = np.log1p(np.percentile(amounts_bar, 95) / thr)
+
+        total_volume = amounts_bar.sum()
+        if total_volume == 0:
+            continue
+
+        # Calculate pct_block: Percentage of trades larger than block size threshold
+        block_volume = 0.0
+        for amount in amounts_bar:
+            if amount > thr:
+                block_volume += amount
+        pct_block[i] = block_volume / total_volume
+
+        # Calculate Gini coefficient for trade sizes
+        if amounts_bar.size == 1:
+            size_gini[i] = 0.0
+        else:
+            size_gini[i] = 1.0 - np.sum((amounts_bar / total_volume) ** 2)
+
+    return mean_size_rel, size_95_rel, pct_block, size_gini
+
+
+@njit(nogil=True, parallel=True)
 def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
     bar_close_indices: NDArray[np.int64],
-    bar_open_timestamps: NDArray[np.int64],
+    bar_close_timestamps: NDArray[np.int64],
     price_tick_size: float,
     bar_lows: NDArray[np.float64],
     bar_highs: NDArray[np.float64],
@@ -474,8 +539,8 @@ def comp_bar_footprints(
 
     :param prices: Trade prices.
     :param amounts: Trade amounts.
-    :param bar_close_indices: Indices marking the start of each bar.
-    :param bar_open_timestamps: Nanosecond timestamps marking bar openings.
+    :param bar_close_indices: Indices marking the end of each bar.
+    :param bar_close_timestamps: Nanosecond timestamps marking bar closings.
     :param price_tick_size: Tick size used for price level quantization.
     :param bar_lows: Lowest price per bar.
     :param bar_highs: Highest price per bar.
@@ -497,6 +562,7 @@ def comp_bar_footprints(
         - vp_gini: Volume profile Gini coefficient for each bar.
     """
     # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+    # TODO: Update with side information if available
 
     n_bars = len(bar_close_indices) - 1
 
@@ -583,7 +649,7 @@ def comp_bar_footprints(
         vp_gini_arr[i] = vp_gini
 
     return (
-        bar_open_timestamps[1:],  # Close bar timestamps convention!!
+        bar_close_timestamps[1:],  # Close bar timestamps convention!!
         price_levels,
         buy_volumes, sell_volumes,
         buy_ticks, sell_ticks,
