@@ -174,7 +174,7 @@ class BarBuilderBase(ABC):
             self.trades_df['price'].values,
             self.trades_df['amount'].values,
             self._close_indices,
-            self._close_ts,
+            self.trades_df['side'].values.astype(np.int8),
             price_tick_size,
             self._lows,
             self._highs,
@@ -184,21 +184,21 @@ class BarBuilderBase(ABC):
 
         # Create a FootprintData object with all metrics
         footprint = FootprintData(
-            bar_timestamps=footprint_data[0],
-            price_levels=footprint_data[1],
+            bar_timestamps= self._close_ts[1:],
+            price_levels=footprint_data[0],
             price_tick=price_tick_size,
-            buy_volumes=footprint_data[2],
-            sell_volumes=footprint_data[3],
-            buy_ticks=footprint_data[4],
-            sell_ticks=footprint_data[5],
-            buy_imbalances=footprint_data[6],
-            sell_imbalances=footprint_data[7],
-            buy_imbalances_sum=footprint_data[8],
-            sell_imbalances_sum=footprint_data[9],
-            cot_price_levels=footprint_data[10],
-            imb_max_run_signed=footprint_data[11],
-            vp_skew=footprint_data[12],
-            vp_gini=footprint_data[13]
+            buy_volumes=footprint_data[1],
+            sell_volumes=footprint_data[2],
+            buy_ticks=footprint_data[3],
+            sell_ticks=footprint_data[4],
+            buy_imbalances=footprint_data[5],
+            sell_imbalances=footprint_data[6],
+            buy_imbalances_sum=footprint_data[7],
+            sell_imbalances_sum=footprint_data[8],
+            cot_price_levels=footprint_data[9],
+            imb_max_run_signed=footprint_data[10],
+            vp_skew=footprint_data[11],
+            vp_gini=footprint_data[12]
         )
         footprint.cast_to_numba_list()
         logger.info("Footprint data converted to FootprintData object.")
@@ -519,13 +519,12 @@ def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
     bar_close_indices: NDArray[np.int64],
-    bar_close_timestamps: NDArray[np.int64],
+    trade_sides: NDArray[np.int8],
     price_tick_size: float,
     bar_lows: NDArray[np.float64],
     bar_highs: NDArray[np.float64],
     imbalance_factor: float
 ) -> tuple[
-    NDArray[np.int64],
     NumbaList[NDArray[np.int32]],
     NumbaList[NDArray[np.float32]], NumbaList[NDArray[np.float32]],
     NumbaList[NDArray[np.int32]], NumbaList[NDArray[np.int32]],
@@ -540,7 +539,7 @@ def comp_bar_footprints(
     :param prices: Trade prices.
     :param amounts: Trade amounts.
     :param bar_close_indices: Indices marking the end of each bar.
-    :param bar_close_timestamps: Nanosecond timestamps marking bar closings.
+    :param trade_sides: The side information of the market order (1 for market buy, -1 for market sell).
     :param price_tick_size: Tick size used for price level quantization.
     :param bar_lows: Lowest price per bar.
     :param bar_highs: Highest price per bar.
@@ -562,8 +561,6 @@ def comp_bar_footprints(
         - vp_gini: Volume profile Gini coefficient for each bar.
     """
     # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
-    # TODO: Update with side information if available
-
     n_bars = len(bar_close_indices) - 1
 
     # Define dynamic lists
@@ -584,7 +581,7 @@ def comp_bar_footprints(
     vp_skew_arr = np.zeros(n_bars, dtype=np.float64)
     vp_gini_arr = np.zeros(n_bars, dtype=np.float64)
 
-    tick_direction = 0
+
     for i in prange(n_bars):
         start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
         end = bar_close_indices[i + 1]
@@ -604,8 +601,7 @@ def comp_bar_footprints(
         # Start aggregating the footprint data (start exclusive, end inclusive)
         for j in range(start, end + 1):
             price = float(prices[j])
-            previous_price = prices[j - 1] if j > 0 else price
-            tick_direction = comp_trade_side(price, previous_price, tick_direction)
+            tick_direction = trade_sides[j]
             price = int(round(price / price_tick_size))
             amount = amounts[j]
 
@@ -634,9 +630,9 @@ def comp_bar_footprints(
         # Calculate the footprint features:
         # buy imbalances, sell imbalances, imb_max_run_signed, COT price level, vp_skew, vp_gini
         (buy_imbalances_i, sell_imbalances_i, imb_max_run_signed,
-         cot_price_level, vp_skew, vp_gini) = comp_footprint_features(
-            price_levels_i, buy_volumes_i, sell_volumes_i, imbalance_factor
-        )
+         cot_price_level, vp_skew, vp_gini) = (
+            comp_footprint_features(price_levels_i, buy_volumes_i, sell_volumes_i, imbalance_factor
+        ))
         buy_imbalances.append(buy_imbalances_i)
         sell_imbalances.append(sell_imbalances_i)
 
@@ -649,7 +645,6 @@ def comp_bar_footprints(
         vp_gini_arr[i] = vp_gini
 
     return (
-        bar_close_timestamps[1:],  # Close bar timestamps convention!!
         price_levels,
         buy_volumes, sell_volumes,
         buy_ticks, sell_ticks,
