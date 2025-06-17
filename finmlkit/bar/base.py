@@ -147,10 +147,12 @@ class BarBuilderBase(ABC):
             'dollars_sell': directional_tuple[5],
             'mean_spread': directional_tuple[6],
             'max_spread': directional_tuple[7],
-            'cum_volumes_min': directional_tuple[8],
-            'cum_volumes_max': directional_tuple[9],
-            'cum_dollars_min': directional_tuple[10],
-            'cum_dollars_max': directional_tuple[11]
+            'cum_ticks_min': directional_tuple[8],
+            'cum_ticks_max': directional_tuple[9],
+            'cum_volume_min': directional_tuple[10],
+            'cum_volume_max': directional_tuple[11],
+            'cum_dollars_min': directional_tuple[12],
+            'cum_dollars_max': directional_tuple[13]
         })
         logger.info("Directional features converted to DataFrame.")
 
