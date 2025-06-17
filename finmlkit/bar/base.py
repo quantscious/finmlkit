@@ -512,8 +512,8 @@ def comp_bar_trade_size_features(
         - pct_block: Percentage of trades that are larger than theta per bar: Σ size_i [ size_i>θ ] / volume
         - size_gini: Gini coefficient of trade sizes per bar.
     """
-    if len(theta) != len(bar_close_indices):
-        raise ValueError("Theta, and bar_close_indices must have the same length.")
+    if len(theta) != len(bar_close_indices) - 1:
+        raise ValueError("Theta should match the the number of bars (len(bar_close_indices) - 1).")
 
     n_bars = len(bar_close_indices) - 1
     mean_size_rel = np.full(n_bars, np.nan, dtype=np.float32)
