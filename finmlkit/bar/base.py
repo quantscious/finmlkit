@@ -53,24 +53,33 @@ class BarBuilderBase(ABC):
         """
         pass
 
-    def _calc_bar_open_values(self):
+    def _set_bar_close(self):
         """
-        Calculate and sets the open timestamps and indices if not already calculated.
+        Calculate and sets the close timestamps and indices if not already calculated.
         """
-        if self._close_indices is None:
+        if self._close_ts is None and self._close_indices is None:
             logger.info("Calculating bar open tick indices and timestamps...")
             self._close_ts, self._close_indices = self._comp_bar_close()
 
     @property
-    def close_indices(self) -> Optional[NDArray[np.int64]]:
+    def bar_close_indices(self) -> Optional[NDArray[np.int64]]:
         """
         Return the bar close indices in the raw trades data.
-        :return:
+        :return: The **bar close** indices regarding the raw trades data as a numpy array of int64.
         """
         if self._close_indices is None:
-            print("Bar open indices are not calculated yet. Call _calc_bar_open_values() first.")
-            return None
-        return self._close_indices[1:]
+            self._set_bar_close()
+        return self._close_indices[1:]  # Exclude the first timestamp as it is the bar open timestamp
+
+    @property
+    def bar_close_timestamps(self) -> Optional[NDArray[np.int64]]:
+        """
+        Return the bar close timestamps in the raw trades data.
+        :return: The **bar close** ns timestamps as a numpy array of int64.
+        """
+        if self._close_ts is None:
+            self._set_bar_close()
+        return self._close_ts[1:]  # Exclude the first timestamp as it is the bar open timestamp
 
 
     def build_ohlcv(self) -> pd.DataFrame:
@@ -78,7 +87,7 @@ class BarBuilderBase(ABC):
         Build the bar features using the generated indices and raw trades data.
         :returns: A dataframe containing the OHLCV + VWAP features with datetime index corresponding to the bar open timestamps.
         """
-        self._calc_bar_open_values()
+        self._set_bar_close()  # Ensure bar close indices and timestamps are set
 
         ohlcv_tuple = comp_bar_ohlcv(
             self.trades_df['price'].values,
@@ -89,7 +98,7 @@ class BarBuilderBase(ABC):
         logger.info("OHLCV bar calculated successfully.")
 
         ohlcv_df = pd.DataFrame({
-            'timestamp': self._close_ts[1:],  # Close bar timestamps convention!!
+            'timestamp': self.bar_close_timestamps,
             'open': ohlcv_tuple[0],
             'high': ohlcv_tuple[1],
             'low': ohlcv_tuple[2],
@@ -118,7 +127,7 @@ class BarBuilderBase(ABC):
             ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread,
             cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
         """
-        self._calc_bar_open_values()
+        self._set_bar_close()
 
         directional_tuple = comp_bar_directional_features(
             self.trades_df['price'].values,
@@ -129,7 +138,7 @@ class BarBuilderBase(ABC):
         logger.info("Directional features calculated successfully.")
 
         directional_df = pd.DataFrame({
-            'timestamp': self._close_ts[1:],     # Close bar timestamps convention!!
+            'timestamp': self.bar_close_timestamps,     # Close bar timestamps convention!!
             'ticks_buy': directional_tuple[0],
             'ticks_sell': directional_tuple[1],
             'volume_buy': directional_tuple[2],
@@ -151,6 +160,39 @@ class BarBuilderBase(ABC):
 
         return directional_df
 
+    def build_trade_size_features(self, theta: Optional[NDArray[np.float64]], theta_mult: float = 5.0) -> pd.DataFrame:
+        """
+        Build the trade size features using the generated indices and raw trades data.
+        :param theta: Optional typical trade size (e.g., 30 day rolling median trade size).
+        :param theta_mult: Multiplier for theta to define the block size threshold. Default is 5.0.
+        :returns: A dataframe containing the trade size features:
+            mean_size_rel, size_95_rel, pct_block, size_gini.
+        """
+        self._set_bar_close()  # Ensure bar close indices and timestamps are set
+
+        trade_size_tuple = comp_bar_trade_size_features(
+            self.trades_df['amount'].values,
+            theta,
+            self._close_indices,
+            theta_mult
+        )
+        logger.info("Trade size features calculated successfully.")
+
+        trade_size_df = pd.DataFrame({
+            'timestamp': self.bar_close_timestamps,
+            'mean_size_rel': trade_size_tuple[0],
+            'size_95_rel': trade_size_tuple[1],
+            'pct_block': trade_size_tuple[2],
+            'size_gini': trade_size_tuple[3]
+        })
+        logger.info("Trade size features converted to DataFrame.")
+
+        # Convert timestamps to datetime index
+        trade_size_df['timestamp'] = pd.to_datetime(trade_size_df['timestamp'], unit='ns')
+        trade_size_df.set_index('timestamp', inplace=True)
+
+        return trade_size_df
+
     def build_footprints(self, price_tick_size=None, imbalance_factor=3.0) -> FootprintData:
         """
         Build the footprint data using the generated indices and raw trades data.
@@ -159,13 +201,13 @@ class BarBuilderBase(ABC):
         :returns: A FootprintData object containing the footprint data.
         """
 
-        self._calc_bar_open_values()
+        self._set_bar_close()  # Ensure bar close indices and timestamps are set
         if self._highs is None or self._lows is None:
             # We need the bar highs and lows for the footprint calculation
             self.build_ohlcv()
 
         if price_tick_size is None:
-            # Anticipate price tick size
+            # Infer price tick size
             price_tick_size = comp_price_tick_size(self.trades_df['price'].values)
         logger.info(f"Price tick size is set to: {price_tick_size}")
 
@@ -184,7 +226,7 @@ class BarBuilderBase(ABC):
 
         # Create a FootprintData object with all metrics
         footprint = FootprintData(
-            bar_timestamps= self._close_ts[1:],
+            bar_timestamps= self.bar_close_timestamps,
             price_levels=footprint_data[0],
             price_tick=price_tick_size,
             buy_volumes=footprint_data[1],

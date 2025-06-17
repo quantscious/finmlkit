@@ -138,12 +138,12 @@ def test_volume_bar_kit_close_indices_property():
     vbk = VolumeBarKit(trades, volume_threshold)
 
     # Before calculation, should return None
-    assert vbk.close_indices is None
+    assert vbk.bar_close_indices is None
 
     # After building OHLCV, should return indices (excluding first index)
     vbk.build_ohlcv()
-    assert vbk.close_indices is not None
-    assert vbk.close_indices.tolist() == vbk._close_indices[1:].tolist()
+    assert vbk.bar_close_indices is not None
+    assert vbk.bar_close_indices.tolist() == vbk._close_indices[1:].tolist()
 
 
 if __name__ == '__main__':

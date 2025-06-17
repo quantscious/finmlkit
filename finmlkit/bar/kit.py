@@ -177,4 +177,4 @@ class CUSUMBarKit(BarBuilderBase):
         The sigma threshold used for the CUSUM at close indices.
         :return: sigma vector
         """
-        return self.sigma[self.close_indices]
+        return self.sigma[self.bar_close_indices]
