@@ -22,7 +22,7 @@ class TimeBarKit(BarBuilderBase):
         :param period: The time interval of a bar.
         """
         super().__init__(trades)
-        self.interval = period.seconds
+        self.interval = period.total_seconds()
 
         logger.info(f"Time bar builder initialized with interval: {self.interval} seconds.")
 

@@ -558,7 +558,7 @@ def comp_bar_trade_size_features(
     return mean_size_rel, size_95_rel, pct_block, size_gini
 
 
-@njit(nogil=True, parallel=True)
+@njit(nogil=True, parallel=False)  # Currently not parallelizable due to dynamic list usage
 def comp_bar_footprints(
     prices: NDArray[np.float64],
     amounts: NDArray[np.float64],
@@ -626,7 +626,7 @@ def comp_bar_footprints(
     vp_gini_arr = np.zeros(n_bars, dtype=np.float64)
 
 
-    for i in prange(n_bars):
+    for i in range(n_bars):
         start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
         end = bar_close_indices[i + 1]
 

@@ -4,6 +4,7 @@ from numba import njit, prange
 from finmlkit.bar.data_model import FootprintData
 from typing import Union
 from numpy.typing import NDArray
+from numba.typed import List as NumbaList
 
 from finmlkit.utils.log import get_logger
 logger = get_logger(__name__)
@@ -26,7 +27,7 @@ class VolumePro:
             used for determining the high and low value areas (HVA and LVA).
             Default values are window_size_sec=1800, n_bins=27, va_pct=68.34.
         """
-        self.window_size_sec = window_size.seconds
+        self.window_size_sec = window_size.total_seconds()
         self.n_bins = n_bins
         self.va_pct = va_pct
 
@@ -394,6 +395,9 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
 
     window_interval_ns = int(window_size_sec * 1e9)
     first_interval_idx = np.searchsorted(ts, ts[0] + window_interval_ns)
+
+    # TODO: why cannot we run this in parallel?
+    # Optimized implementation (bar in and out rolling aggregation)
 
     for i in range(first_interval_idx, n_bars):
         end_ts = int(ts[i])

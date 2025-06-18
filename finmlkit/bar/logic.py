@@ -12,7 +12,7 @@ from numpy.typing import NDArray
 @njit(nogil=True)
 def _time_bar_indexer(
         timestamps: NDArray[np.int64],
-        interval_seconds: int
+        interval_seconds: float
 ) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Determine the time bar open indices in the raw trades timestamp array.

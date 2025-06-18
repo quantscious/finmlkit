@@ -17,7 +17,6 @@ class TBMLabel:
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
                  vertical_barrier: pd.Timedelta,
-                 event_idx: NDArray|None,
                  is_meta: bool = False):
         """
         Triple barrier labeling method
@@ -57,7 +56,7 @@ class TBMLabel:
         self.target_ret_col = target_ret_col
         self.min_ret = min_ret
         self.horizontal_barriers = horizontal_barriers
-        self.vertical_barrier = vertical_barrier.seconds  # get vertical barrier in seconds
+        self.vertical_barrier = vertical_barrier.total_seconds()  # get vertical barrier in seconds
         self.is_meta = is_meta
 
         self._out = None
