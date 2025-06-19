@@ -46,13 +46,13 @@ class VolumePro:
         self.n_bins = n_bins if n_bins is not None else self.n_bins
         self.va_pct = va_pct if va_pct is not None else self.va_pct
 
-    def compute(self, bars: pd.DataFrame, fp_data: FootprintData) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def compute(self, bars: pd.DataFrame, fp_data: FootprintData) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute the volume profile parameters (POC, HVA, LVA) in a rolling window fashion.
 
         :param bars: DataFrame containing dynamic bars (must include `high` and `low` columns).
         :param fp_data: FootprintData object with price levels and volume information.
-        :returns: Tuple of POC, HVA, and LVA prices (as NumPy arrays).
+        :returns: Tuple of POC, HVA, and LVA prices, and volume percentage above POC, (as NumPy arrays)
         :raises AssertionError: If `bars` and `fp_data` have different lengths.
         :note:
             The computation is performed in a rolling window fashion, using the set window size, bin size, and value area percentage.
@@ -66,7 +66,7 @@ class VolumePro:
         # Cast the footprint data to a numba list for numba calculations
         fp_data.cast_to_numba_list()
 
-        poc_prices, hva_prices, lva_prices = volume_profile_rolling(
+        poc_prices, hva_prices, lva_prices, vp_pct_above_poc = volume_profile_rolling(
             fp_data.bar_timestamps, bars.high.values, bars.low.values,
             fp_data.price_levels, fp_data.buy_volumes, fp_data.sell_volumes,
             window_size_sec=self.window_size_sec, n_bins=self.n_bins, price_tick=fp_data.price_tick,
@@ -83,11 +83,11 @@ class VolumePro:
         hva_prices = np.where(hva_prices == 0, np.nan, hva_prices)
         lva_prices = np.where(lva_prices == 0, np.nan, lva_prices)
 
-        return poc_prices, hva_prices, lva_prices
+        return poc_prices, hva_prices, lva_prices, vp_pct_above_poc
 
     def compute_range(self, bars: pd.DataFrame, fp_data: FootprintData,
                       start: Union[str, int, pd.Timestamp],
-                      end: Union[str, int, pd.Timestamp]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+                      end: Union[str, int, pd.Timestamp]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute the volume profile (POC, HVA, LVA) in a rolling window fashion for a given time range.
 
@@ -124,10 +124,10 @@ class VolumePro:
         bars_subset = bars.loc[fp_datetime_index]
 
         # Call the compute method for the subset
-        poc_prices, hva_prices, lva_prices = self.compute(bars_subset, fp_data_subset)
+        poc_prices, hva_prices, lva_prices, vp_pct_above_poc = self.compute(bars_subset, fp_data_subset)
 
         # Return the corresponding timestamps too
-        return fp_data_subset.bar_timestamps, poc_prices, hva_prices, lva_prices
+        return fp_data_subset.bar_timestamps, poc_prices, hva_prices, lva_prices, vp_pct_above_poc
 
 
 @njit(nogil=True)
@@ -275,7 +275,7 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
 
 
 @njit(nogil=True)
-def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34) -> tuple[int, int, int]:
     """
     Calculate the POC (Point of Control), HVA (High Value Area), and LVA (Low Value Area)
     for a given volume profile.
@@ -364,12 +364,38 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
     return poc_price, hva_price, lva_price
 
 
+@njit(nogil=True)
+def calc_volume_percentage_above_poc(price_levels: np.ndarray, volumes: np.ndarray, poc_price: int) -> float:
+    """
+    Calculate the percentage of volume above the Point of Control (POC) price level.
+
+    :param price_levels: Array of price levels.
+    :param volumes: Corresponding volumes.
+    :param poc_price: The Point of Control price level.
+    :returns: Percentage of volume above POC (0-1 range).
+    """
+    total_volume = np.sum(volumes)
+    if total_volume <= 0:  # Avoid division by zero
+        return 0.0
+
+    volume_above_poc = 0.0
+    for i in range(len(price_levels)):
+        if price_levels[i] > poc_price:
+            volume_above_poc += volumes[i]
+
+    # If there's no volume above POC, return 0.0
+    if volume_above_poc <= 0.0:
+        return 0.0
+
+    return volume_above_poc / total_volume
+
+
 @njit(nogil=True, parallel=True)
 def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                            price_levels: list[np.ndarray], buy_volumes: list[np.ndarray],
                            sell_volumes: list[np.ndarray],
                            window_size_sec: float, n_bins: int = None, price_tick: float = None,
-                           va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+                           va_pct: float = 68.34) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Compute rolling volume profiles over a fixed-width time window.
 
@@ -383,7 +409,7 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     :param n_bins: Optional number of bins for bucketing price levels.
     :param price_tick: Price tick size for discretization.
     :param va_pct: Value area percentage.
-    :returns: Tuple of POC, HVA, LVA price series aligned to input bars.
+    :returns: Tuple of POC, HVA, LVA, and vp_pct_abv_poc price series aligned to input bars.
     :raises AssertionError: If input arrays are empty or misaligned in length.
     """
     assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(sell_volumes) > 0, "Input arrays should have the same length and be non-empty."
@@ -392,6 +418,7 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     poc_prices = np.zeros(n_bars, dtype=np.int32)
     hva_prices = np.zeros(n_bars, dtype=np.int32)
     lva_prices = np.zeros(n_bars, dtype=np.int32)
+    vp_pct_abv_poc = np.zeros(n_bars, dtype=np.float32)  # New array for percentage above POC
 
     window_interval_ns = int(window_size_sec * 1e9)
     first_interval_idx = np.searchsorted(ts, ts[0] + window_interval_ns)
@@ -423,7 +450,10 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
         hva_prices[i] = hva_price
         lva_prices[i] = lva_price
 
-    return poc_prices, hva_prices, lva_prices
+        # Calculate volume percentage above POC using the dedicated function
+        vp_pct_abv_poc[i] = calc_volume_percentage_above_poc(all_price_levels, total_volumes, poc_price)
+
+    return poc_prices, hva_prices, lva_prices, vp_pct_abv_poc
 
 
 # ---------------------------------------
