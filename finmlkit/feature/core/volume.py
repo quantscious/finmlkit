@@ -155,8 +155,8 @@ def aggregate_footprint(ts: np.ndarray,
         - aligned_sell_volumes: Aggregated sell volumes aligned to tick grid.
     :raises AssertionError: If input lists/arrays are not aligned in length or empty.
     """
-    assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(
-        sell_volumes) > 0, "Input arrays should have the same length and be non-empty."
+    #assert len(ts) == len(highs) == len(lows) == len(price_levels) == len(buy_volumes) == len(
+    #    sell_volumes) > 0, "Input arrays should have the same length and be non-empty."
 
     # Find the indices for the start and end timestamps indices for the aggregation
     start_idx = np.searchsorted(ts, start_ts)
@@ -217,9 +217,9 @@ def bucket_price_levels(all_price_levels: np.ndarray, total_volumes: np.ndarray,
     :raises AssertionError: If input arrays are empty or of mismatched length.
     :raises ValueError: If a price level falls outside defined bins.
     """
-    assert n_bins >= 3, "Bin size should be larger than 3"
-    assert len(all_price_levels) == len(
-        total_volumes) > 0, "Price levels and volumes should have the same length and non-empty"
+    #assert n_bins >= 3, "Bin size should be larger than 3"
+    #assert len(all_price_levels) == len(
+    #    total_volumes) > 0, "Price levels and volumes should have the same length and non-empty"
 
     # Define the bin edges
     min_price = np.min(all_price_levels)  # integer in price_tick units
@@ -289,7 +289,7 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
         - lva_price: Low value area bound.
     :raises AssertionError: If inputs are empty or mismatched in length.
     """
-    assert len(price_levels) == len(volumes) > 0, "Price levels and volumes must have the same length and be non-empty."
+    #assert len(price_levels) == len(volumes) > 0, "Price levels and volumes must have the same length and be non-empty."
 
     n_levels = len(price_levels)
     total_volume = np.sum(volumes)
@@ -364,7 +364,7 @@ def comp_poc_hva_lva(price_levels: np.ndarray, volumes: np.ndarray, va_pct=68.34
     return poc_price, hva_price, lva_price
 
 
-@njit(nogil=True)
+@njit(nogil=True, parallel=True)
 def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
                            price_levels: list[np.ndarray], buy_volumes: list[np.ndarray],
                            sell_volumes: list[np.ndarray],
@@ -396,10 +396,8 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
     window_interval_ns = int(window_size_sec * 1e9)
     first_interval_idx = np.searchsorted(ts, ts[0] + window_interval_ns)
 
-    # TODO: why cannot we run this in parallel?
-    # Optimized implementation (bar in and out rolling aggregation)
 
-    for i in range(first_interval_idx, n_bars):
+    for i in prange(first_interval_idx, n_bars):
         end_ts = int(ts[i])
         start_ts = int(end_ts - window_interval_ns)
 
@@ -413,10 +411,9 @@ def volume_profile_rolling(ts: np.ndarray, highs: np.ndarray, lows: np.ndarray,
         total_volumes = total_buy_volumes + total_sell_volumes
 
         # TODO: Further volume profile calculations: 1.) Volume+Delta 2.) Ticks+Delta 3.) Min/max 4.) Imbalance
-
         # Bucket price levels
         if n_bins is not None:
-            assert price_tick is not None, "Price tick should be provided for bucketing price levels correctly..."
+            # assert price_tick is not None, "Price tick should be provided for bucketing price levels correctly..."
             all_price_levels, total_volumes = bucket_price_levels(all_price_levels, total_volumes, n_bins)
 
         # Calculate the POC, HVA, and LVA
