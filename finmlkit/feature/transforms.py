@@ -627,19 +627,36 @@ class FlowAcceleration(SISOTransform):
 class CUSUMTest(SIMOTransform):
     """
     Computes the CUSUM test statistics for structural breaks in time series.
+
+    Features include:
+    - Break indicators (snt - critical values): Positive when a break is detected
+    - Flag features: Binary indicator when a break is detected (1 when break just fired, else 0)
+    - Score features: Magnitude of the break, clipped to ±10 σ_noise
+    - Age features: Number of bars since the last break, capped at a maximum value
     """
-    def __init__(self, window_size: int = 50, warmup_period: int = 30, input_col: str = "close"):
+    def __init__(self, window_size: int = 50, warmup_period: int = 30, max_age: int = 144, input_col: str = "close"):
         """
         Compute the CUSUM test statistics for structural breaks in time series.
 
         :param input_col: If DataFrame is passed, this is the column name to compute the CUSUM test on.
         :param window_size: Size of the rolling window for CUSUM test, by default 50.
         :param warmup_period: Minimum number of observations before the first statistic is calculated, by default 30.
+        :param max_age: Maximum age to track since last break (in bars), by default 144 (12h in 5-min bars).
         """
-        produces = [f"cmo_up{window_size}", f"cumo_down{window_size}"]
+        # Create feature names for break indicators, flags, scores, and ages
+        base_up = f"cumote_up{window_size}"
+        base_down = f"cumote_down{window_size}"
+
+        produces = [
+            f"{base_up}_score", f"{base_down}_score",  # Score features
+            f"{base_up}_flag", f"{base_down}_flag",  # Flag features
+            f"{base_up}_age", f"{base_down}_age"   # Age features
+        ]
+
         super().__init__(input_col, produces)
         self.window_size = window_size
         self.warmup_period = warmup_period
+        self.max_age = max_age
 
     def _pd(self, x):
         logger.info(f"Fall back to numba for {self.__class__.__name__}")
@@ -651,7 +668,36 @@ class CUSUMTest(SIMOTransform):
             input_arr, self.window_size, self.warmup_period
         )
 
-        return self._prepare_output_nb(x.index, (snt_up-critical_values_up, snt_down-critical_values_down))
+        # Calculate break indicators (original output)
+        break_up = snt_up - critical_values_up
+        break_down = snt_down - critical_values_down
+
+        # Create flag features (1 when break detected, 0 otherwise)
+        flag_up = (break_up > 0).astype(np.uint8)
+        flag_down = (break_down > 0).astype(np.uint8)
+
+        # Create score features (clipped magnitude of the break)
+        score_up = np.clip(break_up, -10, 10)
+        score_down = np.clip(break_down, -10, 10)
+
+        # Convert to pandas Series for groupby operations needed for age calculation
+        index = x.index
+        flag_up_series = pd.Series(flag_up, index=index)
+        flag_down_series = pd.Series(flag_down, index=index)
+
+        # Calculate age features (bars since last break)
+        # For each flag=1, we start a new group, then count within that group
+        age_up = flag_up_series.groupby((flag_up_series == 1).cumsum()).cumcount()
+        age_up = age_up.clip(0, self.max_age).astype(np.uint8).values
+
+        age_down = flag_down_series.groupby((flag_down_series == 1).cumsum()).cumcount()
+        age_down = age_down.clip(0, self.max_age).astype(np.uint8).values
+
+        # Return all features
+        return self._prepare_output_nb(
+            x.index,
+            (score_up, score_down, flag_up, flag_down, age_up, age_down)
+        )
 
     @property
     def output_name(self):
