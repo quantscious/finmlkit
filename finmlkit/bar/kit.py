@@ -166,7 +166,7 @@ class CUSUMBarKit(BarBuilderBase):
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         prices = self.trades_df['price'].values
 
-        close_indices = _cusum_bar_indexer(prices, self._sigma, self.sigma_floor, self.lambda_mult)
+        close_indices = _cusum_bar_indexer(timestamps, prices, self._sigma, self.sigma_floor, self.lambda_mult)
         close_indices = np.array(close_indices, dtype=np.int64)
         close_ts = timestamps[close_indices]
 

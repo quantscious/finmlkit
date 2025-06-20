@@ -1268,3 +1268,71 @@ class BarRate(SISOTransform):
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
 
+
+class CandleShape(MIMOTransform):
+    """
+    Computes various candle shape metrics to characterize price action.
+
+    Features include:
+    - wick_up_ratio: Ratio of upper wick to total candle range
+    - wick_dn_ratio: Ratio of lower wick to total candle range
+    - body_ratio: Ratio of candle body to total candle range
+    - vwap_drift: Percentage difference between VWAP and open price
+    """
+    def __init__(self, input_cols: list[str] = None):
+        """
+        Calculate various candle shape metrics.
+
+        :param input_cols: List of column names for [open, high, low, close, vwap],
+                           defaults to ["open", "high", "low", "close", "vwap"]
+        """
+        if input_cols is None:
+            input_cols = ["open", "high", "low", "close", "vwap"]
+
+        produces = ["wick_up_ratio", "wick_dn_ratio", "body_ratio", "vwap_drift"]
+        super().__init__(input_cols, produces)
+
+    def _pd(self, x: pd.DataFrame) -> tuple[pd.Series, ...]:
+        """
+        Pandas implementation of candle shape metrics.
+
+        :param x: Input DataFrame with OHLCV data
+        :return: Tuple of Series containing the calculated metrics
+        """
+        # Extract input columns
+        open_price = x[self.requires[0]]
+        high = x[self.requires[1]]
+        low = x[self.requires[2]]
+        close = x[self.requires[3]]
+        vwap = x[self.requires[4]]
+
+        # Calculate candle range with small epsilon to avoid division by zero
+        candle_range = high - low + 1e-12
+
+        # Calculate maximum and minimum of open/close for wick calculations
+        max_oc = pd.Series(np.maximum(open_price, close), index=open_price.index)
+        min_oc = pd.Series(np.minimum(open_price, close), index=open_price.index)
+
+        # Calculate metrics
+        wick_up_ratio = (high - max_oc) / candle_range
+        wick_dn_ratio = (min_oc - low) / candle_range
+        body_ratio = abs(close - open_price) / candle_range
+        vwap_drift = (vwap - open_price) / open_price
+
+        # Name the series
+        wick_up_ratio.name = self.produces[0]
+        wick_dn_ratio.name = self.produces[1]
+        body_ratio.name = self.produces[2]
+        vwap_drift.name = self.produces[3]
+
+        return wick_up_ratio, wick_dn_ratio, body_ratio, vwap_drift
+
+    def _nb(self, x: pd.DataFrame) -> tuple[pd.Series, ...]:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+    @property
+    def output_name(self):
+        return self.produces
+

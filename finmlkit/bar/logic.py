@@ -152,6 +152,7 @@ def _dollar_bar_indexer(
 
 @njit(nogil=True)
 def _cusum_bar_indexer(
+        timestamps: NDArray[np.int64],
         prices: NDArray[np.float64],
         sigma: NDArray[np.float64],
         sigma_floor: float,
@@ -164,14 +165,15 @@ def _cusum_bar_indexer(
     A new bar starts whenever the cumulative sum of price changes
     exceeds +sigma*lambda or –sigma*lambda.
 
+    :param timestamps: timestamps of the trades.
     :param prices: Trade prices.
     :param sigma: Threshold vector for CUSUM (e.g. calculated EWMS volatility or constant).
     :param sigma_floor: Minimum value for sigma to avoid division by zero.
     :param sigma_mult: sigma multiplier for the CUSUM filter (threshold will be lambda_mult*sigma).
     :returns: close_indices
     """
-    if len(prices) != len(sigma):
-        raise ValueError("Prices and sigma arrays must have the same length.")
+    if len(prices) != len(sigma) != len(timestamps):
+        raise ValueError("Prices, timestamps, and sigma arrays must have the same length.")
 
     n = len(prices)
 
@@ -187,18 +189,25 @@ def _cusum_bar_indexer(
         if np.isnan(sigma[i]):
             sigma[i] = sigma[i-1]
 
-    # store bar–opening indices
+    # store bar–closing indices
     cusum_bar_indices = NumbaList()
     cusum_bar_indices.append(first_non_nan_idx)         # first trade starts bar
 
     s_pos = 0.0                         # positive cum-sum
     s_neg = 0.0                         # negative cum-sum
-    for i in range(first_non_nan_idx + 1, n):
+
+    i = first_non_nan_idx + 1
+    while i < n:
         ret = np.log(prices[i]/prices[i - 1])
 
         # update symmetric CUSUMs
         s_pos = max(0.0, s_pos + ret)
         s_neg = min(0.0, s_neg + ret)
+
+        # If we are within a ms print block, we cannot close the bar
+        if i + 1 < n and timestamps[i] == timestamps[i + 1]:
+            i += 1
+            continue
 
         lam = max(float(sigma_mult * sigma[i]), sigma_floor)
         # open a new bar if either side hits the threshold
@@ -208,6 +217,7 @@ def _cusum_bar_indexer(
         elif s_neg <= -lam:
             cusum_bar_indices.append(i)
             s_neg = 0.0
+        i += 1
 
     return cusum_bar_indices
 
