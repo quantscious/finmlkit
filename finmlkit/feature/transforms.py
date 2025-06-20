@@ -1203,3 +1203,68 @@ class ORBBreak(MIMOTransform):
     @property
     def output_name(self):
         return self.produces
+
+
+class BarRate(SISOTransform):
+    """
+    Calculates the rate of bars (number of bars divided by time window) in a specified time window.
+
+    This is useful for:
+    - Detecting rare "flurries" of activity (multiple jumps in short periods)
+    - Distinguishing between normal and super-quiet market regimes
+    - Identifying periods of unusual market activity
+
+    For example:
+    - rate_6m: CUSUM bars in last 6 min ÷ 360 s - Flags the rare flurries (2-3 jumps in a few minutes)
+    - rate_30m: CUSUM bars in last 30 min ÷ 1800 s - Separates "normal" from "super-quiet" regimes
+    """
+    def __init__(self, window: pd.Timedelta, input_col: str = "close"):
+        """
+        Calculate the rate of bars in a specified time window.
+
+        :param window_sec: Time window size in seconds
+        :param input_col: Input column to use (only needed for timestamp extraction)
+        """
+        # Convert window_sec to minutes for the output name
+        window_sec = window.total_seconds()
+        window_min = window_sec / 60.
+        output_name = f"rate_{int(window_min)}m" if window_min.is_integer() else f"rate_{window_min}m"
+
+        super().__init__(input_col, output_name)
+        self.window_sec = window_sec
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Pandas implementation of bar rate calculation.
+
+        :param x: Input DataFrame with DatetimeIndex
+        :return: Series containing bar rates
+        """
+        # Check if index is a DatetimeIndex
+        if not isinstance(x.index, pd.DatetimeIndex):
+            raise ValueError("Input DataFrame must have a DatetimeIndex for BarRate calculation")
+
+        # Initialize result series with zeros
+        result = pd.Series(0.0, index=x.index, name=self.output_name)
+
+        # Convert window_sec to timedelta
+        window_td = pd.Timedelta(seconds=self.window_sec)
+
+        # Calculate bar rate for each timestamp
+        for i, ts in enumerate(x.index):
+            # Find the start of the window
+            start_ts = ts - window_td
+
+            # Count how many bars are in the window
+            bars_in_window = sum((x.index >= start_ts) & (x.index <= ts))
+
+            # Calculate the rate (bars per second)
+            result.iloc[i] = bars_in_window / self.window_sec
+
+        return result
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation for now"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+

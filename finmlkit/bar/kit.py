@@ -141,22 +141,22 @@ class CUSUMBarKit(BarBuilderBase):
                  trades: TradesData,
                  sigma: NDArray[np.float64],
                  sigma_floor: float = 5e-4,
-                 lambda_mult: float = 2.
-    ):
+                 sigma_mult: float = 2.
+                 ):
         """
         Initialize the CUSUM bar builder with raw trades data and threshold.
 
         :param trades: DataFrame of raw trades with 'timestamp', 'price', and 'amount'.
         :param sigma: Standard deviation vector of the price series or a constant value for all ticks.
         :param sigma_floor: Minimum value for sigma to avoid small events.
-        :param lambda_mult: the sigma multiplier for adaptive threshold (lambda_th = lambda_mult * sigma).
+        :param sigma_mult: the sigma multiplier for adaptive threshold (lambda_th = lambda_mult * sigma).
         """
         super().__init__(trades)
-        self.lambda_mult = lambda_mult
-        self.sigma = sigma
+        self.lambda_mult = sigma_mult
+        self._sigma = sigma
         self.sigma_floor = sigma_floor
 
-        logger.info(f"CUSUM Bar builder initialized with: lambda multiplier={lambda_mult}.")
+        logger.info(f"CUSUM Bar builder initialized with: sigma multiplier={sigma_mult}.")
 
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
@@ -166,7 +166,7 @@ class CUSUMBarKit(BarBuilderBase):
         timestamps = self.trades_df['timestamp'].astype(np.int64).values
         prices = self.trades_df['price'].values
 
-        close_indices = _cusum_bar_indexer(prices, self.sigma, self.sigma_floor, self.lambda_mult)
+        close_indices = _cusum_bar_indexer(prices, self._sigma, self.sigma_floor, self.lambda_mult)
         close_indices = np.array(close_indices, dtype=np.int64)
         close_ts = timestamps[close_indices]
 
@@ -177,4 +177,4 @@ class CUSUMBarKit(BarBuilderBase):
         The sigma threshold used for the CUSUM at close indices.
         :return: sigma vector
         """
-        return self.sigma[self.bar_close_indices]
+        return self._sigma[self.bar_close_indices]

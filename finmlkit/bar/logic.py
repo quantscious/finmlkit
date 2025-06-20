@@ -155,7 +155,7 @@ def _cusum_bar_indexer(
         prices: NDArray[np.float64],
         sigma: NDArray[np.float64],
         sigma_floor: float,
-        lambda_mult: float
+        sigma_mult: float
 ) -> NumbaList:
     """
     Determine CUSUM bar open indices using a symmetric CUSUM filter
@@ -164,13 +164,15 @@ def _cusum_bar_indexer(
     A new bar starts whenever the cumulative sum of price changes
     exceeds +sigma*lambda or –sigma*lambda.
 
-    :param timestamps: Raw trade timestamps (ns).
     :param prices: Trade prices.
     :param sigma: Threshold vector for CUSUM (e.g. calculated EWMS volatility or constant).
     :param sigma_floor: Minimum value for sigma to avoid division by zero.
-    :param lambda_mult: λ multiplier for the CUSUM filter (threshold will be lambda_mult*sigma).
+    :param sigma_mult: sigma multiplier for the CUSUM filter (threshold will be lambda_mult*sigma).
     :returns: close_indices
     """
+    if len(prices) != len(sigma):
+        raise ValueError("Prices and sigma arrays must have the same length.")
+
     n = len(prices)
 
     # Find first non-NaN index in sigma
@@ -191,7 +193,6 @@ def _cusum_bar_indexer(
 
     s_pos = 0.0                         # positive cum-sum
     s_neg = 0.0                         # negative cum-sum
-
     for i in range(first_non_nan_idx + 1, n):
         ret = np.log(prices[i]/prices[i - 1])
 
@@ -199,12 +200,12 @@ def _cusum_bar_indexer(
         s_pos = max(0.0, s_pos + ret)
         s_neg = min(0.0, s_neg + ret)
 
-        lam = max(float(lambda_mult * sigma[i]), sigma_floor)
+        lam = max(float(sigma_mult * sigma[i]), sigma_floor)
         # open a new bar if either side hits the threshold
-        if s_pos > lam:
+        if s_pos >= lam:
             cusum_bar_indices.append(i)
             s_pos = 0.0
-        elif s_neg < -lam:
+        elif s_neg <= -lam:
             cusum_bar_indices.append(i)
             s_neg = 0.0
 
