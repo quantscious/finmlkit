@@ -1336,3 +1336,122 @@ class CandleShape(MIMOTransform):
     def output_name(self):
         return self.produces
 
+
+class HurstExponent(SISOTransform):
+    """
+    Computes the Hurst exponent of a time series using the aggregated variance method.
+
+    The Hurst exponent (H) is a measure of the long-term memory of a time series:
+    - H > 0.5 indicates a persistent/trending price path
+    - H = 0.5 indicates a random walk (Brownian motion)
+    - H < 0.5 indicates a mean-reverting/noisy series
+
+    This implementation uses the aggregated variance method to estimate H.
+    """
+    def __init__(self, window: int = 24, input_col: str = "ret1"):
+        """
+        Compute the Hurst exponent using the aggregated variance method.
+
+        :param window: The rolling window size to compute the Hurst exponent
+        :param input_col: The input column to compute the Hurst exponent on (typically returns)
+        """
+        # Using direct output name without input column prefix
+        super().__init__(input_col, f"hurst{window}")
+        self.window = window
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """Pandas implementation of Hurst exponent via aggregated variance method"""
+        series = x[self.requires[0]]
+
+        # Use the rolling apply method with a custom function
+        result = series.rolling(window=self.window).apply(
+            self._hurst_aggregated_variance,
+            raw=False
+        )
+
+        # Ensure the output name is correct
+        result.name = self.output_name
+        return result
+
+    @staticmethod
+    def _hurst_aggregated_variance(series):
+        y = series.cumsum().values  # price path
+        lags = np.array([1, 2, 4, 8])
+
+        taus = []
+        for k in lags:
+            if k < len(y):
+                diff = y[k:] - y[:-k]  # no log here
+                taus.append(np.sqrt(np.var(diff)))
+        taus = np.asarray(taus)
+
+        if np.all(taus > 0):
+            slope, _ = np.polyfit(np.log(lags), np.log(taus), 1)
+            return slope  # std-slope = H
+        return np.nan
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+
+class ApproximateEntropy(SISOTransform):
+    """
+    Computes the approximate entropy (ApEn) of a time series.
+
+    Approximate entropy measures the complexity or irregularity of a time series:
+    - High ApEn values indicate high irregularity/unpredictability
+    - Low ApEn values indicate regularity/structure/predictability
+
+    This implementation uses the antropy package for calculating ApEn.
+    """
+    def __init__(self, window: int = 24, m: int = 2, tolerance: float = 0.2, input_col: str = "ret1"):
+        """
+        Compute the approximate entropy of a time series.
+
+        :param window: The rolling window size for ApEn calculation
+        :param m: Embedding dimension (pattern length), default is 2
+        :param tolerance: Tolerance parameter, default is 0.2 (will be multiplied by std of window)
+        :param input_col: Input column to compute ApEn on (typically returns)
+        """
+        super().__init__(input_col, f"apen{window}")
+        self.window = window
+        self.m = m
+        self.tolerance = tolerance
+
+        # Check if antropy is available
+        try:
+            import antropy
+            self.antropy = antropy
+        except ImportError:
+            logger.warning("antropy package not found. Please install with 'pip install antropy'.")
+            self.antropy = None
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """Pandas implementation of approximate entropy calculation"""
+        # Check if antropy is available
+        if self.antropy is None:
+            raise ImportError("antropy package is required for ApproximateEntropy transform. Please install with 'pip install antropy'.")
+
+        series = x[self.requires[0]]
+
+        # Use rolling apply with the antropy.app_entropy function
+        result = series.rolling(window=self.window).apply(
+            lambda x: self.antropy.app_entropy(
+                x.values,
+                order=self.m,
+                metric="chebyshev",
+                tolerance=self.tolerance * np.std(x.values)
+            ),
+            raw=False
+        )
+
+        result.name = self.output_name
+        return result
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
