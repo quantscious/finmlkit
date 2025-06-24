@@ -608,45 +608,34 @@ def comp_flow_acceleration(
 
 
 @njit(nogil=True)
-def vpin(volume_buy: NDArray[np.float64],
-         volume_sell: NDArray[np.float64],
-         window: int) -> NDArray[np.float64]:
-    """
-    Calculate VPIN (Volume-synchronized Probability of Informed Trading),
-    which is the fraction of signed volume imbalance to total volume in a rolling window.
-
-    :param volume_buy: Array of buy volume values
-    :param volume_sell: Array of sell volume values
-    :param window: Window size for rolling calculation
-    :return: Array of VPIN values
-    """
+def vpin(volume_buy, volume_sell, window):
     n = len(volume_buy)
-    result = np.empty(n, dtype=np.float64)
-    result.fill(np.nan)
+    out = np.full(n, np.nan, dtype=np.float32)
 
-    # Need at least window observations to calculate
-    for i in range(window - 1, n):
-        total_volume = 0.0
-        abs_imbalance = 0.0
-        valid_points = 0
-        has_nans = False
+    # Pre-compute cumulative sums
+    buy_cum  = np.empty(n+1)
+    sell_cum = np.empty(n+1)
+    abs_cum  = np.empty(n+1)
+    nan_flag = np.empty(n+1, dtype=np.int64)
 
-        # Calculate over the rolling window
-        for j in range(i - window + 1, i + 1):
-            if np.isnan(volume_buy[j]) or np.isnan(volume_sell[j]):
-                has_nans = True
-                break  # If any value in window is NaN, result is NaN
-            else:
-                total_volume += volume_buy[j] + volume_sell[j]
-                abs_imbalance += abs(volume_buy[j] - volume_sell[j])
-                valid_points += 1
+    buy_cum[0] = sell_cum[0] = abs_cum[0] = 0.0
+    nan_flag[0] = 0
 
-        # Skip calculation if we found NaN values in the window
-        if has_nans:
-            continue
+    for i in range(n):
+        vb = volume_buy[i]
+        vs = volume_sell[i]
+        is_nan = np.isnan(vb) or np.isnan(vs)
 
-        # Calculate VPIN only if there was trading activity and all points are valid
-        if total_volume > 0 and valid_points == window:
-            result[i] = abs_imbalance / total_volume
+        buy_cum[i+1]  = buy_cum[i]  + (0.0 if is_nan else vb)
+        sell_cum[i+1] = sell_cum[i] + (0.0 if is_nan else vs)
+        abs_cum[i+1]  = abs_cum[i]  + (0.0 if is_nan else abs(vb - vs))
+        nan_flag[i+1] = nan_flag[i] + is_nan
 
-    return result
+        if i >= window-1 and (nan_flag[i+1] - nan_flag[i+1-window] == 0):
+            tot  = (buy_cum[i+1] - buy_cum[i+1-window]) \
+                 + (sell_cum[i+1] - sell_cum[i+1-window])
+
+            if tot > 1e-9:
+                imb  = abs_cum[i+1] - abs_cum[i+1-window]
+                out[i] = imb / tot          # float32 already
+    return out

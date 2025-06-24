@@ -1231,6 +1231,7 @@ class BarRate(SISOTransform):
         output_name = f"rate_{int(window_min)}m" if window_min.is_integer() else f"rate_{window_min}m"
 
         super().__init__(input_col, output_name)
+        self.out_name = output_name
         self.window_sec = window_sec
 
     def _pd(self, x: pd.DataFrame) -> pd.Series:
@@ -1245,7 +1246,7 @@ class BarRate(SISOTransform):
             raise ValueError("Input DataFrame must have a DatetimeIndex for BarRate calculation")
 
         # Initialize result series with zeros
-        result = pd.Series(0.0, index=x.index, name=self.output_name)
+        result = pd.Series(0.0, index=x.index, name=self.out_name)
 
         # Convert window_sec to timedelta
         window_td = pd.Timedelta(seconds=self.window_sec)
@@ -1455,3 +1456,53 @@ class ApproximateEntropy(SISOTransform):
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
 
+
+class BarDurationEWMA(SISOTransform):
+    """
+    Computes the Exponentially Weighted Moving Average (EWMA) of bar durations.
+
+    This transform calculates the time difference between consecutive bars and then
+    applies an exponential moving average to these durations. It's useful for:
+    - Identifying periods of high/low trading activity
+    - Normalizing other features based on time flow
+    - Detecting regime changes in market microstructure
+    """
+    def __init__(self, span: int = 20, input_col: str = "close"):
+        """
+        Compute the EWMA of bar durations.
+
+        :param span: The span parameter for the EWM calculation, default is 20
+                    (equivalent to alpha=2/(span+1))
+        :param input_col: Input column to use (only needed for timestamp extraction)
+        """
+        # Store the output name directly
+        self.out_name = f"dur_ewma{span}"
+        super().__init__(input_col, self.out_name)
+        self.span = span
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Pandas implementation of bar duration EWMA.
+
+        :param x: Input DataFrame with DatetimeIndex
+        :return: Series containing EWMA of bar durations
+        """
+        # Check if index is a DatetimeIndex
+        if not isinstance(x.index, pd.DatetimeIndex):
+            raise ValueError("Input DataFrame must have a DatetimeIndex for BarDurationEWMA calculation")
+
+        # Calculate durations between consecutive bars in seconds
+        dur_s = x.index.to_series().diff().dt.total_seconds()
+
+        # Apply EWMA to the durations
+        result = dur_s.ewm(span=self.span, adjust=True).mean()
+
+        # Set the name of the result series explicitly to the direct name we want
+        result.name = self.out_name
+
+        return result
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
