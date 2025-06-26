@@ -89,14 +89,15 @@ class ReturnT(SISOTransform):
     Calculates the lagged returns of a time series using a specified period defined in seconds.
     Works for irregular time series too.
     """
-    def __init__(self, window_sec: float = 1e-6, is_log: bool = False, input_col: str = "close"):
+    def __init__(self, window: pd.Timedelta = pd.Timedelta(seconds=1e-6), is_log: bool = False, input_col: str = "close"):
         """
         Compute lagged returns over the specified time window. Works for unregular time series too.
 
         :param input_col: If DataFrame is passed, this is the column name to compute returns on.
-        :param window_sec: Period in seconds for the lagged returns. Set it to a small value (e.g. 1e-6) for 1 sample lag.
+        :param window: Period in for the lagged returns. Set it to a small value (e.g. 1e-6) for 1 sample lag.
         :param is_log: If True, compute log returns. Otherwise, compute simple returns.
         """
+        window_sec = window.total_seconds()
         output_col = f"ret{window_sec}s" if window_sec > 1e-6 else "ret1"
         super().__init__(input_col, output_col)
         self.window_sec = window_sec
@@ -306,13 +307,14 @@ class EWMST(SISOTransform):
     """
     Computes the exponentially weighted moving standard deviation of a time series.
     """
-    def __init__(self, half_life_sec: float, input_col: str = "y"):
+    def __init__(self, half_life: pd.Timedelta, input_col: str = "y"):
         """
         Compute the exponentially weighted moving standard deviation.
 
         :param input_col: If DataFrame is passed, this is the column name to compute returns on.
         :param half_life_sec: Period for the moving standard deviation.
         """
+        half_life_sec = half_life.total_seconds()
         super().__init__(input_col, f"ewms{half_life_sec}s")
         self.half_life_sec = half_life_sec
 

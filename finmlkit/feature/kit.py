@@ -1,5 +1,6 @@
 from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform, MISOTransform
 import pandas as pd
+import numpy as np
 
 
 class Feature:
@@ -27,6 +28,39 @@ class Feature:
         if isinstance(output_name, (tuple, list)):
             assert len(output_name) == len(self._name), "same length"
         self._name = output_name
+
+    def apply(self, func, *args, suffix=None, **kwargs):
+        """
+        Apply an arbitrary function to the output of this feature.
+
+        :param func: The function to apply to the feature output
+        :param args: Additional positional arguments to pass to the function
+        :param suffix: Optional suffix to add to the feature name (default is function name)
+        :param kwargs: Additional keyword arguments to pass to the function
+        :return: A new Feature with the function applied
+        """
+        func_name = suffix if suffix is not None else func.__name__
+
+        # Get the base name - if self.transform is Identity, its output_name is the column name
+        if hasattr(self.transform, 'requires') and len(self.transform.requires) > 0:
+            base_name = self.transform.requires[0]
+        else:
+            base_name = str(self._name)  # Convert to string to be safe
+
+        # Combine the base name with the function name
+        new_name = f"{base_name}_{func_name}"
+
+        # Create the transform with the operation
+        transform = UnaryOpTransform(self.transform, func_name, lambda x: func(x, *args, **kwargs))
+
+        # Create and initialize the new feature
+        feature = Feature(transform)
+
+        # Update the name in both places - crucial for consistency
+        transform.produces = [new_name]  # Update the transform's produces list to contain the new name
+        feature.name = new_name  # Set the name directly on the feature
+
+        return feature
 
     # Mathematical operations
     def __add__(self, other):
@@ -80,6 +114,76 @@ class Feature:
         if isinstance(other, (int, float)):
             return Feature(ConstantOpTransform(self.transform, other, "rdiv", lambda x, c: c / x))
         return NotImplemented
+
+    # Common operations that can be added as convenience methods
+    def clip(self, lower=None, upper=None):
+        """
+        Clip the values of the feature between lower and upper bounds.
+
+        :param lower: Lower boundary (optional)
+        :param upper: Upper boundary (optional)
+        :return: A new Feature with clipped values
+        """
+        suffix = f"clip_{lower}_{upper}".replace("None", "")
+        return self.apply(lambda x: x.clip(lower=lower, upper=upper), suffix=suffix)
+
+    def abs(self):
+        """
+        Get the absolute values of the feature.
+
+        :return: A new Feature with absolute values
+        """
+        return Feature(UnaryOpTransform(self.transform, "abs", lambda x: x.abs()))
+
+    def log(self):
+        """
+        Get the natural logarithm of the feature.
+
+        :return: A new Feature with log values
+        """
+        return self.apply(lambda x: x.apply(lambda v: np.log(v) if v > 0 else np.nan), suffix="log")
+
+    def exp(self):
+        """
+        Get the exponential of the feature.
+
+        :return: A new Feature with exp values
+        """
+        return self.apply(lambda x: x.apply(np.exp), suffix="exp")
+
+    def square(self):
+        """
+        Get the square of the feature.
+
+        :return: A new Feature with squared values
+        """
+        return self.apply(lambda x: x ** 2, suffix="square")
+
+    def sqrt(self):
+        """
+        Get the square root of the feature.
+
+        :return: A new Feature with square root values
+        """
+        return self.apply(lambda x: x.apply(lambda v: np.sqrt(v) if v >= 0 else np.nan), suffix="sqrt")
+
+    def rolling_mean(self, window):
+        """
+        Calculate the rolling mean of the feature.
+
+        :param window: Rolling window size
+        :return: A new Feature with rolling mean values
+        """
+        return self.apply(lambda x: x.rolling(window=window).mean(), suffix=f"rmean{window}")
+
+    def rolling_std(self, window):
+        """
+        Calculate the rolling standard deviation of the feature.
+
+        :param window: Rolling window size
+        :return: A new Feature with rolling std values
+        """
+        return self.apply(lambda x: x.rolling(window=window).std(), suffix=f"rstd{window}")
 
 
 class Compose(BaseTransform):
@@ -173,5 +277,3 @@ class FeatureKit:
                 raise TypeError(f"Transform {feat} returned unexpected type: {type(res)}")
 
         return out
-
-
