@@ -322,7 +322,7 @@ class BinaryOpTransform(BaseTransform):
         return self.left._validate_input(x) and self.right._validate_input(x)
 
     @property
-    def output_name(self) -> str:
+    def output_name(self) -> str|list[str]:
         if isinstance(self.produces, list) and len(self.produces) == 1:
             return self.produces[0]
         return self.produces
@@ -347,7 +347,7 @@ class ConstantOpTransform(BaseTransform):
         return self.transform._validate_input(x)
 
     @property
-    def output_name(self) -> str:
+    def output_name(self) -> str|list[str]:
         if isinstance(self.produces, list) and len(self.produces) == 1:
             return self.produces[0]
         return self.produces
@@ -370,7 +370,7 @@ class UnaryOpTransform(BaseTransform):
         return self.transform._validate_input(x)
 
     @property
-    def output_name(self) -> str:
+    def output_name(self) -> str|list[str]:
         if isinstance(self.produces, list) and len(self.produces) == 1:
             return self.produces[0]
         return self.produces
@@ -378,5 +378,38 @@ class UnaryOpTransform(BaseTransform):
     def __call__(self, x, *, backend="nb"):
         result = self.transform(x, backend=backend)
         result = self.op_func(result)
+        result.name = self.output_name
+        return result
+
+
+class MinMaxOpTransform(BaseTransform):
+    """Transform that applies min or max operations between two transforms"""
+    def __init__(self, left: BaseTransform, right: BaseTransform, op_name: str, op_func: Callable):
+        # Combine all input requirements from both transforms
+        combined_inputs = list(set(left.requires + right.requires))
+        output_name = f"{op_name}({left.output_name},{right.output_name})"
+        super().__init__(combined_inputs, output_name)
+        self.left = left
+        self.right = right
+        self.op_func = op_func
+
+    def _validate_input(self, x):
+        # min/max operations are valid for SISO and MISO transforms
+        if not isinstance(self.left, (SISOTransform, MISOTransform)):
+            raise TypeError(f"Left transform must be SISO or MISO for {self.produces[0]} OP, got {type(self.left)}")
+        if not isinstance(self.right, (SISOTransform, MISOTransform)):
+            raise TypeError(f"Right transform must be SISO or MISO for {self.produces[0]} OP, got {type(self.right)}")
+        return self.left._validate_input(x) and self.right._validate_input(x)
+
+    @property
+    def output_name(self) -> str|list[str]:
+        if isinstance(self.produces, list) and len(self.produces) == 1:
+            return self.produces[0]
+        return self.produces
+
+    def __call__(self, x, *, backend="nb"):
+        left_result = self.left(x, backend=backend)
+        right_result = self.right(x, backend=backend)
+        result = self.op_func(left_result, right_result)
         result.name = self.output_name
         return result

@@ -675,8 +675,8 @@ class CUSUMTest(SIMOTransform):
         break_down = snt_down - critical_values_down
 
         # Create flag features (1 when break detected, 0 otherwise)
-        flag_up = (break_up > 0).astype(np.uint8)
-        flag_down = (break_down > 0).astype(np.uint8)
+        flag_up = (break_up > 0).astype(np.bool_)
+        flag_down = (break_down > 0).astype(np.bool_)
 
         # Create score features (clipped magnitude of the break)
         score_up = np.clip(break_up, -10, 10)
@@ -1503,6 +1503,99 @@ class BarDurationEWMA(SISOTransform):
         result.name = self.out_name
 
         return result
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+
+class BarDuration(SISOTransform):
+    """
+    This transform calculates the time difference between consecutive bars in seconds.
+    """
+    def __init__(self, input_col: str = "close"):
+        """
+        Compute the EWMA of bar durations.
+
+        :param input_col: Input column to use (only needed for timestamp extraction)
+        """
+        # Store the output name directly
+        self.out_name = f"dur"
+        super().__init__(input_col, self.out_name)
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Pandas implementation of bar duration EWMA.
+
+        :param x: Input DataFrame with DatetimeIndex
+        :return: Series containing EWMA of bar durations
+        """
+        # Check if index is a DatetimeIndex
+        if not isinstance(x.index, pd.DatetimeIndex):
+            raise ValueError("Input DataFrame must have a DatetimeIndex for BarDurationEWMA calculation")
+
+        # Calculate durations between consecutive bars in seconds
+        dur_s = x.index.to_series().diff().dt.total_seconds()
+
+        # Set the name of the result series explicitly to the direct name we want
+        dur_s.name = self.out_name
+
+        return dur_s
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        """Fall back to pandas implementation"""
+        logger.info(f"Fall back to pandas for {self.__class__.__name__}")
+        return self._pd(x)
+
+
+class BiPowerVariation(SISOTransform):
+    """
+    Computes the bi-power variation (BV) of a return series.
+
+    Bi-power variation is used to estimate the integrated variance in the presence of jumps.
+    It is calculated as the sum of the products of consecutive absolute returns,
+    multiplied by a correction factor.
+
+    This is useful for:
+    - Separating continuous and jump components of volatility
+    - Creating jump-robust volatility estimators
+    - Identifying the presence of jumps when compared to realized volatility
+    """
+    def __init__(self, window: int = 12, input_col: str = "ret1"):
+        """
+        Compute the bi-power variation of a return series.
+
+        :param window: The window size for the calculation (12 means 12 consecutive returns ≈ 60 minutes on 5-min grid)
+        :param input_col: Input column containing returns to compute BV on
+        """
+        super().__init__(input_col, f"bv_{window}")
+        self.window = window
+        # 1 / mu1 where mu1 = E[|Z|] with Z ~ N(0,1)
+        self.mu1_inv_sq = (np.pi / 2)**0.5
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Pandas implementation of bi-power variation.
+
+        :param x: Input DataFrame with return data
+        :return: Series containing bi-power variation values
+        """
+        # Get returns series
+        returns = x[self.requires[0]]
+
+        # Calculate absolute returns
+        abs_returns = returns.abs()
+
+        # Calculate bi-power variation using rolling window
+        # Note: we need window+1 size to get window consecutive pairs
+        bv = self.mu1_inv_sq * abs_returns.rolling(self.window + 1).apply(
+            lambda x: (x[1:] * x[:-1]).sum(),
+            raw=True
+        )
+
+        bv.name = self.output_name
+        return bv
 
     def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
         """Fall back to pandas implementation"""

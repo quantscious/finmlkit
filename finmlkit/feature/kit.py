@@ -1,4 +1,4 @@
-from .base import BaseTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform, MISOTransform
+from .base import BaseTransform, MinMaxOpTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform, MISOTransform
 import pandas as pd
 import numpy as np
 
@@ -143,6 +143,14 @@ class Feature:
         """
         return self.apply(lambda x: x.apply(lambda v: np.log(v) if v > 0 else np.nan), suffix="log")
 
+    def log1p(self):
+        """
+        Get the natural logarithm of the feature.
+
+        :return: A new Feature with log values
+        """
+        return self.apply(lambda x: x.apply(lambda v: np.log1p(v) if v >= 0 else np.nan), suffix="log1p")
+
     def exp(self):
         """
         Get the exponential of the feature.
@@ -184,6 +192,40 @@ class Feature:
         :return: A new Feature with rolling std values
         """
         return self.apply(lambda x: x.rolling(window=window).std(), suffix=f"rstd{window}")
+
+    @staticmethod
+    def min(a, b):
+        """
+        Calculate the element-wise minimum between two features.
+
+        :param a: First feature or scalar
+        :param b: Second feature or scalar
+        :return: A new Feature containing the element-wise minimum
+        """
+        if isinstance(a, Feature) and isinstance(b, Feature):
+            return Feature(MinMaxOpTransform(a.transform, b.transform, "min", lambda x, y: np.minimum(x, y)))
+        elif isinstance(a, Feature) and isinstance(b, (int, float)):
+            return Feature(ConstantOpTransform(a.transform, b, "min", lambda x, c: np.minimum(x, c)))
+        elif isinstance(b, Feature) and isinstance(a, (int, float)):
+            return Feature(ConstantOpTransform(b.transform, a, "min", lambda x, c: np.minimum(x, c)))
+        return NotImplemented
+
+    @staticmethod
+    def max(a, b):
+        """
+        Calculate the element-wise maximum between two features.
+
+        :param a: First feature or scalar
+        :param b: Second feature or scalar
+        :return: A new Feature containing the element-wise maximum
+        """
+        if isinstance(a, Feature) and isinstance(b, Feature):
+            return Feature(MinMaxOpTransform(a.transform, b.transform, "max", lambda x, y: np.maximum(x, y)))
+        elif isinstance(a, Feature) and isinstance(b, (int, float)):
+            return Feature(ConstantOpTransform(a.transform, b, "max", lambda x, c: np.maximum(x, c)))
+        elif isinstance(b, Feature) and isinstance(a, (int, float)):
+            return Feature(ConstantOpTransform(b.transform, a, "max", lambda x, c: np.maximum(x, c)))
+        return NotImplemented
 
 
 class Compose(BaseTransform):
