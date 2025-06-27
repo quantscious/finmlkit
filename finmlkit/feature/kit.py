@@ -41,11 +41,8 @@ class Feature:
         """
         func_name = suffix if suffix is not None else func.__name__
 
-        # Get the base name - if self.transform is Identity, its output_name is the column name
-        if hasattr(self.transform, 'requires') and len(self.transform.requires) > 0:
-            base_name = self.transform.requires[0]
-        else:
-            base_name = str(self._name)  # Convert to string to be safe
+        # Use the current feature name as the base name instead of the input column
+        base_name = str(self.name)  # Convert to string to be safe
 
         # Combine the base name with the function name
         new_name = f"{base_name}_{func_name}"
@@ -184,6 +181,25 @@ class Feature:
         """
         return self.apply(lambda x: x.rolling(window=window).mean(), suffix=f"rmean{window}")
 
+    def ema(self, span, adjust=True):
+        """
+        Calculate the Exponential Moving Average (EMA) of the feature.
+
+        :param span: Span for the EMA calculation
+        :param adjust: Whether to adjust the EMA calculation (default is True)
+        :return: A new Feature with EMA values
+        """
+        return self.apply(lambda x: x.ewm(span=span, adjust=adjust).mean(), suffix=f"ema{span}")
+
+    def rolling_sum(self, window):
+        """
+        Calculate the rolling sum of the feature.
+
+        :param window: Rolling window size
+        :return: A new Feature with rolling sum values
+        """
+        return self.apply(lambda x: x.rolling(window=window).sum(), suffix=f"rsum{window}")
+
     def rolling_std(self, window):
         """
         Calculate the rolling standard deviation of the feature.
@@ -192,6 +208,15 @@ class Feature:
         :return: A new Feature with rolling std values
         """
         return self.apply(lambda x: x.rolling(window=window).std(), suffix=f"rstd{window}")
+
+    def lag(self, period):
+        """
+        Create a lagged version of the feature.
+
+        :param period: Number of periods to lag
+        :return: A new Feature with lagged values
+        """
+        return self.apply(lambda x: x.shift(period), suffix=f"lag{period}")
 
     @staticmethod
     def min(a, b):

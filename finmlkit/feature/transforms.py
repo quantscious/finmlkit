@@ -14,6 +14,7 @@ from .core.structural_break.cusum import cusum_test_rolling
 from .core.correlation import rolling_price_volume_correlation
 from typing import Union
 from finmlkit.utils.log import get_logger
+from numba import njit
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -51,6 +52,7 @@ class Identity(BaseTransform):
             raise ValueError(f"Input DataFrame must contain the column '{self.requires[0]}'.")
         return True
 
+    @property
     def output_name(self) -> str:
         """
         Returns the name of the output column.
@@ -1514,14 +1516,15 @@ class BarDuration(SISOTransform):
     """
     This transform calculates the time difference between consecutive bars in seconds.
     """
-    def __init__(self, input_col: str = "close"):
+    def __init__(self, periods=1, input_col: str = "close"):
         """
         Compute the EWMA of bar durations.
 
         :param input_col: Input column to use (only needed for timestamp extraction)
         """
         # Store the output name directly
-        self.out_name = f"dur"
+        self.out_name = f"dur_{periods}bar"
+        self.periods = periods
         super().__init__(input_col, self.out_name)
 
     def _pd(self, x: pd.DataFrame) -> pd.Series:
@@ -1536,7 +1539,7 @@ class BarDuration(SISOTransform):
             raise ValueError("Input DataFrame must have a DatetimeIndex for BarDurationEWMA calculation")
 
         # Calculate durations between consecutive bars in seconds
-        dur_s = x.index.to_series().diff().dt.total_seconds()
+        dur_s = x.index.to_series().diff(self.periods).dt.total_seconds()
 
         # Set the name of the result series explicitly to the direct name we want
         dur_s.name = self.out_name
@@ -1601,3 +1604,65 @@ class BiPowerVariation(SISOTransform):
         """Fall back to pandas implementation"""
         logger.info(f"Fall back to pandas for {self.__class__.__name__}")
         return self._pd(x)
+
+
+class DirRunLen(SISOTransform):
+    """
+    Counts consecutive same-sign returns until just before the current bar.
+
+    The streak resets when the sign changes or when a return is 0.
+    The count indicates the length of the streak of consecutive returns with the same sign.
+    """
+
+    def __init__(self, input_col: str = "ret1"):
+        """
+        Initialize the directional run length transform.
+
+        :param input_col: Input column containing returns
+        """
+        super().__init__(input_col, "dir_run_len")
+
+    def _pd(self, x: pd.DataFrame) -> pd.Series:
+        """
+        Pandas implementation of directional run length.
+
+        :param x: Input DataFrame with return data
+        :return: Series containing directional run length values
+        """
+        logger.info(f"Fall back to numba for {self.__class__.__name__}")
+        return self._nb(x)
+
+    def _nb(self, x: Union[pd.DataFrame, pd.Series]) -> pd.Series:
+        input_arr = self._prepare_input_nb(x)
+        result = self.numba_core(input_arr)
+        return self._prepare_output_nb(x.index, result)
+
+    @staticmethod
+    @njit(nogil=True)
+    def numba_core(x: np.ndarray) -> np.ndarray:
+        """
+        Numba implementation of directional run length calculation.
+
+        :param x: Input array of returns
+        :return: Array containing directional run lengths
+        """
+        n = len(x)
+        run_lengths = np.zeros(n, dtype=np.int8)
+
+        if n == 0:
+            return run_lengths
+
+        prev_sign = np.sign(x[1])
+        current_length = 0
+
+        for i in range(1, n):
+            sign = np.sign(x[i])
+            if sign == prev_sign and sign != 0:
+                current_length += 1
+                run_lengths[i] = current_length
+            else:
+                current_length = 1 if sign != 0 else 0
+                run_lengths[i] = current_length
+            prev_sign = sign
+
+        return run_lengths
