@@ -51,7 +51,7 @@ class TBMLabel:
             if not pd.api.types.is_integer_dtype(features['side']):
                 raise ValueError("The 'side' column must be of integer type (e.g., -1, 0, 1).")
 
-        self._orig_features = self._preprocess_features(features, target_ret_col, min_ret)
+        self._orig_features = self._preprocess_features(features, target_ret_col, min_ret, horizontal_barriers)
         self._features = self._orig_features
         self.target_ret_col = target_ret_col
         self.min_ret = min_ret
@@ -62,7 +62,8 @@ class TBMLabel:
         self._out = None
 
     @staticmethod
-    def _preprocess_features(x: pd.DataFrame, target_ret_col: str, min_ret: float) -> pd.DataFrame:
+    def _preprocess_features(x: pd.DataFrame, target_ret_col: str, min_ret: float,
+                             horizontal_barriers: tuple[float, float]) -> pd.DataFrame:
         # Remove the leading NaNs from the features DataFrame
         first_valid_indices = [x[col].first_valid_index() for col in x.columns if
                                x[col].first_valid_index() is not None]
@@ -75,7 +76,8 @@ class TBMLabel:
         x = x.loc[start_idx:]
 
         # Filter out rows where the target return is below the minimum required return threshold
-        x = x[x[target_ret_col].abs() >= min_ret]
+        max_mult = np.max(horizontal_barriers)
+        x = x[x[target_ret_col].abs() * max_mult >= min_ret]
         if x.empty:
             raise ValueError("No valid events found after filtering by minimum return and removing leading NaNs.")
 
