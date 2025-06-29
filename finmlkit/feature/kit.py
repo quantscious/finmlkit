@@ -1,6 +1,9 @@
 from .base import BaseTransform, MinMaxOpTransform, BinaryOpTransform, ConstantOpTransform, UnaryOpTransform, SISOTransform, MISOTransform
 import pandas as pd
 import numpy as np
+from finmlkit.utils.log import get_logger
+
+logger = get_logger(__name__)
 
 
 class Feature:
@@ -12,8 +15,12 @@ class Feature:
         self.transform = transform
         self._name = transform.output_name
 
-    def __call__(self, x: pd.DataFrame, *, backend="nb"):
+    def __call__(self, x: pd.DataFrame, *, cache: pd.DataFrame = None, backend="nb"):
         """Forward the call to the underlying transform"""
+        if cache is not None:
+            if isinstance(self.transform.output_name, str) and self.transform.output_name in cache.columns:
+                logger.info(f"Using cached output for {self.transform.output_name}")
+                return cache[self.transform.output_name]
         return self.transform(x, backend=backend)
 
     @property
@@ -330,7 +337,7 @@ class FeatureKit:
         out = df[self.retain].copy()
         df = df.copy()
         for feat in self.features:
-            res = feat.transform(df, backend=backend)
+            res = feat(df, cache=df, backend=backend)
             if isinstance(res, pd.Series):
                 # Single output transform case
                 out[feat.name] = res
