@@ -25,9 +25,9 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
     """
     y = np.asarray(y, dtype=np.float64)
 
-    # Initialize with zeros instead of NaN to ensure we have a default value
-    max_s_n_value_up = 0.0
-    max_s_n_value_down = 0.0
+    # Initialize with small negative values to enter the if conditions inside the for loop
+    max_s_n_value_up = -1e-6
+    max_s_n_value_down = -1e-6
     max_s_n_critical_value_up = 0.0
     max_s_n_critical_value_down = 0.0
 
@@ -52,7 +52,7 @@ def _comp_max_s_nt(y: NDArray, t: int, sigma_sq_t: float) -> (
 
         if s_n_t_up > max_s_n_value_up:
             max_s_n_value_up = s_n_t_up
-            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t - n))  # Note: De Prado uses log(t-n) in his book adv. fin. ml book. If you know the reason, please let me know.
+            max_s_n_critical_value_up = np.sqrt(b_alpha + np.log(t - n))  # Note: De Prado uses log(t-n) in his book adv. fin. ml book.
 
         if s_n_t_down > max_s_n_value_down:
             max_s_n_value_down = s_n_t_down
@@ -208,10 +208,7 @@ def cusum_test_rolling(
 
     # Ensure all prices are positive to avoid log(0) or log(negative)
     if np.any(close_prices <= 0):
-        # Find minimum positive value and add small offset to ensure all values are positive
-        min_positive = np.min(close_prices[close_prices > 0]) if np.any(close_prices > 0) else 1e-5
-        close_prices = close_prices.copy()  # Create a copy to avoid modifying the input
-        close_prices[close_prices <= 0] = min_positive / 10  # Use a value smaller than the minimum positive
+        raise ValueError("All close prices must be positive.")
 
     n = len(close_prices)
     snt_up = np.empty(n, dtype=np.float64)
