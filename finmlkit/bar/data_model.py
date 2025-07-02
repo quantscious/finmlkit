@@ -5,6 +5,10 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from numba.typed import List as NumbaList
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import sys
+import warnings
 
 from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
@@ -12,6 +16,46 @@ from .utils import comp_trade_side_vector, merge_split_trades
 import os
 
 logger = get_logger(__name__)
+
+
+def _load_single_h5_group(args: Tuple[str, str, Optional[str]]) -> pd.DataFrame:
+    """
+    Helper function to load a single HDF5 group in a separate process.
+
+    :param args: Tuple of (filepath, h5_key, where_clause)
+    :returns: DataFrame with the loaded data
+    """
+    filepath, h5_key, where_clause = args
+
+    try:
+        with pd.HDFStore(filepath, mode="r") as store:
+            if where_clause:
+                df = store.select(h5_key, where=where_clause)
+            else:
+                df = store[h5_key]
+        return df
+    except Exception as e:
+        # Return empty DataFrame with error info in case of failure
+        logger.error(f"Failed to load {h5_key} from {filepath}: {str(e)}")
+        return pd.DataFrame()
+
+
+def _is_notebook_environment() -> bool:
+    """
+    Detect if we're running in a Jupyter notebook environment.
+
+    :returns: True if in notebook, False otherwise
+    """
+    try:
+        # Check for IPython
+        from IPython import get_ipython
+        if get_ipython() is not None:
+            return True
+    except ImportError:
+        pass
+
+    # Check for other notebook indicators
+    return any('jupyter' in arg.lower() or 'ipython' in arg.lower() for arg in sys.argv)
 
 
 class TradesData:
@@ -27,6 +71,7 @@ class TradesData:
                  ts: NDArray, px: NDArray, qty: NDArray, *, id: NDArray = None,
                  is_buyer_maker: NDArray = None,
                  side = None,
+                 dt_index: Optional[pd.DatetimeIndex] = None,
                  timestamp_unit: Optional[str] = None,
                  preprocess: bool = False,
                  proc_res: Optional[str] = None, name= None):
@@ -38,7 +83,8 @@ class TradesData:
         :param qty: array of quantity or amount of trades
         :param id: array of trades id
         :param is_buyer_maker: Optional Array of side info: True if buyer maker, False otherwise. If None side information will be inferred from data.
-        :param side: Optional Array Market order side information (-1: sell, 1: buy)
+        :param side: Optional Array Market order side information (-1: sell, 1: buy) [needed when loading from HDF5 store].
+        :param dt_index: Optional DatetimeIndex for the trades data. If provided, it will be used as the index.  [needed when loading from HDF5 store].
         :param timestamp_unit: (Optional) timestamp unit (e.g., 'ms', 'us', 'ns'); inferred if None.
         :param proc_res: (Optional) processing resolution for timestamps (e.g., 'ms' cuts us to ms resolution).
         :param preprocess: If True, runs the preprocessing pipeline (sorting, merging split trades etc...)
@@ -85,9 +131,12 @@ class TradesData:
                 self._add_trade_side_info()
 
         # Add datetime_idx
-        self.data.set_index(pd.to_datetime(self.data['timestamp'], unit='ns'), inplace=True)
-        self.data.index.name = "datetime"
-        logger.info("TradesData prepared successfully.")
+        if dt_index is not None:
+            self.data.set_index(dt_index, inplace=True)
+        else:
+            self.data.set_index(pd.to_datetime(self.data['timestamp'], unit='ns'), inplace=True)
+            self.data.index.name = "datetime"
+            logger.info("TradesData prepared successfully.")
 
     @property
     def orig_timestamp_unit(self) -> str:
@@ -461,8 +510,11 @@ class TradesData:
         key: Optional[str] = None,
         start_time: Optional[Union[str, pd.Timestamp]] = None,
         end_time: Optional[Union[str, pd.Timestamp]] = None,
+        n_workers: Optional[int] = None,
+        enable_multiprocessing: bool = True,
+        min_groups_for_mp: int = 2,
     ) -> "TradesData":
-        """Load trades from *filepath*.
+        """Load trades from *filepath* with optional multiprocessing support.
 
         Three usage modes exist:
         1. ``key`` only – load the full monthly partition ``/trades/<key>``.
@@ -470,7 +522,14 @@ class TradesData:
            groups touching the range, slice **at read time** for maximum speed.
         3. Combination – constrain selection *within* the chosen "key".
 
-        :returns: `TradesData`
+        :param filepath: Path to the HDF5 file.
+        :param key: Optional specific monthly key to load (e.g., "2025-03").
+        :param start_time: Optional start time for filtering.
+        :param end_time: Optional end time for filtering.
+        :param n_workers: Number of worker processes. If None, uses CPU count - 1.
+        :param enable_multiprocessing: Whether to use multiprocessing when loading multiple groups.
+        :param min_groups_for_mp: Minimum number of groups required to enable multiprocessing.
+        :returns: TradesData instance with loaded data.
         """
         # ------------------------------------------------------------------
         #  Normalise temporal boundaries
@@ -480,9 +539,9 @@ class TradesData:
         if isinstance(end_time, str):
             end_time = pd.Timestamp(end_time)
 
-        frames: list[pd.DataFrame] = []
-
         logger.info(f"Loading trades from {filepath}...")
+
+        # First, determine which keys we need to load
         with pd.HDFStore(filepath, mode="r") as store:
             available_keys = [k for k in store.keys() if k.startswith('/trades/')]
 
@@ -499,33 +558,120 @@ class TradesData:
             if not h5_keys:
                 raise KeyError("No HDF5 group matches the requested slice.")
 
-            # Retrieve each group with on‑store slicing ----------------------------------------
-            where_clause = []
-            if start_time is not None:
-                where_clause.append(f"index >= Timestamp('{start_time}')")
-            if end_time is not None:
-                where_clause.append(f"index <= Timestamp('{end_time}')")
-            where = " & ".join(where_clause) if where_clause else None
+        # ------------------------------------------------------------------
+        #  Decide whether to use multiprocessing
+        # ------------------------------------------------------------------
+        # use_multiprocessing = (
+        #     enable_multiprocessing and
+        #     len(h5_keys) >= min_groups_for_mp and
+        #     not _is_notebook_environment()  # Disable in notebooks by default for compatibility
+        # )
+        #
+        # if _is_notebook_environment() and enable_multiprocessing and len(h5_keys) >= min_groups_for_mp:
+        #     logger.warning(
+        #         "Notebook environment detected. Multiprocessing is disabled by default "
+        #         "to avoid potential issues. Loading sequentially instead."
+        #     )
 
-            for h5_key in h5_keys:
-                if where:
-                    frames.append(store.select(h5_key, where=where))
-                else:
-                    frames.append(store[h5_key])
+        use_multiprocessing = (
+            enable_multiprocessing and
+            len(h5_keys) >= min_groups_for_mp
+        )
+
+        # Prepare where clause for time filtering
+        where_clause = []
+        if start_time is not None:
+            where_clause.append(f"index >= Timestamp('{start_time}')")
+        if end_time is not None:
+            where_clause.append(f"index <= Timestamp('{end_time}')")
+        where = " & ".join(where_clause) if where_clause else None
+
+        frames: list[pd.DataFrame] = []
+
+        if use_multiprocessing:
+            logger.info(f"Loading {len(h5_keys)} groups using multiprocessing with {n_workers or mp.cpu_count() - 1} workers...")
+
+            # Prepare arguments for worker processes
+            worker_args = [(filepath, h5_key, where) for h5_key in h5_keys]
+
+            # Determine number of workers
+            if n_workers is None:
+                n_workers = min(mp.cpu_count() - 1, len(h5_keys))
+            else:
+                n_workers = min(n_workers, len(h5_keys))
+
+            try:
+                # Use ProcessPoolExecutor for better control and Jupyter compatibility
+                with ProcessPoolExecutor(max_workers=n_workers) as executor:
+                    # Submit all tasks
+                    future_to_key = {
+                        executor.submit(_load_single_h5_group, args): args[1]
+                        for args in worker_args
+                    }
+
+                    # Create a dictionary to store results by key for ordered processing
+                    results_by_key = {}
+
+                    # Collect results as they complete
+                    for future in as_completed(future_to_key):
+                        h5_key = future_to_key[future]
+                        try:
+                            df = future.result()
+                            if not df.empty:
+                                results_by_key[h5_key] = df
+                        except Exception as e:
+                            logger.error(f"Error loading {h5_key}: {str(e)}")
+                            # Continue with other groups instead of failing completely
+
+                # Add results to frames in the same order as h5_keys to maintain chronology
+                for h5_key in h5_keys:
+                    if h5_key in results_by_key:
+                        logger.info(f"Appending {h5_key} to the frame list for concatanation.")
+                        frames.append(results_by_key[h5_key])
+
+            except Exception as e:
+                logger.warning(f"Multiprocessing failed ({str(e)}), falling back to sequential loading...")
+                use_multiprocessing = False
+
+        # Sequential loading (fallback or when multiprocessing is disabled)
+        if not use_multiprocessing:
+            logger.info(f"Loading {len(h5_keys)} groups sequentially...")
+
+            with pd.HDFStore(filepath, mode="r") as store:
+                for h5_key in h5_keys:
+                    try:
+                        if where:
+                            df = store.select(h5_key, where=where)
+                        else:
+                            df = store[h5_key]
+
+                        if not df.empty:
+                            frames.append(df)
+                    except Exception as e:
+                        logger.error(f"Error loading {h5_key}: {str(e)}")
+                        continue
+
+        if not frames:
+            raise ValueError("No data was successfully loaded from any HDF5 group.")
 
         # ------------------------------------------------------------------
         #  Concatenate & restore original column order
         # ------------------------------------------------------------------
+        logger.info(f"Concatenating {len(frames)} DataFrames...")
         df = pd.concat(frames, copy=False)
 
         # Ensure the DataFrame index is sorted
         if not df.index.is_monotonic_increasing:
-            logger.warning("Dataframe index is not indexing after concat. Sorting the DataFrame index...")
+            logger.info("Sorting DataFrame by datetime index after concatenation...")
             df.sort_index(inplace=True)
 
+        logger.info(f"Successfully loaded {len(df):,} trades from {len(frames)} monthly groups.")
 
         side = df["side"] if "side" in df.columns else None
-        return cls(df["timestamp"].values, df["price"].values, df["amount"].values, side=side.values)
+        side_values = side.values if side is not None else None
+
+        return cls(df["timestamp"].values, df["price"].values, df["amount"].values,
+                   side=side_values, dt_index=df.index)
 
 @dataclass
 class FootprintData:
