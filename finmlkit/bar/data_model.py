@@ -18,46 +18,6 @@ import os
 logger = get_logger(__name__)
 
 
-def _load_single_h5_group(args: Tuple[str, str, Optional[str]]) -> pd.DataFrame:
-    """
-    Helper function to load a single HDF5 group in a separate process.
-
-    :param args: Tuple of (filepath, h5_key, where_clause)
-    :returns: DataFrame with the loaded data
-    """
-    filepath, h5_key, where_clause = args
-
-    try:
-        with pd.HDFStore(filepath, mode="r") as store:
-            if where_clause:
-                df = store.select(h5_key, where=where_clause)
-            else:
-                df = store[h5_key]
-        return df
-    except Exception as e:
-        # Return empty DataFrame with error info in case of failure
-        logger.error(f"Failed to load {h5_key} from {filepath}: {str(e)}")
-        return pd.DataFrame()
-
-
-def _is_notebook_environment() -> bool:
-    """
-    Detect if we're running in a Jupyter notebook environment.
-
-    :returns: True if in notebook, False otherwise
-    """
-    try:
-        # Check for IPython
-        from IPython import get_ipython
-        if get_ipython() is not None:
-            return True
-    except ImportError:
-        pass
-
-    # Check for other notebook indicators
-    return any('jupyter' in arg.lower() or 'ipython' in arg.lower() for arg in sys.argv)
-
-
 class TradesData:
     """
     Class to preprocess trades data for bar building.
@@ -561,18 +521,6 @@ class TradesData:
         # ------------------------------------------------------------------
         #  Decide whether to use multiprocessing
         # ------------------------------------------------------------------
-        # use_multiprocessing = (
-        #     enable_multiprocessing and
-        #     len(h5_keys) >= min_groups_for_mp and
-        #     not _is_notebook_environment()  # Disable in notebooks by default for compatibility
-        # )
-        #
-        # if _is_notebook_environment() and enable_multiprocessing and len(h5_keys) >= min_groups_for_mp:
-        #     logger.warning(
-        #         "Notebook environment detected. Multiprocessing is disabled by default "
-        #         "to avoid potential issues. Loading sequentially instead."
-        #     )
-
         use_multiprocessing = (
             enable_multiprocessing and
             len(h5_keys) >= min_groups_for_mp
@@ -962,3 +910,45 @@ class FootprintData:
                 return False
         return True
 
+
+# --------
+# utils
+# --------
+def _load_single_h5_group(args: Tuple[str, str, Optional[str]]) -> pd.DataFrame:
+    """
+    Helper function to load a single HDF5 group in a separate process.
+
+    :param args: Tuple of (filepath, h5_key, where_clause)
+    :returns: DataFrame with the loaded data
+    """
+    filepath, h5_key, where_clause = args
+
+    try:
+        with pd.HDFStore(filepath, mode="r") as store:
+            if where_clause:
+                df = store.select(h5_key, where=where_clause)
+            else:
+                df = store[h5_key]
+        return df
+    except Exception as e:
+        # Return empty DataFrame with error info in case of failure
+        logger.error(f"Failed to load {h5_key} from {filepath}: {str(e)}")
+        return pd.DataFrame()
+
+
+def _is_notebook_environment() -> bool:
+    """
+    Detect if we're running in a Jupyter notebook environment.
+
+    :returns: True if in notebook, False otherwise
+    """
+    try:
+        # Check for IPython
+        from IPython import get_ipython
+        if get_ipython() is not None:
+            return True
+    except ImportError:
+        pass
+
+    # Check for other notebook indicators
+    return any('jupyter' in arg.lower() or 'ipython' in arg.lower() for arg in sys.argv)
