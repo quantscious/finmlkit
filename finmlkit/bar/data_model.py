@@ -66,13 +66,13 @@ class TradesData:
             raise TypeError("side must be None or np.ndarray")
 
         if id is not None:
-            self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
+            self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
         else:
-            self.data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
+            self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
         self.is_buyer_maker = is_buyer_maker
         if side is not None:
-            self.data['side'] = side
-        self._orig_timestamp_unit = timestamp_unit if timestamp_unit else self.infer_timestamp_unit()
+            self._data['side'] = side
+        self._orig_timestamp_unit = timestamp_unit if timestamp_unit else self._infer_timestamp_unit()
         self.name = name
 
         # Process the trades data
@@ -86,17 +86,84 @@ class TradesData:
             self._sort_trades()
             self._merge_trades()
             self._apply_timestamp_resolution(proc_res)
-            if "side" not in self.data.columns:
+            if "side" not in self._data.columns:
                 # If side info is not provided, infer it from trades data
                 self._add_trade_side_info()
 
         # Add datetime_idx
         if dt_index is not None:
-            self.data.set_index(dt_index, inplace=True)
+            self._data.set_index(dt_index, inplace=True)
         else:
-            self.data.set_index(pd.to_datetime(self.data['timestamp'], unit='ns'), inplace=True)
-            self.data.index.name = "datetime"
+            self._data.set_index(pd.to_datetime(self._data['timestamp'], unit='ns'), inplace=True)
+            self._data.index.name = "datetime"
             logger.info("TradesData prepared successfully.")
+
+        self._start_date = self.end_date = None
+
+    @property
+    def start_date(self):
+        """
+        Get the start date of the trades data.
+
+        :return: Start date as a pandas Timestamp.
+        """
+        return self._start_date
+
+    @start_date.setter
+    def start_date(self, value: pd.Timestamp):
+        """
+        Set the start date for the trades data.
+        :param value: Start date as a pandas Timestamp.
+        :return: None
+        """
+        self._start_date = value
+
+    @property
+    def end_date(self):
+        """
+        Get the end date of the trades data.
+
+        :return: End date as a pandas Timestamp.
+        """
+        return self._end_date
+
+    @end_date.setter
+    def end_date(self, value: pd.Timestamp):
+        """
+        Set the end date for the trades data.
+        :param value: End date as a pandas Timestamp.
+        :return: None
+        """
+        self._end_date = value
+
+    def set_view_range(self, start: pd.Timestamp, end: pd.Timestamp):
+        """
+        Set the view range for the trades data.
+        :param start: Start timestamp for the view range.
+        :param end: End timestamp for the view range.
+        :return: None
+        """
+        if start >= end:
+            raise ValueError("Start timestamp must be before end timestamp.")
+        if start < self.start_date or end > self.end_date:
+            raise ValueError("View range must be within the data's start and end dates.")
+
+        self._start_date = start
+        self._end_date = end
+        logger.info(f"View range set to {start} - {end}.")
+
+    @property
+    def data(self) -> pd.DataFrame:
+        """
+        Get the processed trades data as a DataFrame corresponding to the active view range.
+
+        :return: DataFrame containing trades data.
+        """
+        if self._start_date is None and self._end_date is None:
+            return self._data
+
+        view_mask = (self._data.index >= self._start_date) & (self._data.index <= self._end_date)
+        return self._data.loc[view_mask]
 
     @property
     def orig_timestamp_unit(self) -> str:
@@ -259,7 +326,7 @@ class TradesData:
         logger.info("No trade side information found. Inferring trade side from price movements.")
         self.data['side'] = comp_trade_side_vector(self.data['price'].values)
 
-    def infer_timestamp_unit(self) -> str:
+    def _infer_timestamp_unit(self) -> str:
         """
         Infer the unit of timestamps in the trades data if not explicitly provided.
         :return: Inferred or provided timestamp unit.
@@ -618,6 +685,7 @@ class TradesData:
         side = df["side"] if "side" in df.columns else None
         side_values = side.values if side is not None else None
 
+        # TODO: It would be more efficient to simply load the df
         return cls(df["timestamp"].values, df["price"].values, df["amount"].values,
                    side=side_values, dt_index=df.index)
 
