@@ -1219,7 +1219,7 @@ class BarRate(SISOTransform):
     - Identifying periods of unusual market activity
 
     For example:
-    - rate_6m: CUSUM bars in last 6 min ÷ 360 s - Flags the rare flurries (2-3 jumps in a few minutes)
+    - rate_6m: bars in last 6 min ÷ 360 s - Flags the rare flurries (2-3 jumps in a few minutes)
     - rate_30m: CUSUM bars in last 30 min ÷ 1800 s - Separates "normal" from "super-quiet" regimes
     """
     def __init__(self, window: pd.Timedelta, input_col: str = "close"):
