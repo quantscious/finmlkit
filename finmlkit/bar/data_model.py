@@ -65,8 +65,7 @@ class TradesData:
         if side is not None and not isinstance(side, np.ndarray):
             raise TypeError("side must be None or np.ndarray")
 
-        self._start_date = self.end_date = None
-        self._view_mask = None # Mask for the active view range
+        self._start_date = self._end_date = None
 
         if id is not None:
             self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
@@ -111,15 +110,6 @@ class TradesData:
         """
         return self._start_date
 
-    @start_date.setter
-    def start_date(self, value: pd.Timestamp):
-        """
-        Set the start date for the trades data.
-        :param value: Start date as a pandas Timestamp.
-        :return: None
-        """
-        self._start_date = value
-
     @property
     def end_date(self):
         """
@@ -128,15 +118,6 @@ class TradesData:
         :return: End date as a pandas Timestamp.
         """
         return self._end_date
-
-    @end_date.setter
-    def end_date(self, value: pd.Timestamp):
-        """
-        Set the end date for the trades data.
-        :param value: End date as a pandas Timestamp.
-        :return: None
-        """
-        self._end_date = value
 
     def set_view_range(self, start: pd.Timestamp|str, end: pd.Timestamp|str):
         """
@@ -154,7 +135,6 @@ class TradesData:
 
         self._start_date = start
         self._end_date = end
-        self._view_mask = (self._data.index >= self._start_date) & (self._data.index <= self._end_date)
 
         logger.info(f"View range set to {start} - {end}.")
 
@@ -165,10 +145,10 @@ class TradesData:
 
         :return: DataFrame containing trades data.
         """
-        if self._view_mask is None:
+        if self._start_date is None and self._end_date is None:
             return self._data
 
-        return self._data.loc[self._view_mask]
+        return self._data.loc[self._start_date: self._end_date]
 
     @property
     def orig_timestamp_unit(self) -> str:
