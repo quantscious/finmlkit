@@ -65,6 +65,9 @@ class TradesData:
         if side is not None and not isinstance(side, np.ndarray):
             raise TypeError("side must be None or np.ndarray")
 
+        self._start_date = self.end_date = None
+        self._view_mask = None # Mask for the active view range
+
         if id is not None:
             self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
         else:
@@ -98,7 +101,6 @@ class TradesData:
             self._data.index.name = "datetime"
             logger.info("TradesData prepared successfully.")
 
-        self._start_date = self.end_date = None
 
     @property
     def start_date(self):
@@ -136,20 +138,24 @@ class TradesData:
         """
         self._end_date = value
 
-    def set_view_range(self, start: pd.Timestamp, end: pd.Timestamp):
+    def set_view_range(self, start: pd.Timestamp|str, end: pd.Timestamp|str):
         """
         Set the view range for the trades data.
         :param start: Start timestamp for the view range.
         :param end: End timestamp for the view range.
         :return: None
         """
+        if isinstance(start, str):
+            start = pd.Timestamp(start)
+        if isinstance(end, str):
+            end = pd.Timestamp(end)
         if start >= end:
             raise ValueError("Start timestamp must be before end timestamp.")
-        if start < self.start_date or end > self.end_date:
-            raise ValueError("View range must be within the data's start and end dates.")
 
         self._start_date = start
         self._end_date = end
+        self._view_mask = (self._data.index >= self._start_date) & (self._data.index <= self._end_date)
+
         logger.info(f"View range set to {start} - {end}.")
 
     @property
@@ -159,11 +165,10 @@ class TradesData:
 
         :return: DataFrame containing trades data.
         """
-        if self._start_date is None and self._end_date is None:
+        if self._view_mask is None:
             return self._data
 
-        view_mask = (self._data.index >= self._start_date) & (self._data.index <= self._end_date)
-        return self._data.loc[view_mask]
+        return self._data.loc[self._view_mask]
 
     @property
     def orig_timestamp_unit(self) -> str:
@@ -258,13 +263,13 @@ class TradesData:
             self.data['amount'].values.astype(np.float32),
             self.is_buyer_maker,
         )
-        self.data = pd.DataFrame({
+        self._data = pd.DataFrame({
             'timestamp': ts,
             'price': px,
             'amount': am
         })
         if self.is_buyer_maker is not None:
-            self.data['side'] = side
+            self._data['side'] = side
 
     def _convert_timestamps_to_ns(self):
         """
@@ -292,7 +297,7 @@ class TradesData:
         # trades.timestamp = pd.to_datetime(trades.timestamp, unit=timestamp_unit).astype(np.int64).values
         # Work directly on the underlying NumPy array for better performance
         factor = unit_scale_factor[self.orig_timestamp_unit]
-        self.data['timestamp'].values[:] = np.multiply(self.data['timestamp'].values, factor, dtype=np.int64)
+        self._data['timestamp'].values[:] = np.multiply(self.data['timestamp'].values, factor, dtype=np.int64)
 
     def _apply_timestamp_resolution(self, proc_res: Optional[str]) -> None:
         """
@@ -324,7 +329,7 @@ class TradesData:
         :returns: None - modifies the trades DataFrame in place to include a 'side' column.
         """
         logger.info("No trade side information found. Inferring trade side from price movements.")
-        self.data['side'] = comp_trade_side_vector(self.data['price'].values)
+        self._data['side'] = comp_trade_side_vector(self.data['price'].values)
 
     def _infer_timestamp_unit(self) -> str:
         """
