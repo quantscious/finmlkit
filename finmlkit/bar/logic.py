@@ -88,7 +88,7 @@ def _tick_bar_indexer(
 def _volume_bar_indexer(
         volumes: NDArray[np.float64],
         threshold: float
-) -> NumbaList:
+) -> tuple[NumbaList, NumbaList]:
     """
     Determine the volume bar open indices using cumulative volume.
     :param volumes: Trade volumes.
@@ -103,17 +103,20 @@ def _volume_bar_indexer(
 
     # Initialize a Numba typed list to store indices
     volume_bar_indices = NumbaList()
+    carried_over = NumbaList()
     volume_bar_indices.append(0)
+    carried_over.append(0.)
 
     cum_volume = volumes[0]  # Start counting from the first tick
     for i in range(1, n):
         cum_volume += volumes[i]
-        if cum_volume >= threshold:
+        while cum_volume >= threshold:
             volume_bar_indices.append(i)
             # Carry over excess volume
             cum_volume = cum_volume - threshold
+            carried_over.append(cum_volume)
 
-    return volume_bar_indices
+    return volume_bar_indices, carried_over
 
 
 @njit(nogil=True)

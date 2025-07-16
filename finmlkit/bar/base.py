@@ -26,7 +26,7 @@ class BarBuilderBase(ABC):
     This class provides a template for generating bar from raw trades data.
     """
 
-    def __init__(self,trades: TradesData):
+    def __init__(self, trades: TradesData):
         """
         Initialize the bar builder with raw trades data.
 
@@ -354,6 +354,123 @@ def comp_bar_ohlcv(
 
     return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size
 
+#@njit(nogil=True, parallel=True)
+def comp_volume_bar_ohlcv(
+        prices: NDArray[np.float64],
+        volumes: NDArray[np.float64],
+        bar_close_indices: NDArray[np.int64],
+        carried_over: NDArray[np.float64],
+        bucket_size: float,
+) -> tuple[
+    NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[
+        np.float64], NDArray[np.int64], NDArray[np.float64]]:
+    """
+    Build the candlestick bar from raw trades data based in bar open indices.
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param bar_close_indices: Indices marking the end of each bar.
+    :param carried_over: Array of candlestick volumes.
+    :param bucket_size: Carry over threshold (for volume bars)
+    :returns: Tuple containing:
+        - open: Opening price of each bar.
+        - high: Highest price of each bar.
+        - low: Lowest price of each bar.
+        - close: Closing price of each bar.
+        - volume: Total traded volume in each bar.
+        - vwap: Volume-weighted average price of each bar.
+        - bar_trades: Number of trades in each bar.
+        - bar_median_trade_size: Median trade size in each bar.
+    """
+    # Check the input arrays match in length
+    if len(prices) != len(volumes):
+        raise ValueError("Prices and volumes arrays must have the same length.")
+    if len(bar_close_indices) < 2:
+        raise ValueError("Bar open indices must contain at least two elements.")
+
+    n_bars = len(bar_close_indices) - 1  # The last open index determines the last bar's close
+    bar_high = np.zeros(n_bars, dtype=np.float64)
+    bar_low = np.zeros(n_bars, dtype=np.float64)
+    bar_open = np.zeros(n_bars, dtype=np.float64)
+    bar_close = np.zeros(n_bars, dtype=np.float64)
+    bar_volume = np.full(n_bars, bucket_size, dtype=np.float32)  # Each bar has exactly bucket_size volume
+    bar_trades = np.zeros(n_bars, dtype=np.int64)
+    bar_median_trade_size = np.zeros(n_bars, dtype=np.float64)
+    bar_vwap = np.zeros(n_bars, dtype=np.float64)
+
+    for i in prange(n_bars):
+        start = bar_close_indices[i]
+        end = bar_close_indices[i + 1]
+
+        # Handle case where a large trade creates multiple bars at the same index
+        if start == end:
+            bar_open[i] = prices[start]
+            bar_close[i] = prices[start]
+            bar_high[i] = prices[start]
+            bar_low[i] = prices[start]
+            bar_vwap[i] = prices[start]
+            bar_trades[i] = 1
+            bar_median_trade_size[i] = volumes[start]
+            continue
+
+        # Start from the next trade (start=previous bar close)
+        start += 1
+        # Initialize variables for this bar
+        high_price = prices[start]
+        low_price = prices[start]
+        total_volume = 0.0
+        total_dollar = 0.0
+
+        # Count number of trades and collect trade sizes for median calculation
+        trade_count = end - start + 1
+        trade_sizes = np.zeros(trade_count, dtype=np.float64)
+        trade_idx = 0
+
+        # Iterate over trades in the current bar, inclusive for the last trade (bar close)
+        for j in range(start, end + 1):
+            price = prices[j]
+            volume = volumes[j]
+
+            # Store trade size for median calculation
+            trade_sizes[trade_idx] = volume
+            trade_idx += 1
+
+            if price > high_price:
+                high_price = price
+            if price < low_price:
+                low_price = price
+
+            if j != start and j != end:
+                total_volume += volume
+                total_dollar += price * volume
+            else:
+                if j == start:
+                    first_volume = volumes[j] + carried_over[max(0, i-1)]
+                    total_volume += first_volume
+                    prev_price = prices[j-1]
+                    total_dollar += prev_price * first_volume
+                    total_dollar += price * first_volume
+                if j == end:
+                    # Last bar
+                    last_volume = volume - carried_over[i]
+                    total_volume += last_volume
+                    total_dollar += price * last_volume
+
+        bar_open[i] = prices[start]  # First trade price in the bar exclusive
+        bar_close[i] = prices[end]  # Last trade price in the bar inclusive
+        bar_high[i] = high_price
+        bar_low[i] = low_price
+        bar_volume[i] = total_volume
+        bar_vwap[i] = total_dollar / total_volume if total_volume > 0 else 0.0
+        bar_trades[i] = trade_count
+
+        # Calculate median trade size
+        if trade_count > 0:
+            bar_median_trade_size[i] = np.median(trade_sizes)
+        else:
+            bar_median_trade_size[i] = 0.0
+
+    return bar_open, bar_high, bar_low, bar_close, bar_volume, bar_vwap, bar_trades, bar_median_trade_size
+
 @njit(nogil=True, parallel=True)
 def comp_bar_directional_features(
     prices: NDArray[np.float64],
@@ -430,7 +547,7 @@ def comp_bar_directional_features(
 
         # Initialize previous tick sign for spread calculation
         if end > start:
-            prev_tick_sign = trade_sides[start]
+            prev_tick_sign = trade_sides[start - 1]  # Previous trade side at the start of the bar
         else:
             prev_tick_sign = 0  # Default value if no trades in bar
 
@@ -492,6 +609,179 @@ def comp_bar_directional_features(
         cum_dollars_min, cum_dollars_max
     )
 
+
+#@njit(nogil=True, parallel=True)
+def comp_volume_bar_directional_features(
+    prices: NDArray[np.float64],
+    volumes: NDArray[np.float64],
+    bar_close_indices: NDArray[np.int64],
+    trade_sides: NDArray[np.int8],
+    carried_over: NDArray[np.float64],
+    bucket_size: float
+) -> tuple[
+    NDArray[np.int64], NDArray[np.int64],
+    NDArray[np.float32], NDArray[np.float32],
+    NDArray[np.float32], NDArray[np.float32],
+    NDArray[np.float32], NDArray[np.float32],
+    NDArray[np.int64], NDArray[np.int64],
+    NDArray[np.float32], NDArray[np.float32],
+    NDArray[np.float32], NDArray[np.float32]
+]:
+    """
+    Compute directional bar features such as tick counts, volumes, dollars, spreads, and cumulative flows.
+
+    :param prices: Trade prices.
+    :param volumes: Trade volumes.
+    :param bar_close_indices: Indices marking the end of each bar.
+    :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
+    :param carried_over: Carry over volumes
+    :param bucket_size: Carry over threshold for volume bars.
+    :returns: Tuple containing:
+        - **ticks_buy**: Number of buy trades per bar.
+        - ticks_sell: Number of sell trades per bar.
+        - volume_buy: Volume of buy trades per bar.
+        - volume_sell: Volume of sell trades per bar.
+        - dollars_buy: Dollar value of buy trades per bar.
+        - dollars_sell: Dollar value of sell trades per bar.
+        - mean_spread: Mean bid/ask spread within each bar.
+        - max_spread: Maximum spread within each bar.
+        - cum_ticks_min: Minimum cumulative tick imbalance.
+        - cum_ticks_max: Maximum cumulative tick imbalance.
+        - cum_volumes_min: Minimum cumulative volume imbalance.
+        - cum_volumes_max: Maximum cumulative volume imbalance.
+        - cum_dollars_min: Minimum cumulative dollar imbalance.
+        - cum_dollars_max: Maximum cumulative dollar imbalance.
+    """
+    n_bars = len(bar_close_indices) - 1
+    ticks_buy = np.zeros(n_bars, dtype=np.int64)
+    ticks_sell = np.zeros(n_bars, dtype=np.int64)
+    volume_buy = np.zeros(n_bars, dtype=np.float32)
+    volume_sell = np.zeros(n_bars, dtype=np.float32)
+    dollars_buy = np.zeros(n_bars, dtype=np.float32)
+    dollars_sell = np.zeros(n_bars, dtype=np.float32)
+    max_spread = np.zeros(n_bars, dtype=np.float32)
+    mean_spread = np.zeros(n_bars, dtype=np.float32)
+
+    # Initialize cumulative min and max arrays with appropriate values
+    cum_ticks_min = np.full(n_bars, 1e9, dtype=np.int64)            # inf (large value)
+    cum_ticks_max = np.full(n_bars, -1e9, dtype=np.int64)                   # -inf (small value)
+    cum_volumes_min = np.full(n_bars, 1e9, dtype=np.float32)
+    cum_volumes_max = np.full(n_bars, -1e9, dtype=np.float32)
+    cum_dollars_min = np.full(n_bars, 1e9, dtype=np.float32)
+    cum_dollars_max = np.full(n_bars, -1e9, dtype=np.float32)
+
+    # Compute the bar directional features
+    for i in prange(n_bars):
+        start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
+        end = bar_close_indices[i + 1]
+
+        current_tics_buy = 0
+        current_tics_sell = 0
+        current_volume_buy = 0.0
+        current_volume_sell = 0.0
+        current_dollars_buy = 0.0
+        current_dollars_sell = 0.0
+        # Cumulative values
+        current_cum_ticks = 0
+        current_cum_volumes = 0.0
+        current_cum_dollars = 0.0
+        current_max_spread = 0.0
+        current_cum_spread = 0.0
+
+        # Initialize previous tick sign for spread calculation
+        prev_tick_sign = trade_sides[start-1]
+        carried_over_volume = min(float(carried_over[max(0, i-1)]), bucket_size)
+        # 1. Carry over the previous bar's carried over volume
+        if prev_tick_sign == 1:
+            current_tics_buy += 1
+            current_volume_buy += carried_over_volume
+            current_dollars_buy += prices[start-1] * carried_over_volume
+            # Cumulative values
+            current_cum_ticks += 1
+            current_cum_volumes += carried_over_volume
+            current_cum_dollars += prices[start-1] * carried_over_volume
+        elif prev_tick_sign == -1:
+            current_tics_sell += 1
+            current_volume_sell += carried_over_volume
+            current_dollars_sell += prices[start-1] * carried_over_volume
+            # Cumulative values
+            current_cum_ticks -= 1
+            current_cum_volumes -= carried_over_volume
+            current_cum_dollars -= prices[start-1] * carried_over_volume
+
+        # 2. Iterate over trades in the current bar (start exclusive, end inclusive)
+        for j in range(start, end + 1):
+            current_tick_sign = trade_sides[j]
+
+            # Calculate the spread between buy and sell prices
+            if current_tick_sign != prev_tick_sign:
+                spread = abs(prices[j] - prices[j - 1])
+                if spread > current_max_spread:
+                    current_max_spread = spread
+                current_cum_spread += spread
+
+            if current_tick_sign == 1:
+                current_tics_buy += 1
+                current_volume_buy += volumes[j]
+                current_dollars_buy += prices[j] * volumes[j]
+                # Cumulative values
+                current_cum_ticks += 1
+                current_cum_volumes += volumes[j]
+                current_cum_dollars += prices[j] * volumes[j]
+            elif current_tick_sign == -1:
+                current_tics_sell += 1
+                current_volume_sell += volumes[j]
+                current_dollars_sell += prices[j] * volumes[j]
+                # Cumulative values
+                current_cum_ticks -= 1
+                current_cum_volumes -= volumes[j]
+                current_cum_dollars -= prices[j] * volumes[j]
+            else:
+                continue
+
+            prev_tick_sign = current_tick_sign
+
+            # 3. Subtract the carry-over values from the last bar
+            if j == end:
+                if current_tick_sign == 1:
+                    current_volume_buy -= carried_over[i]
+                    current_dollars_buy -= prices[j] * carried_over[i]
+                    # Cumulative values
+                    current_cum_volumes -= carried_over[i]
+                    current_cum_dollars -= prices[j] * carried_over[i]
+                elif current_tick_sign == -1:
+                    current_volume_sell -= carried_over[i]
+                    current_dollars_sell -= prices[j] * carried_over[i]
+                    # Cumulative values
+                    current_cum_volumes -= carried_over[i]
+                    current_cum_dollars -= prices[j] * carried_over[i]
+
+            # Update the cumulative min and max values
+            cum_ticks_max[i] = max(cum_ticks_max[i], current_cum_ticks)
+            cum_ticks_min[i] = min(cum_ticks_min[i], current_cum_ticks)
+            cum_volumes_max[i] = max(cum_volumes_max[i], current_cum_volumes)
+            cum_volumes_min[i] = min(cum_volumes_min[i], current_cum_volumes)
+            cum_dollars_max[i] = max(cum_dollars_max[i], current_cum_dollars)
+            cum_dollars_min[i] = min(cum_dollars_min[i], current_cum_dollars)
+
+        ticks_buy[i] = current_tics_buy
+        ticks_sell[i] = current_tics_sell
+        volume_buy[i] = current_volume_buy
+        volume_sell[i] = current_volume_sell
+        dollars_buy[i] = current_dollars_buy
+        dollars_sell[i] = current_dollars_sell
+        max_spread[i] = current_max_spread
+        mean_spread[i] = current_cum_spread / (current_tics_buy + current_tics_sell)
+
+    return (
+        ticks_buy, ticks_sell,
+        volume_buy, volume_sell,
+        dollars_buy, dollars_sell,
+        mean_spread, max_spread,
+        cum_ticks_min, cum_ticks_max,
+        cum_volumes_min, cum_volumes_max,
+        cum_dollars_min, cum_dollars_max
+    )
 
 @njit(nogil=True, parallel=True)
 def comp_bar_trade_size_features(
@@ -663,6 +953,177 @@ def comp_bar_footprints(
                     sell_ticks_i[price_level_idx] += 1
             else:
                 raise ValueError("Something went wrong! Invalid price level index!")
+
+        # Append bar's footprint data to the dynamic lists
+        price_levels.append(price_levels_i)
+        buy_volumes.append(buy_volumes_i)
+        sell_volumes.append(sell_volumes_i)
+        buy_ticks.append(buy_ticks_i)
+        sell_ticks.append(sell_ticks_i)
+
+        # Calculate the footprint features:
+        # buy imbalances, sell imbalances, imb_max_run_signed, COT price level, vp_skew, vp_gini
+        (buy_imbalances_i, sell_imbalances_i, imb_max_run_signed,
+         cot_price_level, vp_skew, vp_gini) = (
+            comp_footprint_features(price_levels_i, buy_volumes_i, sell_volumes_i, imbalance_factor
+        ))
+        buy_imbalances.append(buy_imbalances_i)
+        sell_imbalances.append(sell_imbalances_i)
+
+        # Update cumulative imbalances, COT price level, and other metrics
+        buy_imbalances_sum[i] = np.sum(buy_imbalances_i, dtype=np.uint16)
+        sell_imbalances_sum[i] = np.sum(sell_imbalances_i, dtype=np.uint16)
+        cot_price_levels[i] = cot_price_level
+        imb_max_run_signed_arr[i] = imb_max_run_signed
+        vp_skew_arr[i] = vp_skew
+        vp_gini_arr[i] = vp_gini
+
+    return (
+        price_levels,
+        buy_volumes, sell_volumes,
+        buy_ticks, sell_ticks,
+        buy_imbalances, sell_imbalances,
+        buy_imbalances_sum, sell_imbalances_sum, cot_price_levels,
+        imb_max_run_signed_arr, vp_skew_arr, vp_gini_arr
+    )
+
+
+#@njit(nogil=True, parallel=False)  # Currently not parallelizable due to dynamic list usage
+def comp_volume_bar_footprints(
+    prices: NDArray[np.float64],
+    amounts: NDArray[np.float64],
+    bar_close_indices: NDArray[np.int64],
+    trade_sides: NDArray[np.int8],
+    carried_over: NDArray[np.float64],
+    bucket_size: float,
+    price_tick_size: float,
+    bar_lows: NDArray[np.float64],
+    bar_highs: NDArray[np.float64],
+    imbalance_factor: float
+) -> tuple[
+    NumbaList[NDArray[np.int32]],
+    NumbaList[NDArray[np.float32]], NumbaList[NDArray[np.float32]],
+    NumbaList[NDArray[np.int32]], NumbaList[NDArray[np.int32]],
+    NumbaList[NDArray[np.bool_]], NumbaList[NDArray[np.bool_]],
+    NDArray[np.uint16], NDArray[np.uint16], NDArray[np.int32],
+    NDArray[np.int16], NDArray[np.float64], NDArray[np.float64]
+]:
+    """
+    Compute the footprint features for each bar, including buy/sell volumes and imbalances per price level.
+    The price levels are calculated in (integer) price tick units to eliminate floating point errors.
+
+    :param prices: Trade prices.
+    :param amounts: Trade amounts.
+    :param bar_close_indices: Indices marking the end of each bar.
+    :param trade_sides: The side information of the market order (1 for market buy, -1 for market sell).
+    :param carried_over: Carry over volumes
+    :param bucket_size: Volume threshold for volume bars.
+    :param price_tick_size: Tick size used for price level quantization.
+    :param bar_lows: Lowest price per bar.
+    :param bar_highs: Highest price per bar.
+    :param imbalance_factor: Multiplier threshold for detecting imbalance.
+    :returns: Tuple containing:
+        - bar_open_timestamps: Timestamps for each bar.
+        - price_levels: List of price level arrays per bar.
+        - buy_volumes: List of buy volumes per price level.
+        - sell_volumes: List of sell volumes per price level.
+        - buy_ticks: List of buy ticks per price level.
+        - sell_ticks: List of sell ticks per price level.
+        - buy_imbalances: List of boolean arrays indicating buy imbalances.
+        - sell_imbalances: List of boolean arrays indicating sell imbalances.
+        - buy_imbalances_sum: Total number of buy imbalances per bar.
+        - sell_imbalances_sum: Total number of sell imbalances per bar.
+        - cot_price_levels: Price level with highest total volume per bar.
+        - imb_max_run_signed: Longest signed imbalance run for each bar.
+        - vp_skew: Volume profile skew for each bar (positive = buy pressure above VWAP).
+        - vp_gini: Volume profile Gini coefficient for each bar.
+    """
+    # TODO: [IDEA] New data structure; Preallocate Flat Arrays and Indices -> This enables parallelization
+    n_bars = len(bar_close_indices) - 1
+
+    # Define dynamic lists
+    price_levels = NumbaList()
+    buy_volumes = NumbaList()
+    sell_volumes = NumbaList()
+    buy_ticks = NumbaList()
+    sell_ticks = NumbaList()
+
+    buy_imbalances = NumbaList()
+    sell_imbalances = NumbaList()
+
+    # Initialize cumulative imbalances
+    buy_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
+    sell_imbalances_sum = np.zeros(n_bars, dtype=np.uint16)
+    cot_price_levels = np.zeros(n_bars, dtype=np.int32)
+    imb_max_run_signed_arr = np.zeros(n_bars, dtype=np.int16)
+    vp_skew_arr = np.zeros(n_bars, dtype=np.float64)
+    vp_gini_arr = np.zeros(n_bars, dtype=np.float64)
+
+
+    for i in range(n_bars):
+        start = bar_close_indices[i] + 1  # Start from the next trade (start=previous bar close)
+        end = bar_close_indices[i + 1]
+
+        # Examine current bar price levels
+        low = int(round(bar_lows[i] / price_tick_size))
+        high = int(round(bar_highs[i] / price_tick_size))
+        n_levels = high - low + 1
+
+        # 1. Carry over the previous bar's carried over information
+        prev_price = float(prices[start - 1])
+        prev_price = int(round(prev_price / price_tick_size))
+        low = min(low, prev_price)
+        high = max(high, prev_price)
+        carried_over_amount = min(float(carried_over[max(0, i-1)]), bucket_size)
+
+        # Initialize price levels and volumes
+        price_levels_i = np.arange(low, high + 1, dtype=np.int32)
+        buy_volumes_i = np.zeros(n_levels, dtype=np.float32)
+        sell_volumes_i = np.zeros(n_levels, dtype=np.float32)
+        buy_ticks_i = np.zeros(n_levels, dtype=np.int32)
+        sell_ticks_i = np.zeros(n_levels, dtype=np.int32)
+
+        # Update the price levels
+        price_level_idx = prev_price - low
+        if 0 <= price_level_idx < n_levels:
+            if trade_sides[start - 1] == 1:
+                buy_volumes_i[price_level_idx] += carried_over_amount
+                buy_ticks_i[price_level_idx] += 1
+            elif trade_sides[start - 1] == -1:
+                sell_volumes_i[price_level_idx] += carried_over_amount
+                sell_ticks_i[price_level_idx] += 1
+        else:
+            raise ValueError("Something went wrong! Invalid price level index!")
+
+        # Start aggregating the footprint data (start exclusive, end inclusive)
+        for j in range(start, end + 1):
+            price = float(prices[j])
+            tick_direction = trade_sides[j]
+            price = int(round(price / price_tick_size))
+            amount = amounts[j]
+
+            # Update the price levels
+            # price_level_idx = np.searchsorted(price_levels_i, price)
+            price_level_idx = price - low
+
+            # Cumulate the volumes and ticks
+            if 0 <= price_level_idx < n_levels:
+                if tick_direction == 1:
+                    buy_volumes_i[price_level_idx] += amount
+                    buy_ticks_i[price_level_idx] += 1
+                elif tick_direction == -1:
+                    sell_volumes_i[price_level_idx] += amount
+                    sell_ticks_i[price_level_idx] += 1
+            else:
+                raise ValueError("Something went wrong! Invalid price level index!")
+
+        # 2. Subtract the carry-over values from the last bar
+        if end >= start:
+            current_tick_sign = trade_sides[end]
+            if current_tick_sign == 1:
+                buy_volumes_i[price_level_idx] -= carried_over[i]
+            elif current_tick_sign == -1:
+                sell_volumes_i[price_level_idx] -= carried_over[i]
 
         # Append bar's footprint data to the dynamic lists
         price_levels.append(price_levels_i)
