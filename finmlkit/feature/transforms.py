@@ -1249,22 +1249,19 @@ class BarRate(SISOTransform):
         if not isinstance(x.index, pd.DatetimeIndex):
             raise ValueError("Input DataFrame must have a DatetimeIndex for BarRate calculation")
 
-        # Initialize result series with zeros
-        result = pd.Series(0.0, index=x.index, name=self.out_name)
+        # Ensure index is sorted
+        if not x.index.is_monotonic_increasing:
+            x = x.sort_index()
 
-        # Convert window_sec to timedelta
+        # Create a Series of 1s with the same index as x
+        ones = pd.Series(1, index=x.index)
+
+        # Use rolling window with time-based window size
         window_td = pd.Timedelta(seconds=self.window_sec)
 
-        # Calculate bar rate for each timestamp
-        for i, ts in enumerate(x.index):
-            # Find the start of the window
-            start_ts = ts - window_td
-
-            # Count how many bars are in the window
-            bars_in_window = sum((x.index >= start_ts) & (x.index <= ts))
-
-            # Calculate the rate (bars per second)
-            result.iloc[i] = bars_in_window / self.window_sec
+        # Count occurrences within the rolling window
+        result = ones.rolling(window=window_td, closed='both').sum() / self.window_sec
+        result.name = self.out_name
 
         return result
 

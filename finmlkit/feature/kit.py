@@ -327,17 +327,28 @@ class Compose(BaseTransform):
 
         return self._run_pipeline(x, backend=backend)
 
-
+import time
 class FeatureKit:
     def __init__(self, features: list[Feature], retain: list[str] = None):
         self.features = features
         self.retain = retain or []
 
-    def build(self, df, *, backend="nb"):
+    def build(self, df, *, backend="nb", timeit=False):
         out = df[self.retain].copy()
         df = df.copy()
+
+        timing_info = {}
+
         for feat in self.features:
+            if timeit:
+                start_time = time.time()
+
             res = feat(df, cache=df, backend=backend)
+
+            if timeit:
+                elapsed = time.time() - start_time
+                timing_info[feat.name] = elapsed
+
             if isinstance(res, pd.Series):
                 # Single output transform case
                 out[feat.name] = res
@@ -346,8 +357,25 @@ class FeatureKit:
                 # Multi output transform case
                 for item in res:
                     out[item.name] = item
-                    df[item.name] = item # cache the result in the DataFrame (for compose transforms)
+                    df[item.name] = item  # cache the result in the DataFrame (for compose transforms)
             else:
                 raise TypeError(f"Transform {feat} returned unexpected type: {type(res)}")
 
+        if timeit:
+            # Create a simple console plot for timing information
+            print("\nFeature Timing Analysis:")
+            print("=======================")
+
+            # Sort features by execution time
+            sorted_times = sorted(timing_info.items(), key=lambda x: x[1], reverse=True)
+
+            # Find the max time for scaling
+            max_time = max(t for _, t in sorted_times) if sorted_times else 0
+            max_bar_length = 50  # Maximum number of characters for the bar
+
+            # Print bars for each feature
+            for feature_name, time_taken in sorted_times:
+                bar_length = int((time_taken / max_time) * max_bar_length) if max_time > 0 else 0
+                bar = '█' * bar_length
+                print(f"{feature_name:<30} | {bar} {time_taken:.4f}s")
         return out
