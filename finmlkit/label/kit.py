@@ -205,7 +205,7 @@ class TBMLabel:
             targets=self.target_returns.values,
             horizontal_barriers=self.horizontal_barriers,
             vertical_barrier=self.vertical_barrier,
-            side=self.features['side'].values if self.is_meta else None,
+            side=self.features['side'].values.astype(np.int8) if self.is_meta else None,
             min_ret=self.min_ret
         )
 
