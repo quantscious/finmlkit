@@ -1232,7 +1232,8 @@ class BarRate(SISOTransform):
         # Convert window_sec to minutes for the output name
         window_sec = window.total_seconds()
         window_min = window_sec / 60.
-        output_name = f"rate_{int(window_min)}m" if window_min.is_integer() else f"rate_{window_min}m"
+        #output_name = f"rate_{int(window_min)}m" if window_min.is_integer() else f"rate_{window_min}m"
+        output_name = f"bars_per_hour" if window_min.is_integer() else f"rate_{window_min}m"
 
         super().__init__(input_col, output_name)
         self.out_name = output_name
@@ -1260,7 +1261,7 @@ class BarRate(SISOTransform):
         window_td = pd.Timedelta(seconds=self.window_sec)
 
         # Count occurrences within the rolling window
-        result = ones.rolling(window=window_td, closed='both').sum() / self.window_sec
+        result = ones.rolling(window=window_td, closed='both').sum() / self.window_sec * 3600  # Convert to rate per hour
         result.name = self.out_name
 
         return result
