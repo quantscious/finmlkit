@@ -17,6 +17,7 @@ class TBMLabel:
                  min_ret:float,
                  horizontal_barriers: tuple[float, float],
                  vertical_barrier: pd.Timedelta,
+                 min_close_time: pd.Timedelta = pd.Timedelta(seconds=1),
                  is_meta: bool = False):
         """
         Triple barrier labeling method
@@ -32,6 +33,7 @@ class TBMLabel:
             The return target will be multiplied by these multipliers. Determines the width of the horizontal barriers.
             If you want to disable the barriers, set it to -np.inf or +np.inf, respectively.
         :param vertical_barrier: The temporal barrier as timedelta. Set it to a large value to disable the vertical barrier (eg. 1000 years)
+        :param min_close_time: This prevents closing the event prematurely before the minimum close time is reached. Default is 1 second.
         :param is_meta: Side or meta labeling.
             If `True` `features` must contain `side` column containing the predictions of the primary model.
         """
@@ -57,6 +59,7 @@ class TBMLabel:
         self.min_ret = min_ret
         self.horizontal_barriers = horizontal_barriers
         self.vertical_barrier = vertical_barrier.total_seconds()  # get vertical barrier in seconds
+        self.min_close_time_sec = min_close_time.total_seconds()
         self.is_meta = is_meta
 
         self._out = None
@@ -205,6 +208,7 @@ class TBMLabel:
             targets=self.target_returns.values,
             horizontal_barriers=self.horizontal_barriers,
             vertical_barrier=self.vertical_barrier,
+            min_close_time_sec=self.min_close_time_sec,
             side=self.features['side'].values.astype(np.int8) if self.is_meta else None,
             min_ret=self.min_ret
         )

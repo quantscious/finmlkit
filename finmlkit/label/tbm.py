@@ -16,6 +16,7 @@ def triple_barrier(
         targets: NDArray[np.float64],
         horizontal_barriers: Tuple[float, float],
         vertical_barrier: float,
+        min_close_time_sec: float,
         side: Optional[NDArray[np.int8]],
         min_ret: float
 ) -> Tuple[NDArray[np.int8], NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
@@ -30,6 +31,7 @@ def triple_barrier(
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
     :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
+    :param min_open_time_sec: The minimum open time in seconds (useful when raw tick data is used). This prevents closing the event prematurely before the minimum open time is reached.
     :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs. None for side predication.
     :param min_ret: The minimum target value for meta-labeling. If the return is below this value, the label will be 0, otherwise 1.
 
@@ -62,6 +64,8 @@ def triple_barrier(
     n_events = len(event_idxs)  # Number of events (subset of samples)
     bottom_mult, top_mult = horizontal_barriers
     vertical_barrier_ns = vertical_barrier * 1e9  # Convert to nanoseconds
+    min_close_time_ns = min_close_time_sec * 1e9    # Convert to nanoseconds
+
     log_close = np.log(close)  # Precompute log of close prices for efficiency
 
     labels = np.zeros(n_events, dtype=np.int8)                # The label (-1, 1) or (0, 1)
@@ -103,6 +107,12 @@ def triple_barrier(
         base_price = log_close[t0_idx]  # Base price for calculating returns
         ret = 0.
         for j in range(t0_idx + 1, t1_idx + 1):
+
+            dur_ns = timestamps[j] - t0  # Duration in nanoseconds
+            if dur_ns < min_close_time_ns:
+                # Cannot close until the minimum open time is reached
+                continue
+
             ret = (log_close[j] - base_price) * side_mult
 
             # progress towards barrier (skip if barrier is inf o r0)
