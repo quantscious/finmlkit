@@ -4,7 +4,6 @@ Implements various volatility estimators.
 import numpy as np
 from numpy.typing import NDArray
 from numba import njit, prange
-from .utils import comp_lagged_returns, logger
 
 
 @njit(nogil=True)
