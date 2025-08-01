@@ -1,5 +1,5 @@
 
- r![FinMLKit Header](finmlkit_header.png)
+ ![FinMLKit Header](finmlkit_header.png)
 **FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone. 
  
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars and intra-bar features (eg. footprints), and bar-level features.
