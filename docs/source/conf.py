@@ -12,7 +12,7 @@ print("Python Path:", sys.path)
 
 project = 'FinMLKit'
 copyright = '2024, FinMLKit Developers'
-author = 'FinMLKit Developers'
+author = 'Dániel Terbe'
 release = '0.0.1'
 
 # -- General configuration ---------------------------------------------------

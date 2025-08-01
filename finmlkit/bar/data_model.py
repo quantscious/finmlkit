@@ -8,7 +8,6 @@ from numba.typed import List as NumbaList
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import sys
-import warnings
 
 from finmlkit.bar.utils import footprint_to_dataframe
 from finmlkit.utils.log import get_logger
@@ -28,7 +27,7 @@ class TradesData:
     """
 
     def __init__(self,
-                 ts: NDArray, px: NDArray, qty: NDArray, *, id: NDArray = None,
+                 ts: NDArray, px: NDArray, qty: NDArray, id: NDArray = None, *,
                  is_buyer_maker: NDArray = None,
                  side = None,
                  dt_index: Optional[pd.DatetimeIndex] = None,
@@ -67,10 +66,9 @@ class TradesData:
 
         self._start_date = self._end_date = None
 
-        if id is not None:
-            self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
-        else:
-            self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty})
+
+        self._data = pd.DataFrame({'timestamp': ts, 'price': px, 'amount': qty, 'id': id})
+
         self.is_buyer_maker = is_buyer_maker
         if side is not None:
             self._data['side'] = side
@@ -159,32 +157,13 @@ class TradesData:
         """
         return self._orig_timestamp_unit
 
-    def _sort_trades(self) -> None:
+    def _validate_data(self):
         """
-        Sort trades by timestamp to ensure correct order for processing.
-        Also performs data integrity checks by identifying discontinuities in trade IDs.
+        Check for gaps in trade IDs
         """
-        self.data_ok = True
-        self.discontinuities = []  # Reset discontinuities list
-
-        # Sort by ID to inspect data integrity
-        self.data.sort_values(by=['id'], inplace=True)
-        # Reset index
-        self.data.reset_index(drop=True, inplace=True)
-
-        # Check duplicates in trade IDs
-        if self.data['id'].duplicated().any():
-            logger.warning(f"{self.name} | Trade IDs contain duplicates. This may indicate data corruption.")
-            # Drop duplicates while keeping the first occurrence
-            self.data.drop_duplicates(subset='id', keep='first', inplace=True)
-            logger.info("Duplicates in trade IDs have been removed.")
-            self.data_ok = False
-
-        # Check for gaps in trade IDs
         # First convert to numeric to handle potential string IDs
         id_diffs = np.diff(self.data['id'].values)
         gap_indices = np.where(id_diffs > 1)[0]
-
         cum_gap_size = 0
         if len(gap_indices) > 0:
             logger.warning(f"{self.name} | Found {len(gap_indices):,} discontinuities in trade IDs. "
@@ -216,8 +195,32 @@ class TradesData:
                     })
             if n_large_gaps > 0:
                 logger.warning(f"{self.name} | Found {n_large_gaps} large gaps greater than 1 minute.")
-            logger.info(f"Recorded {len(self.discontinuities)} trade ID discontinuities with corresponding time intervals.")
+            logger.info(
+                f"Recorded {len(self.discontinuities)} trade ID discontinuities with corresponding time intervals.")
             self.missing_pct = cum_gap_size / len(self.data) * 100
+
+    def _sort_trades(self) -> None:
+        """
+        Sort trades by timestamp to ensure correct order for processing.
+        Also performs data integrity checks by identifying discontinuities in trade IDs.
+        """
+        self.data_ok = True
+        self.discontinuities = []  # Reset discontinuities list
+
+        # Sort by ID to inspect data integrity
+        self.data.sort_values(by=['id'], inplace=True)
+        # Reset index
+        self.data.reset_index(drop=True, inplace=True)
+
+        # Check duplicates in trade IDs
+        if self.data['id'].duplicated().any():
+            logger.warning(f"{self.name} | Trade IDs contain duplicates. This may indicate data corruption.")
+            # Drop duplicates while keeping the first occurrence
+            self.data.drop_duplicates(subset='id', keep='first', inplace=True)
+            logger.info("Duplicates in trade IDs have been removed.")
+            self.data_ok = False
+
+        self._validate_data()
 
         # Now sort by timestamp for chronological order if needed
         if not self.data.timestamp.is_monotonic_increasing:
@@ -231,9 +234,6 @@ class TradesData:
     def _merge_trades(self):
         """
         Merge trades that occur at the same timestamp and price level.
-
-        :param trades: DataFrame with trades to merge.
-        :return: Merged DataFrame.
         """
         logger.info('Merging split trades (same timestamps) on same price level...')
 
@@ -254,10 +254,6 @@ class TradesData:
     def _convert_timestamps_to_ns(self):
         """
         Convert timestamps to nanosecond representation.
-
-        :param trades: DataFrame with timestamps to convert.
-        :param timestamp_unit: Unit of the timestamp values or None to infer.
-        :return: The timestamp unit used for conversion.
         :raises ValueError: If timestamp format is invalid.
         """
         # Infer or validate timestamp unit
@@ -283,8 +279,6 @@ class TradesData:
         """
         Apply processing resolution to timestamps if specified.
 
-        :param trades: DataFrame with timestamps already converted to nanoseconds.
-        :param timestamp_unit: Current timestamp unit (should be 'ns' at this point).
         :param proc_res: Target processing resolution for timestamps.
         :raises ValueError: If processing resolution is invalid.
         """
@@ -305,7 +299,6 @@ class TradesData:
         """
         Extract trade side information from the trades data.
 
-        :param trades: DataFrame to process.
         :returns: None - modifies the trades DataFrame in place to include a 'side' column.
         """
         logger.info("No trade side information found. Inferring trade side from price movements.")
@@ -670,9 +663,9 @@ class TradesData:
         side = df["side"] if "side" in df.columns else None
         side_values = side.values if side is not None else None
 
-        # TODO: It would be more efficient to simply load the df
         return cls(df["timestamp"].values, df["price"].values, df["amount"].values,
                    side=side_values, dt_index=df.index)
+
 
 @dataclass
 class FootprintData:

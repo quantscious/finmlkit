@@ -2,6 +2,7 @@ from .base import BaseTransform, MinMaxOpTransform, BinaryOpTransform, ConstantO
 import pandas as pd
 import numpy as np
 from finmlkit.utils.log import get_logger
+import time
 
 logger = get_logger(__name__)
 
@@ -327,7 +328,7 @@ class Compose(BaseTransform):
 
         return self._run_pipeline(x, backend=backend)
 
-import time
+
 class FeatureKit:
     def __init__(self, features: list[Feature], retain: list[str] = None):
         self.features = features

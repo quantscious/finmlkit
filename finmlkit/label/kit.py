@@ -5,7 +5,6 @@ from finmlkit.utils.log import get_logger
 from finmlkit.bar.data_model import TradesData
 import pandas as pd
 import numpy as np
-from numpy.typing import NDArray
 
 logger = get_logger(__name__)
 

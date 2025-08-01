@@ -5,7 +5,6 @@ defined in the logic module.
 """
 import numpy as np
 from numba import njit
-from numpy.typing import NDArray
 from numba import prange
 from typing import Tuple, Optional
 import pandas as pd
