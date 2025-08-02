@@ -32,7 +32,7 @@ autodoc_default_options = {
     'members': True,
     'undoc-members': False,
     'show-inheritance': True,
-    'ignore-module-all': True
+    'ignore-module-all': True,
 }
 
 # Napoleon (docstring style)

@@ -4,8 +4,27 @@
  
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
 
+# ⚒️ Quick Start
+To get started with FinMLKit, you can simply install it via pip:
+```bash
+pip install finmlkit
+```
 
-# Why FinMLKit?
+Or clone the repository and install it locally:
+```bash
+git clone https://github.com/quantscious/finmlkit.git
+cd finmlkit
+pip install .
+```
+
+See the [examples directory](https://github.com/quantscious/finmlkit/tree/main/examples) to learn about the practical usage of the library. How to process trades data and build bars, features, and labels for machine learning models.
+
+## 📖 Documentation
+The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/).
+
+
+
+# 🧰 Why FinMLKit?
 FinMLKit is an **open-source, lightweight** financial data processing library with a focus on preparing data and labels for ML models. It is specialized for High Frequency Trading (HFT) and building on the most granular data level, the price tick data (raw trades data). This enables the building of intra-bar features (e.g., footprints, fow imbalance) that provide additional information to ML models compared to conventional and ubiquitous OHLCV data. Working with large amount of raw data requires a special design approach to ensure speed and efficiency, which is why FinMLKit is built with **Numba** for high-performance computation and parallelization. To illustrate this, if we were to aggregate raw trades data into OHLCV bars using Pandas, it would take around 100x longer than using FinMLKit. A task that would take 1 minute in Pandas would take below 1 second with FinMLKit.
 
 So FinMLKit is built on Python’s Numba for high-performance computation, while using Pandas only as a wrapper for easier handling of data. Numba’s **Just-In-Time (JIT)** compilation allows it to convert Python code into machine code, significantly improving performance, especially in iterative tasks where parallelization can be utilized. In contrast, Pandas, while great for structuring and managing data, is slow and cumbersome for such operations. Therefore, we use Pandas only as a wrapper for handling data, allowing it to shine where it excels, while Numba powers the core algorithmic computations for efficiency and clarity. This way, we can avoid relying on slow and elusive pandas operations and focus on efficient, more explicit codes in the core functions.

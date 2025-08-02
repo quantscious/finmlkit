@@ -9,6 +9,28 @@ Welcome to FinMLKit's documentation! This is a Python package for financial mach
 
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
 
+⚒️ Quick Setup
+---------------
+
+.. code-block:: bash
+
+   pip install finmlkit
+
+Or clone the repository and install it locally:
+
+.. code-block:: bash
+
+   pip install .
+
+For development (editable) installation:
+
+.. code-block:: bash
+
+   pip install -e .
+
+Documentation
+-----------------
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
