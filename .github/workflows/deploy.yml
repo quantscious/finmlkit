@@ -47,6 +47,6 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Publish to PyPI (Trusted Publishing)
-        uses: pypa/gh-action-pypi-publish@v1
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
