@@ -262,10 +262,12 @@ def comp_bar_ohlcv(
         np.float64], NDArray[np.int64], NDArray[np.float64]]:
     """
     Build the candlestick bar from raw trades data based in bar open indices.
+
     :param prices: Trade prices.
     :param volumes: Trade volumes.
     :param bar_close_indices: Indices marking the end of each bar.
     :returns: Tuple containing:
+
         - open: Opening price of each bar.
         - high: Highest price of each bar.
         - low: Lowest price of each bar.
@@ -376,7 +378,7 @@ def comp_bar_directional_features(
     :param bar_close_indices: Indices marking the end of each bar.
     :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
     :returns: Tuple containing:
-        - **ticks_buy**: Number of buy trades per bar.
+        - ticks_buy: Number of buy trades per bar.
         - ticks_sell: Number of sell trades per bar.
         - volume_buy: Volume of buy trades per bar.
         - volume_sell: Volume of sell trades per bar.
@@ -507,10 +509,10 @@ def comp_bar_trade_size_features(
     :param theta: The typical trade size (e.g., 30 day rolling median trade size).
     :param bar_close_indices: Indices marking the end of each bar.
     :param theta_mult: Multiplier for theta to define the block size threshold. (eg. 5 times the median trade size)
-    :return: A tuple containing:
-        - mean_size_rel: Mean trade size relative to theta per bar: log1p(mean_size / θ)
-        - size_95_rel: 95th percentile of trade sizes per bar relative to theta: log1p(size_95 / θ)
-        - pct_block: Percentage of trades that are larger than theta per bar: Σ size_i [ size_i>θ ] / volume
+    :returns: A tuple containing:
+        - mean_size_rel: Mean trade size relative to theta per bar: log1p(mean_size / theta)
+        - size_95_rel: 95th percentile of trade sizes per bar relative to theta: log1p(size_95 / theta)
+        - pct_block: Percentage of trades that are larger than theta per bar: SUM( size_i [ size_i>theta ] / volume )
         - size_gini: Gini coefficient of trade sizes per bar.
     """
     if len(theta) != len(bar_close_indices) - 1:

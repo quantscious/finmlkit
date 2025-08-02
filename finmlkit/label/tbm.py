@@ -31,11 +31,11 @@ def triple_barrier(
     :param horizontal_barriers: The bottom and top horizontal barrier multipliers for the triple barrier search by which the target is multiplied.
         This setup determines the width of the horizontal barriers. If you want to disable the barriers, set it to np.inf or -np.inf.
     :param vertical_barrier: The temporal barrier in seconds. Set it to np.inf to disable the vertical barrier.
-    :param min_open_time_sec: The minimum open time in seconds (useful when raw tick data is used). This prevents closing the event prematurely before the minimum open time is reached.
+    :param min_close_time_sec: The minimum open time in seconds (useful when raw tick data is used). This prevents closing the event prematurely before the minimum open time is reached.
     :param side: Optional array indicating the side of the event (-1 for sell, 1 for buy) for meta labeling. Length must match event_idxs. None for side predication.
     :param min_ret: The minimum target value for meta-labeling. If the return is below this value, the label will be 0, otherwise 1.
-
     :returns: A tuple of 4 elements containing:
+
         - The label (-1, 1) for side prediction (barriers should be symmetric); If side is provided, the meta-labels are (0, 1)
         - The first barrier touch index,
         - The return,

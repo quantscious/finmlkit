@@ -519,9 +519,11 @@ class TradesData:
         enable_multiprocessing: bool = True,
         min_groups_for_mp: int = 2,
     ) -> "TradesData":
-        """Load trades from *filepath* with optional multiprocessing support.
+        """
+        Load trades from *filepath* with optional multiprocessing support.
 
         Three usage modes exist:
+
         1. ``key`` only – load the full monthly partition ``/trades/<key>``.
         2. ``start_time`` / ``end_time`` – assemble the minimal set of monthly
            groups touching the range, slice **at read time** for maximum speed.
@@ -534,7 +536,7 @@ class TradesData:
         :param n_workers: Number of worker processes. If None, uses CPU count - 1.
         :param enable_multiprocessing: Whether to use multiprocessing when loading multiple groups.
         :param min_groups_for_mp: Minimum number of groups required to enable multiprocessing.
-        :returns: TradesData instance with loaded data.
+        :return: TradesData instance with loaded data.
         """
         # ------------------------------------------------------------------
         #  Normalise temporal boundaries

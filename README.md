@@ -1,8 +1,8 @@
 
  ![FinMLKit Header](finmlkit_header.png)
-**FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone. 
+**FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone.
  
-The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars and intra-bar features (eg. footprints), and bar-level features.
+The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
 
 
 # Why FinMLKit?
@@ -15,19 +15,19 @@ Key principles are **Simplicity**, **Speed**, and **Accessibility** (SSA):
 - **Speed** ⚡ Core functions built with Numba for high-performance computation and parallelization in mind.
 - **Accessibility** 🌍 The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
 
-# 📑 Trusted Methodologies
-FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. We avoid experimental techniques and instead focus on proven methods. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
-We prioritize transparency and accuracy in both the implementation and explanation of these methodologies. Each algorithm is accompanied by **detailed documentation** that:
-- **Cites the original sources** from which the methods were derived (papers, books, and other trusted research).
-- **Describes the algorithms comprehensively**, explaining the theory behind them and how they are applied in practice.
-By ensuring that the algorithms are well-documented, with clear references to their origins, we aim to foster trust and enable users to fully understand the underlying mechanics of the tools they are using. This also makes it easier for contributors to extend the package, knowing exactly how each method works and what references to consult.
-
 # 🔥 Motivation & Vision
 **FinMLKit** provides the essential tools for financial machine learning focusing on the processing of raw trades data. This library offers the core infrastructure that can be applied in countless ways to create custom strategies.
 By developing this open-source foundation, contributors from around the world can enhance the tools and create something far more robust than any single entity could achieve alone. This approach allows us to leverage collective expertise and wisdom to build a powerful library that serves everyone.
 
 By **pooling our expertise**, we can create a **stronger foundation** for financial machine learning that benefits the entire community, far exceeding what any small team could achieve alone.
 
+
+# 📑 Trusted Methodologies
+FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. We avoid experimental techniques and instead focus on proven methods. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
+We prioritize transparency and accuracy in both the implementation and explanation of these methodologies. Each algorithm is accompanied by **detailed documentation** that:
+- **Cites the original sources** from which the methods were derived (papers, books, and other trusted research).
+- **Describes the algorithms comprehensively**, explaining the theory behind them and how they are applied in practice.
+By ensuring that the algorithms are well-documented, with clear references to their origins, we aim to foster trust and enable users to fully understand the underlying mechanics of the tools they are using. This also makes it easier for contributors to extend the package, knowing exactly how each method works and what references to consult.
 
 # 🤝 Contribution
 We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, 

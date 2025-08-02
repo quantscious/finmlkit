@@ -117,7 +117,7 @@ def time_decay(
     :param avg_uniqueness: The average uniqueness weights for the label from `average_uniqueness` function.
     :param last_weight: The weight assigned to the last sample. If 1.0, then there is no decay.
     :return: An array of time-decayed weights [0, 1] for each event.
-    :raises ValueError("The sum of all average uniqueness weights must be greater than 0.")
+    :raises ValueError: The sum of all average uniqueness weights must be greater than 0.
     :raises ValueError: If `last_weight` is not in the range [-1, 1].
     """
     if not -1.0 <= last_weight <= 1.0:

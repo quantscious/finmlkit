@@ -18,15 +18,28 @@ release = '0.0.1'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.autodoc.typehints', 'sphinx.ext.napoleon', 'sphinx.ext.viewcode', 'sphinx.ext.autosummary', 'sphinx.ext.doctest']
+extensions = ['sphinx.ext.autodoc',
+              'sphinx.ext.autodoc.typehints',
+              'sphinx.ext.napoleon',
+              'sphinx.ext.viewcode',
+              'sphinx.ext.autosummary',
+              'sphinx.ext.doctest']
 
+# Autodoc / autosummary quality-of-life
+autosummary_generate = True
+autodoc_typehints = 'description'     # cleaner type hints in text
+autodoc_default_options = {
+    'members': True,
+    'undoc-members': False,
+    'show-inheritance': True,
+}
+
+# Napoleon (docstring style)
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+
+# Theme
+html_theme = 'furo'
 templates_path = ['_templates']
 exclude_patterns = []
-
-
-
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-html_theme = 'furo'
 html_static_path = ['_static']
