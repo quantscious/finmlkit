@@ -13,7 +13,7 @@ The main goal of this library is to provide a solid foundation for financial mac
    :maxdepth: 2
    :caption: Contents:
 
-   modules
+   api/modules
 
 Indices and tables
 ==================

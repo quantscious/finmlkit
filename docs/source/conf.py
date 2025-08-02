@@ -13,7 +13,7 @@ print("Python Path:", sys.path)
 project = 'FinMLKit'
 copyright = '2024, FinMLKit Developers'
 author = 'Dániel Terbe'
-release = '0.0.1'
+release = '0.1.0'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -26,12 +26,13 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.doctest']
 
 # Autodoc / autosummary quality-of-life
-autosummary_generate = True
-autodoc_typehints = 'description'     # cleaner type hints in text
+autosummary_generate = False
+# autodoc_typehints = 'description'     # cleaner type hints in text
 autodoc_default_options = {
     'members': True,
     'undoc-members': False,
     'show-inheritance': True,
+    'ignore-module-all': True
 }
 
 # Napoleon (docstring style)

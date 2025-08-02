@@ -5,7 +5,7 @@ build:
     python: "3.11"
   jobs:
     pre_build:
-      - sphinx-apidoc -o docs/source finmlkit -f
+      - sphinx-apidoc -o docs/source/api finmlkit -f -e --module-first
 
 sphinx:
   configuration: docs/source/conf.py
