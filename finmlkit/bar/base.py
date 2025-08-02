@@ -11,6 +11,7 @@ import pandas as pd
 from numba.typed import List as NumbaList
 from abc import ABC, abstractmethod
 from numpy.typing import NDArray
+import io
 
 from .data_model import FootprintData
 from .utils import comp_price_tick_size, comp_trade_side
@@ -39,10 +40,19 @@ class BarBuilderBase(ABC):
         self._highs:        Optional[NDArray[np.float64]] = None
         self._lows:         Optional[NDArray[np.float64]] = None
 
-    def __str__(self):
-        return (f"Class: {self.__class__.__name__} with members:\n"
-                f"{[f"{key}: {value}\n" for key, value in self.__dict__.items()]} "
-                f"\nRaw trades data:\n{self.trades_df.info()}")
+    def __str__(self) -> str:
+        members = "\n".join(f"{k}: {v}" for k, v in self.__dict__.items())
+        buf = io.StringIO()
+        try:
+            self.trades_df.info(buf=buf)  # capture, don't print; .info() returns None
+            info = buf.getvalue()
+        except Exception:
+            info = "<unavailable>"
+        return (
+            f"Class: {self.__class__.__name__} with members:\n"
+            f"{members}\n"
+            f"Raw trades data:\n{info}"
+        )
 
     @abstractmethod
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
