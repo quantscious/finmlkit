@@ -11,9 +11,9 @@ print("Python Path:", sys.path)
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'FinMLKit'
-copyright = '2024, FinMLKit Developers'
+copyright = '2025, FinMLKit Developers'
 author = 'Dániel Terbe'
-release = '0.1.5'
+release = '0.1.6'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

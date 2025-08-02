@@ -20,7 +20,7 @@ def setup_logging():
 
     # Get configuration from environment
     file_level = os.getenv('FILE_LOGGER_LEVEL', 'DEBUG').upper()
-    console_level = os.getenv('CONSOLE_LOGGER_LEVEL', 'WARNING').upper()
+    console_level = os.getenv('CONSOLE_LOGGER_LEVEL', 'INFO').upper()
     log_file_path = os.getenv('LOG_FILE_PATH')
 
     # Set root logger to the minimum of console and file levels to capture all needed logs

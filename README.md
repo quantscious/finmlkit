@@ -22,7 +22,18 @@ See the [examples directory](https://github.com/quantscious/finmlkit/tree/main/e
 ## 📖 Documentation
 The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/).
 
-
+## 🪵 Logger Configuration
+By default, logging is directed to the console, but you can enable file-based logging by setting the appropriate environment variables.
+- If `LOG_FILE_PATH` is defined, logs will be written to both the specified file and the console.
+- `LOG_FILE_PATH` is not set, logging defaults to console-only output.
+- ging levels follow Python’s standard logging module conventions, allowing you to control verbosity as needed.
+To apply these settings, export the environment variables in your terminal before running your application:
+```bash
+export LOG_FILE_PATH=/path/to/your/logfile.log
+export FILE_LOGGER_LEVEL=DEBUG
+export CONSOLE_LOGGER_LEVEL=WARNING
+```
+By default, the logger is configured to output to the console with an `INFO` level. If you want to supress console output, you can set the `CONSOLE_LOGGER_LEVEL` to `WARNING`.
 
 # 🧰 Why FinMLKit?
 FinMLKit is an **open-source, lightweight** financial data processing library with a focus on preparing data and labels for ML models. It is specialized for High Frequency Trading (HFT) and building on the most granular data level, the price tick data (raw trades data). This enables the building of intra-bar features (e.g., footprints, fow imbalance) that provide additional information to ML models compared to conventional and ubiquitous OHLCV data. Working with large amount of raw data requires a special design approach to ensure speed and efficiency, which is why FinMLKit is built with **Numba** for high-performance computation and parallelization. To illustrate this, if we were to aggregate raw trades data into OHLCV bars using Pandas, it would take around 100x longer than using FinMLKit. A task that would take 1 minute in Pandas would take below 1 second with FinMLKit.
