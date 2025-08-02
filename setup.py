@@ -6,7 +6,7 @@ with open("requirements.txt") as f:
 
 setup(
     name="finmlkit",
-    version="0.1.3",
+    version="0.1.4",
     description="Financial ML toolkit",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
