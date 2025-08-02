@@ -1,21 +1,17 @@
 version: 2
-
 build:
   os: ubuntu-22.04
   tools:
     python: "3.11"
+  jobs:
+    pre_build:
+      - sphinx-apidoc -o docs/source finmlkit -f
 
 sphinx:
   configuration: docs/source/conf.py
-  # Optional: build additional formats
-  # formats:
-  #   - pdf
-  #   - epub
 
 python:
   install:
-    # 1) Install your project so autodoc can import it
     - method: pip
       path: .
-    # 2) Install docs dependencies
     - requirements: docs/requirements.txt
