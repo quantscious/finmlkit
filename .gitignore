@@ -7,3 +7,6 @@ __pycache__
 docs/build
 logs
 finmlkit.egg-info
+build/
+dist/
+*.egg-info/
