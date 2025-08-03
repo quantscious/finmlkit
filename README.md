@@ -1,5 +1,6 @@
 
  ![FinMLKit Header](finmlkit_header.png)
+ 
 **FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone.
  
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
@@ -128,3 +129,5 @@ Some results are collected below to demonstrate the effectiveness of the numba f
 # 🔬 Citation
 
 If you use FinMLKit in your research or publications, we kindly ask that you cite it. Use the __"Cite this repository"__ option in the GitHub sidebar for ready-to-use citation details in formats like `BibTeX` and `APA`. For persistent DOIs, check the Zenodo archive linked there.
+
+ [![DOI](https://zenodo.org/badge/867537116.svg)](https://doi.org/10.5281/zenodo.16731879)
