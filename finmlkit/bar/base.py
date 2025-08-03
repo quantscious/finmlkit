@@ -58,6 +58,7 @@ class BarBuilderBase(ABC):
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
         Abstract method to generate bar close timestamps and indices.
+
         :returns: Tuple of close timestamps and their corresponding indices.
         """
         pass
@@ -74,6 +75,7 @@ class BarBuilderBase(ABC):
     def bar_close_indices(self) -> Optional[NDArray[np.int64]]:
         """
         Return the bar close indices in the raw trades data.
+
         :return: The **bar close** indices regarding the raw trades data as a numpy array of int64.
         """
         if self._close_indices is None:
@@ -84,6 +86,7 @@ class BarBuilderBase(ABC):
     def bar_close_timestamps(self) -> Optional[NDArray[np.int64]]:
         """
         Return the bar close timestamps in the raw trades data.
+
         :return: The **bar close** ns timestamps as a numpy array of int64.
         """
         if self._close_ts is None:
@@ -94,6 +97,7 @@ class BarBuilderBase(ABC):
     def build_ohlcv(self) -> pd.DataFrame:
         """
         Build the bar features using the generated indices and raw trades data.
+
         :returns: A dataframe containing the OHLCV + VWAP features with datetime index corresponding to the bar open timestamps.
         """
         self._set_bar_close()  # Ensure bar close indices and timestamps are set
@@ -132,6 +136,7 @@ class BarBuilderBase(ABC):
     def build_directional_features(self) -> pd.DataFrame:
         """
         Build the directional features using the generated indices and raw trades data.
+
         :returns: A dataframe containing the directional features:
             ticks_buy, ticks_sell, volume_buy, volume_sell, dollars_buy, dollars_sell, max_spread,
             cum_volumes_min, cum_volumes_max, cum_dollars_min, cum_dollars_max.
@@ -207,6 +212,7 @@ class BarBuilderBase(ABC):
     def build_footprints(self, price_tick_size=None, imbalance_factor=3.0) -> FootprintData:
         """
         Build the footprint data using the generated indices and raw trades data.
+
         :param price_tick_size: Optional tick size; inferred if None.
         :param imbalance_factor: Multiplier for detecting imbalances. Default is 3.0.
         :returns: A FootprintData object containing the footprint data.

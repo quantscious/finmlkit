@@ -348,7 +348,8 @@ class FeatureKit:
 
             if timeit:
                 elapsed = time.time() - start_time
-                timing_info[feat.name] = elapsed
+                key = feat.name if isinstance(feat.name, str) else str(feat.name)
+                timing_info[key] = elapsed
 
             if isinstance(res, pd.Series):
                 # Single output transform case
