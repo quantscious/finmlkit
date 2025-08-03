@@ -195,8 +195,6 @@ class TradesData:
                     })
             if n_large_gaps > 0:
                 logger.warning(f"{self.name} | Found {n_large_gaps} large gaps greater than 1 minute.")
-            logger.info(
-                f"Recorded {len(self.discontinuities)} trade ID discontinuities with corresponding time intervals.")
             self.missing_pct = cum_gap_size / len(self.data) * 100
 
     def _sort_trades(self) -> None:

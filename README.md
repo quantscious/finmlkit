@@ -128,6 +128,6 @@ Some results are collected below to demonstrate the effectiveness of the numba f
 
 # 🔬 Citation
 
-If you use FinMLKit in your research or publications, we kindly ask that you cite it. Use the __"Cite this repository"__ option in the GitHub sidebar for ready-to-use citation details in formats like `BibTeX` and `APA`. For persistent DOIs, check the Zenodo archive linked there.
+If you use FinMLKit in your research or publications, we kindly ask that you cite it. Use the _"Cite this repository"_ option in the GitHub sidebar for ready-to-use citation details in formats like `BibTeX` and `APA`. For persistent DOIs, check the Zenodo archive linked below.
 
  [![DOI](https://zenodo.org/badge/867537116.svg)](https://doi.org/10.5281/zenodo.16731879)
