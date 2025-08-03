@@ -57,8 +57,8 @@ class BarBuilderBase(ABC):
     @abstractmethod
     def _comp_bar_close(self) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
         """
-        Abstract method to generate bar open timestamps and indices.
-        :returns: Tuple of open timestamps and their corresponding indices.
+        Abstract method to generate bar close timestamps and indices.
+        :returns: Tuple of close timestamps and their corresponding indices.
         """
         pass
 
@@ -67,7 +67,7 @@ class BarBuilderBase(ABC):
         Calculate and sets the close timestamps and indices if not already calculated.
         """
         if self._close_ts is None and self._close_indices is None:
-            logger.info("Calculating bar open tick indices and timestamps...")
+            logger.info("Calculating bar close tick indices and timestamps...")
             self._close_ts, self._close_indices = self._comp_bar_close()
 
     @property
@@ -271,7 +271,7 @@ def comp_bar_ohlcv(
     NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float32], NDArray[
         np.float64], NDArray[np.int64], NDArray[np.float64]]:
     """
-    Build the candlestick bar from raw trades data based in bar open indices.
+    Build the candlestick bar from raw trades data based on bar close indices.
 
     :param prices: Trade prices.
     :param volumes: Trade volumes.
@@ -291,9 +291,9 @@ def comp_bar_ohlcv(
     if len(prices) != len(volumes):
         raise ValueError("Prices and volumes arrays must have the same length.")
     if len(bar_close_indices) < 2:
-        raise ValueError("Bar open indices must contain at least two elements.")
+        raise ValueError("Bar close indices must contain at least two elements.")
 
-    n_bars = len(bar_close_indices) - 1  # The last open index determines the last bar's close
+    n_bars = len(bar_close_indices) - 1
     bar_high = np.zeros(n_bars, dtype=np.float64)
     bar_low = np.zeros(n_bars, dtype=np.float64)
     bar_open = np.zeros(n_bars, dtype=np.float64)
@@ -600,7 +600,6 @@ def comp_bar_footprints(
     :param bar_highs: Highest price per bar.
     :param imbalance_factor: Multiplier threshold for detecting imbalance.
     :returns: Tuple containing:
-        - bar_open_timestamps: Timestamps for each bar.
         - price_levels: List of price level arrays per bar.
         - buy_volumes: List of buy volumes per price level.
         - sell_volumes: List of sell volumes per price level.
