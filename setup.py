@@ -1,13 +1,27 @@
 # setup.py
 from setuptools import setup, find_packages
-from finmlkit.__version__ import __version__
+import os
+
+
+def get_version():
+    """Read version from _version.py without importing."""
+    here = os.path.abspath(os.path.dirname(__file__))
+    version_file = os.path.join(here, 'finmlkit', '_version.py')
+
+    with open(version_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        for line in content.splitlines():
+            if line.startswith('__version__'):
+                return line.split('=')[1].strip().strip('"').strip("'")
+
+    raise RuntimeError('Cannot find version string')
 
 with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
 setup(
     name="finmlkit",
-    version=__version__,
+    version=get_version(),
     description="Financial ML toolkit",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

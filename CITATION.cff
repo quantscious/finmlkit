@@ -5,7 +5,7 @@ authors:
     given-names: "Dániel"
     orcid: "https://orcid.org/0000-0003-3548-4685"
 title: "FinMLKit: A Toolkit for Financial Machine Learning"
-version: 0.1.7
+version: 0.1.8
 doi: 10.5281/zenodo.16731879  # Concept doi for all versions, pointing always to the latest release
 date-released: 2025-08-03
 url: "https://github.com/quantscious/finmlkit"

@@ -1,12 +1,25 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))  # Points to the root directory containing 'finmlkit'
-from finmlkit.__version__ import __version__
 print("Python Path:", sys.path)
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+def get_version():
+    """Read version from _version.py without importing."""
+    # Path from docs/source/conf.py to finmlkit/_version.py
+    here = os.path.abspath(os.path.dirname(__file__))
+    version_file = os.path.join(here, '..', '..', 'finmlkit', '_version.py')
+
+    with open(version_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+        for line in content.splitlines():
+            if line.startswith('__version__'):
+                return line.split('=')[1].strip().strip('"').strip("'")
+
+    raise RuntimeError('Cannot find version string')
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -14,7 +27,7 @@ print("Python Path:", sys.path)
 project = 'FinMLKit'
 copyright = '2025, FinMLKit Developers'
 author = 'Dániel Terbe'
-release = __version__
+release = get_version()
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
