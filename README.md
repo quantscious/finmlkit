@@ -23,7 +23,7 @@ See the [examples directory](https://github.com/quantscious/finmlkit/tree/main/e
 The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/).
 
 ## 🪵 Logger Configuration
-By default, logging is directed to the console, but you can enable file-based logging by setting the appropriate environment variables.
+By default, logging is directed to the console at `INFO` level, but you can change this and also enable file-based logging by setting the appropriate environment variables.
 - If `LOG_FILE_PATH` is defined, logs will be written to both the specified file and the console.
 - `LOG_FILE_PATH` is not set, logging defaults to console-only output.
 - ging levels follow Python’s standard logging module conventions, allowing you to control verbosity as needed.
@@ -33,7 +33,7 @@ export LOG_FILE_PATH=/path/to/your/logfile.log
 export FILE_LOGGER_LEVEL=DEBUG
 export CONSOLE_LOGGER_LEVEL=WARNING
 ```
-By default, the logger is configured to output to the console with an `INFO` level. If you want to supress console output, you can set the `CONSOLE_LOGGER_LEVEL` to `WARNING`.
+If you want to supress console output, you can set the `CONSOLE_LOGGER_LEVEL`, for example, to `WARNING`.
 
 # 🧰 Why FinMLKit?
 FinMLKit is an **open-source, lightweight** financial data processing library with a focus on preparing data and labels for ML models. It is specialized for High Frequency Trading (HFT) and building on the most granular data level, the price tick data (raw trades data). This enables the building of intra-bar features (e.g., footprints, fow imbalance) that provide additional information to ML models compared to conventional and ubiquitous OHLCV data. Working with large amount of raw data requires a special design approach to ensure speed and efficiency, which is why FinMLKit is built with **Numba** for high-performance computation and parallelization. To illustrate this, if we were to aggregate raw trades data into OHLCV bars using Pandas, it would take around 100x longer than using FinMLKit. A task that would take 1 minute in Pandas would take below 1 second with FinMLKit.
@@ -74,7 +74,7 @@ is responsible for processing unstructured raw trades data into structured data 
 **Data Structures:**
 - [x] OHLCV bars
 - [x] Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
-- [x] Trade size features  (Are there large trade block prints in the bar?)
+- [x] Trade size features  (e.g., are there large trade block prints in the bar?)
 - [x] Bar footprints
 
 **Bar Types:**
@@ -125,3 +125,6 @@ Some results are collected below to demonstrate the effectiveness of the numba f
 - CUSUM monitoring for structural breaks: __6.25x speedup__ with parallelization compared to non-parallelized implementation.
 - OHLCV Time Bar generation: **100x speedup** compared to Pandas implementation.
 
+# 🔬 Citation
+
+If you use FinMLKit in your research or publications, we kindly ask that you cite it. Use the __"Cite this repository"__ option in the GitHub sidebar for ready-to-use citation details in formats like `BibTeX` and `APA`. For persistent DOIs, check the Zenodo archive linked there.

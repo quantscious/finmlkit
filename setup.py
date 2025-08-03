@@ -1,12 +1,13 @@
 # setup.py
 from setuptools import setup, find_packages
+from finmlkit.__version__ import __version__
 
 with open("requirements.txt") as f:
     requirements = f.read().splitlines()
 
 setup(
     name="finmlkit",
-    version="0.1.6",
+    version=__version__,
     description="Financial ML toolkit",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",

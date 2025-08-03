@@ -1,6 +1,7 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))  # Points to the root directory containing 'finmlkit'
+from finmlkit.__version__ import __version__
 print("Python Path:", sys.path)
 # Configuration file for the Sphinx documentation builder.
 #
@@ -13,7 +14,7 @@ print("Python Path:", sys.path)
 project = 'FinMLKit'
 copyright = '2025, FinMLKit Developers'
 author = 'Dániel Terbe'
-release = '0.1.6'
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
