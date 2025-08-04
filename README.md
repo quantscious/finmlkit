@@ -47,10 +47,12 @@ Key principles are **Simplicity**, **Speed**, and **Accessibility** (SSA):
 - **Accessibility** 🌍 The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
 
 # 🔥 Motivation & Vision
-**FinMLKit** provides the essential tools for financial machine learning focusing on the processing of raw trades data. This library offers the core infrastructure that can be applied in countless ways to create custom strategies.
-By developing this open-source foundation, contributors from around the world can enhance the tools and create something far more robust than any single entity could achieve alone. This approach allows us to leverage collective expertise and wisdom to build a powerful library that serves everyone.
+**FinMLKit** is an open-source toolkit designed to make advanced, reproducible financial machine learning accessible to both researchers and practitioners. 
+Many existing pipelines still rely on outdated conventions like time bars, fixed-window labels, and oversimplified features—not because they are optimal, but because better alternatives are often harder to implement and scale. 
+FinMLKit addresses this gap by providing a research-grade foundation for working directly with raw trade data, including information-driven bar types, path-aware labeling with the Triple Barrier Method, microstructure features like volume profiles and footprints, and sample weighting for overlapping events—all powered by high-performance, Numba-accelerated internals.
 
-By **pooling our expertise**, we can create a **stronger foundation** for financial machine learning that benefits the entire community, far exceeding what any small team could achieve alone.
+This project aims not only to offer tools, but to foster collaboration. By open-sourcing the core infrastructure, we invite contributors to improve, extend, and build on a shared foundation—raising the methodological standard across both academia and industry. FinMLKit is structured to support reproducible research, with clean APIs, modular design, and citable releases. 
+Our vision is to democratize access to advanced techniques, make rigorous pipelines more practical, and accelerate the adoption of robust, transparent practices in financial ML.
 
 
 # 📑 Trusted Methodologies
