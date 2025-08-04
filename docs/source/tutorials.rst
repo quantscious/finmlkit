@@ -7,6 +7,7 @@ This section provides detailed, step-by-step tutorials to help you get started w
 .. toctree::
    :maxdepth: 2
 
+   tutorials/why_finmlkit
    tutorials/processing_raw_data
    tutorials/saving_and_loading_data
    tutorials/building_intra_bar_features
