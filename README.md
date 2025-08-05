@@ -55,17 +55,6 @@ This project aims not only to offer tools, but to foster collaboration. By open-
 Our vision is to **democratize access to advanced techniques**, make rigorous pipelines more practical, and accelerate the adoption of robust, transparent practices in financial ML.
 
 
-# 📑 Trusted Methodologies
-FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
-We prioritize transparency and accuracy in both the implementation and explanation of these methodologies. Each algorithm is accompanied by **detailed documentation** that:
-- **Cites the original sources** from which the methods were derived (papers, books, and other trusted research).
-- **Describes the algorithms comprehensively**, explaining the theory behind them and how they are applied in practice.
-By ensuring that the algorithms are well-documented, with clear references to their origins, we aim to foster trust and enable users to fully understand the underlying mechanics of the tools they are using. This also makes it easier for contributors to extend the package, knowing exactly how each method works and what references to consult.
-
-# 🤝 Contribution
-We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, 
-or improving documentation, **your contribution matters**. Let’s work together to make the financial machine learning space better for everyone!
-
 # 🧱 Project Structure
 ## Bars
 Bars are the primary data structure in FinMLKit – constructed from raw trades data –, 
@@ -114,8 +103,23 @@ Labels are the target values that we want to predict in a supervised learning pr
 ## Sampling
 - [x] CUSUM Filter
 
+
+# 📑 Trusted Methodologies
+FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. The primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
+We prioritize transparency and accuracy in both the implementation and explanation of these methodologies. Each algorithm should be accompanied by **detailed documentation** that:
+- **Cites the original sources** from which the methods were derived (papers, books, and other trusted research).
+- **Describes the algorithms comprehensively**, explaining the theory behind them and how they are applied in practice.
+By ensuring that the algorithms are well-documented, with clear references to their origins, we aim to foster trust and enable users to fully understand the underlying mechanics of the tools they are using. This also makes it easier for contributors to extend the package, knowing exactly how each method works and what references to consult.
+
+
 # 📚 Documentation
-FinMLKit is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses reStructured style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses Sphinx to generate the documentation and automatically deploy it to readthedocs.io. This way, users can access the documentation online and easily navigate through the library's features and functionalities.
+**FinMLKit** is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses `reStructured` style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses `Sphinx` to generate the documentation and automatically deploy it to [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/). This way, users can access the documentation online and easily navigate through the library's features and functionalities. This framework also enables the creation of tutorials or in-depth descriptions of the methods.
+
+# 🤝 Contribution
+We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, 
+or improving documentation, **your contribution matters**. Let’s work together to make the common ground for financial machine learning!
+
+**Star** the repo, **cite** it in your work, file issues, propose features, and share benchmark results. Let’s make **better defaults** the norm.
 
 # ⚡ Speed & Performance Tests
 FinMLKit is built with speed in mind. We use Numba for high-performance computation, 
