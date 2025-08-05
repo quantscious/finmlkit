@@ -10,6 +10,101 @@ logger = get_logger(__name__)
 
 
 class TBMLabel:
+    r"""Implements the Triple Barrier Method (TBM) for labeling financial events, as described by Marcos Lopez de Prado.
+    This method assigns labels to events based on whether the price touches an upper barrier (take-profit), lower barrier (stop-loss),
+    or a vertical time barrier first. It supports both side labeling and meta-labeling modes.
+
+    The Triple Barrier Method is a technique for labeling outcomes in financial machine learning, particularly useful for
+    creating supervised learning datasets from time-series data. It helps mitigate issues like overfitting and improves
+    the informativeness of labels by considering profitability thresholds and time horizons.
+
+    For a set of events (e.g., trading signals or cusum events), the method constructs three barriers around each event's
+    starting price:
+
+    - **Upper horizontal barrier**: Take-profit level, computed as starting price plus (target return * upper multiplier).
+    - **Lower horizontal barrier**: Stop-loss level, computed as starting price minus (target return * lower multiplier).
+    - **Vertical barrier**: A time-based barrier after a specified timedelta.
+
+    The label is determined by which barrier is touched first by the price path:
+
+    - +1 if upper barrier is touched first (profitable).
+    - -1 if lower barrier is touched first (loss).
+    - 0 if vertical barrier is touched first (timeout), or adjustable based on meta-labeling.
+
+    In meta-labeling mode (``is_meta=True``), the method incorporates predictions from a primary model (via the 'side' column).
+    Labels are assigned only if the primary model's direction aligns with the barrier outcome, enabling meta-models to learn
+    when to trust the primary model.
+
+    Mathematically, for an event at time :math:`t` with starting price :math:`p_t`, target return :math:`r_t` (e.g., volatility estimate),
+    and horizontal multipliers :math:`(m_{low}, m_{up})`:
+
+    .. math::
+        \text{Upper barrier} = p_t \cdot (1 + r_t \cdot m_{up})
+
+        \text{Lower barrier} = p_t \cdot (1 - r_t \cdot m_{low})
+
+        \text{Vertical barrier} = t + \Delta t
+
+    The label :math:`l` for the event is:
+
+    .. math::
+        l = \begin{cases}
+        1, & \text{if upper barrier touched first} \\
+        -1, & \text{if lower barrier touched first} \\
+        0, & \text{if vertical barrier touched first}
+        \end{cases}
+
+    .. note::
+        In this implementation we are constructing binary labels: either +1 or -1 for side prediction as recommended in
+        `Advances in Financial Machine Learning`_.
+
+    In meta-labeling, the label is modulated by the primary side :math:`s \in \{-1, 1\}`:
+
+    .. math::
+        l_{meta} = \begin{cases}
+        1, & \text{if } (s = 1 \land l = 1) \lor (s = -1 \land l = -1) \\
+        0, & \text{otherwise}
+        \end{cases}
+
+    .. note::
+        To disable a horizontal barrier, set its multiplier to :math:`+\infty` or :math:`-\infty`. For the vertical barrier,
+        use a very large timedelta (e.g., 1000 years) to effectively disable it.
+
+    .. note::
+        This implementation supports computation of sample weights via the related :class:`SampleWeights` class.
+        After labeling, use :meth:`compute_weights` to calculate information-driven weights, including:
+
+        - **Label concurrency**: Measures overlap of event durations. High concurrency indicates crowded trades.
+          The average uniqueness :math:`u_i` for event :math:`i` is:
+
+          .. math::
+              u_i = \frac{1}{\sum_{j} \mathbb{I}(overlap_{i,j})}
+
+        - **Return attribution**: Attributes returns to overlapping events proportionally to their uniqueness.
+          For event :math:`i` with return :math:`r_i` and concurrency :math:`c_i`:
+
+          .. math::
+              a_i = \frac{r_i}{c_i} \cdot u_i
+
+        These can be combined with time decay and class balancing for final sample weights in model training.
+
+    .. _`Advances in Financial Machine Learning`: https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086
+
+    Args:
+        features (pd.DataFrame): The events dataframe containing the return target column and optionally event indices ("event_idx" column) and features. If not provided, event indices will be computed based on timestamps.
+        target_ret_col (str): The name of the target return column in the ``features`` dataframe. Typically a volatility estimator output. This is used to scale the horizontal barriers. Should be in log-return space.
+        min_ret (float): Minimum required return threshold. Events where the absolute target return (scaled by max horizontal multiplier) is below this threshold will be dropped.
+        horizontal_barriers (tuple[float, float]): Bottom and top (stop-loss/take-profit) horizontal barrier multipliers. The target return is multiplied by these to determine barrier widths. Use -inf/+inf to disable.
+        vertical_barrier (pd.Timedelta): The temporal barrier duration. Set to a large value (e.g., pd.Timedelta(days=365*1000)) to disable.
+        min_close_time (pd.Timedelta, optional): Prevents premature event closure before this minimum time. Default: pd.Timedelta(seconds=1).
+        is_meta (bool, optional): Enable meta-labeling mode. If True, ``features`` must contain a 'side' column with primary model predictions (-1, 0, 1). Default: False.
+
+    Raises:
+        ValueError: If input validations fail, such as missing columns, invalid types, or empty data after filtering.
+
+    See Also:
+        :class:`SampleWeights`: For computing the final sample weights combining and normalizing average uniqueness, return attribution, time decay, and class balancing.
+    """
     def __init__(self,
                  features: pd.DataFrame,
                  target_ret_col: str,

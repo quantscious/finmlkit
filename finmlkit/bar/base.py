@@ -394,6 +394,7 @@ def comp_bar_directional_features(
     :param bar_close_indices: Indices marking the end of each bar.
     :param trade_sides: Trade direction (1 for market buy, -1 for market sell).
     :returns: Tuple containing:
+
         - ticks_buy: Number of buy trades per bar.
         - ticks_sell: Number of sell trades per bar.
         - volume_buy: Volume of buy trades per bar.
@@ -526,6 +527,7 @@ def comp_bar_trade_size_features(
     :param bar_close_indices: Indices marking the end of each bar.
     :param theta_mult: Multiplier for theta to define the block size threshold. (eg. 5 times the median trade size)
     :returns: A tuple containing:
+
         - mean_size_rel: Mean trade size relative to theta per bar: log1p(mean_size / theta)
         - size_95_rel: 95th percentile of trade sizes per bar relative to theta: log1p(size_95 / theta)
         - pct_block: Percentage of trades that are larger than theta per bar: SUM( size_i [ size_i>theta ] / volume )
@@ -606,6 +608,7 @@ def comp_bar_footprints(
     :param bar_highs: Highest price per bar.
     :param imbalance_factor: Multiplier threshold for detecting imbalance.
     :returns: Tuple containing:
+
         - price_levels: List of price level arrays per bar.
         - buy_volumes: List of buy volumes per price level.
         - sell_volumes: List of sell volumes per price level.
@@ -724,6 +727,7 @@ def comp_footprint_features(price_levels, buy_volumes, sell_volumes, imbalance_m
     :param sell_volumes: Array of sell volumes at each price level.
     :param imbalance_multiplier: Threshold multiplier to detect imbalance.
     :returns: Tuple containing:
+
         - buy_imbalances: Boolean array where True indicates buy imbalance at the level.
         - sell_imbalances: Boolean array where True indicates sell imbalance at the level.
         - imbalance_max_run_signed: Longest  signed imbalance run (number of consecutive imbalanced level)
