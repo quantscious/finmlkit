@@ -1,6 +1,21 @@
 
  ![FinMLKit Header](finmlkit_header.png)
- 
+
+[![Python Versions](https://img.shields.io/pypi/pyversions/finmlkit.svg)](https://pypi.python.org/pypi/finmlkit)
+[![Platforms](https://img.shields.io/badge/Platforms-linux--64,win--64,osx--64-orange.svg?style=flat-square)](https://pypi.python.org/pypi/finmlkit)
+[![PyPI Version](https://img.shields.io/pypi/v/finmlkit.svg)](https://pypi.python.org/pypi/finmlkit)
+[![MIT License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://pypi.python.org/pypi/finmlkit)
+[![DOI](https://zenodo.org/badge/867537116.svg)](https://doi.org/10.5281/zenodo.16731879)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/quantscious/finmlkit/deploy.yml)](https://github.com/quantscious/finmlkit)
+[![Documentation Status](https://readthedocs.org/projects/finmlkit/badge/?version=latest)](https://finmlkit.readthedocs.io/en/latest/?version=latest)
+[![Total Downloads](https://static.pepy.tech/badge/finmlkit)](https://pepy.tech/project/finmlkit)
+[![GitHub Stars](https://img.shields.io/github/stars/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/network)
+[![GitHub Issues](https://img.shields.io/github/issues/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/commits/main)
+
+[//]: # ([![Coverage]&#40;https://codecov.io/github/quantscious/finmlkit/coverage.svg?branch=main&#41;]&#40;https://codecov.io/github/quantscious/finmlkit&#41; )
+
 **FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone.
  
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
