@@ -47,16 +47,16 @@ Key principles are **Simplicity**, **Speed**, and **Accessibility** (SSA):
 - **Accessibility** 🌍 The goal is to make it easy for anyone – regardless of their background – to contribute and enhance the library, fostering an open-source collaborative spirit.
 
 # 🔥 Motivation & Vision
-**FinMLKit** is an open-source toolkit designed to make advanced, reproducible financial machine learning accessible to both researchers and practitioners. 
+**FinMLKit** is an open-source toolkit designed to make advanced, **reproducible financial machine learning** accessible to both researchers and practitioners. 
 Many existing pipelines still rely on outdated conventions like time bars, fixed-window labels, and oversimplified features—not because they are optimal, but because better alternatives are often harder to implement and scale. 
 FinMLKit addresses this gap by providing a research-grade foundation for working directly with raw trade data, including information-driven bar types, path-aware labeling with the Triple Barrier Method, microstructure features like volume profiles and footprints, and sample weighting for overlapping events—all powered by high-performance, Numba-accelerated internals.
 
-This project aims not only to offer tools, but to foster collaboration. By open-sourcing the core infrastructure, we invite contributors to improve, extend, and build on a shared foundation—raising the methodological standard across both academia and industry. FinMLKit is structured to support reproducible research, with clean APIs, modular design, and citable releases. 
-Our vision is to democratize access to advanced techniques, make rigorous pipelines more practical, and accelerate the adoption of robust, transparent practices in financial ML.
+This project aims not only to offer tools, but to foster collaboration. By open-sourcing the core infrastructure, we invite contributors to improve, extend, and build on a shared foundation—raising the methodological standard across both academia and industry. FinMLKit is structured to support reproducible research, with clean APIs, modular design, and citable releases (see citation info at the bottom). 
+Our vision is to **democratize access to advanced techniques**, make rigorous pipelines more practical, and accelerate the adoption of robust, transparent practices in financial ML.
 
 
 # 📑 Trusted Methodologies
-FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. We avoid experimental techniques and instead focus on proven methods. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
+FinMLKit implements methods from **trusted sources**, including renowned **academic papers and books**. Our primary reference is **Marcos Lopez de Prado**’s Advances in Financial Machine Learning, which lays the foundation for many of the algorithms and methods in this package.
 We prioritize transparency and accuracy in both the implementation and explanation of these methodologies. Each algorithm is accompanied by **detailed documentation** that:
 - **Cites the original sources** from which the methods were derived (papers, books, and other trusted research).
 - **Describes the algorithms comprehensively**, explaining the theory behind them and how they are applied in practice.
@@ -115,7 +115,7 @@ Labels are the target values that we want to predict in a supervised learning pr
 - [x] CUSUM Filter
 
 # 📚 Documentation
-FinMLKit is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses reStructured style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses Sphinx to generate the documentation and automatically deploy it in readthedocs.io. This way, users can access the documentation online and easily navigate through the library's features and functionalities.
+FinMLKit is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses reStructured style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses Sphinx to generate the documentation and automatically deploy it to readthedocs.io. This way, users can access the documentation online and easily navigate through the library's features and functionalities.
 
 # ⚡ Speed & Performance Tests
 FinMLKit is built with speed in mind. We use Numba for high-performance computation, 
