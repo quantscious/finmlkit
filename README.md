@@ -13,6 +13,7 @@
 [![GitHub Forks](https://img.shields.io/github/forks/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/network)
 [![GitHub Issues](https://img.shields.io/github/issues/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/commits/main)
+![Contributions](https://img.shields.io/badge/Contributions-Welcome-ff69b4)
 
 [//]: # ([![Coverage]&#40;https://codecov.io/github/quantscious/finmlkit/coverage.svg?branch=main&#41;]&#40;https://codecov.io/github/quantscious/finmlkit&#41; )
 
