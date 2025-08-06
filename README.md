@@ -72,18 +72,34 @@ Our vision is to **democratize access to advanced techniques**, make rigorous pi
 
 
 # 🧱 Project Structure
+
+## Data Preprocessing & I/O
+The foundation of any financial ML pipeline is robust data handling. FinMLKit provides comprehensive tools for ingesting, preprocessing, validating, and storing high-frequency trading data at scale. **The data preprocessing module transforms raw, inconsistent trade feeds into clean, validated datasets ready for bar construction and analysis**.
+
+**Data Ingestion & Preprocessing:**
+- [x] TradesData - Raw trades preprocessing with timestamp normalization, trade merging, and side inference
+- [x] Data integrity validation with gap detection and discontinuity analysis
+- [x] Multi-format timestamp support (s, ms, μs, ns) with automatic unit inference
+- [x] Trade ID validation and missing data percentage calculation
+- [x] Memory-efficient processing with chunking support for large datasets
+
+**Storage & Retrieval:**
+- [x] HDF5-based storage with monthly partitioning for efficient time-range queries
+- [x] Compressed storage with multiple backends (blosc:lz4, blosc:zstd)
+- [x] Metadata-driven data discovery and range validation
+- [x] Multiprocessing support for large dataset operations
+- [x] H5Inspector - Comprehensive HDF5 file analysis and integrity reporting
+- [x] AddTimeBarH5 - Automated time bar generation and persistence (extending the raw trade data h5 file)
+- [x] TimeBarReader - Efficient time bar loading with flexible resampling capabilities
+
 ## Bars
-Bars are the primary data structure in FinMLKit – constructed from raw trades data –, 
-representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) 
-or any other format that includes the necessary information for analysis (e.g. footprint data, directional features). 
-Bars are used as input for indicators, strategies, and other components of the library. In summary, **the bars module 
-is responsible for processing unstructured raw trades data into structured data that can be used for further analysis**.
+Bars are the primary data structure in FinMLKit – constructed from preprocessed trades data –, representing the historical price data of an asset. Bars can be in the form of OHLCV (Open, High, Low, Close, Volume) or any other format that includes the necessary information for analysis (e.g. footprint data, directional features). Bars are used as input for indicators, strategies, and other components of the library. In summary, **the bars module is responsible for processing structured trades data into analytical data structures optimized for financial machine learning**.
 
 **Data Structures:**
-- [x] OHLCV bars
+- [x] OHLCV bars with VWAP and trade statistics
 - [x] Directional features (e.g. buy/sell tick, volume, dollars, min. cum. volume, max. cum. volume etc.)
-- [x] Trade size features  (e.g., are there large trade block prints in the bar?)
-- [x] Bar footprints
+- [x] Trade size features (e.g., are there large trade block prints in the bar?)
+- [x] Bar footprints with order flow imbalance detection
 
 **Bar Types:**
 - [x] Time bars
@@ -94,18 +110,22 @@ is responsible for processing unstructured raw trades data into structured data 
 - [ ] Imbalance bars
 - [ ] Run bars
 
-
 ## Features
-Everything that processes bars data (candlestick/OHLCV, directional features, or footprints) and calculates derived values from it is considered a feature. 
-This includes moving averages, RSI, MACD, etc. Here we are focusing on more unconventional indicators that are not commonly 
-found in other libraries and builds on our advanced data structures like footprints, for example, **volume profile features**.
-Features are the building blocks of trading strategies and are used to generate signals for buying or selling assets. 
+Everything that processes bars data (candlestick/OHLCV, directional features, or footprints) and calculates derived values from it is considered a feature. This includes moving averages, RSI, MACD, etc. Here we are focusing on more unconventional indicators that are not commonly found in other libraries and builds on our advanced data structures like footprints, for example, **volume profile features**. Features are the building blocks of trading strategies and are used to generate signals for buying or selling assets.
 
+**FeatureKit Framework:**
+- [x] Dual-backend architecture (pandas for development and prototyping ideas, Numba for production)
+- [x] SISO, MISO, SIMO, MIMO transform patterns for flexible feature engineering
+- [x] Compose class for sequential transform chaining
+- [x] Mathematical operations and function composition with Feature wrapper class
+- [x] FeatureKit for batch feature computation with performance profiling
+
+**Implemented Features:**
 - [x] Adjusted Exponential Moving Average
 - [x] Standard Volatility Estimators
 - [x] Volume Profile Indicators: Commitment of Traders (COT), Buy/Sell Imbalance price levels, High Volume Nodes (HVN), Low Volume Nodes (LVN), Point of Control (POC)
-- [x] Cusum Monitoring structural break feature _(Chu-Stinchcombe-White CUSUM Test on Levels based on  Homm and Breitung (2011)_
-
+- [x] Cusum Monitoring structural break feature _(Chu-Stinchcombe-White CUSUM Test on Levels based on Homm and Breitung (2011))_
+- [x] And many more... Consult the [documentation](https://finmlkit.readthedocs.io/en/latest/api/finmlkit.feature.transforms.html#module-finmlkit.feature.transforms) for a complete list of implemented transform examples. Feel free to **build your own features** to your specific needs, the **framework design is given**.
 
 ## Labels
 Labels are the target values that we want to predict in a supervised learning problem. Currently, Triple Barrier Method is implemented with meta-label support, which is an advanced approach in financial machine learning.
