@@ -14,7 +14,7 @@ build:
 sphinx:
   configuration: docs/source/conf.py
   # Optional: uncomment to fail on warnings (useful once things are stable)
-  # fail_on_warning: true
+  fail_on_warning: false
 
 python:
   install:

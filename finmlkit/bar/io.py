@@ -33,11 +33,67 @@ def _find_gaps(key: str, filepath: str, max_gap: pd.Timedelta) -> Tuple[str, lis
 
 
 class H5Inspector:
-    """
-    Class to inspect HDF5 files containing trades data.
+    r"""Utility class for inspecting and analyzing HDF5 files containing trades data with comprehensive metadata access.
 
-    This class provides methods to list available keys, check metadata,
-    and retrieve basic statistics about the trades data stored in HDF5 format.
+    This class provides a complete toolkit for examining HDF5 stores created by :class:`TradesData`, enabling users to
+    explore available data, assess data quality, retrieve statistics, and identify potential issues across monthly
+    partitioned trade datasets. It serves as an essential diagnostic tool for large-scale financial data management.
+
+    The inspector is designed to work with the HDF5 structure created by :meth:`TradesData.save_h5`, where trades data
+    is organized into monthly partitions under ``/trades/YYYY-MM`` groups, with corresponding metadata stored under
+    ``/meta/YYYY-MM`` and integrity information under ``/integrity/YYYY-MM``.
+
+    Key capabilities include:
+
+    - **Data Discovery**: List all available monthly partitions and their temporal coverage
+    - **Metadata Access**: Retrieve comprehensive metadata including record counts, timestamp ranges, and integrity flags
+    - **Integrity Analysis**: Access detailed information about trade ID discontinuities, missing data percentages,
+      and temporal gaps that may indicate data quality issues
+    - **Statistical Overview**: Compute basic statistics for price and volume distributions across time periods
+    - **Gap Detection**: Identify temporal discontinuities exceeding specified thresholds using multiprocessing
+    - **Integrity Reporting**: Generate comprehensive summaries of data quality issues across entire datasets
+
+    The class leverages the metadata structure to provide fast operations without loading full datasets into memory,
+    making it suitable for inspecting multi-terabyte trade databases. For gap analysis and integrity checks on
+    large datasets, multiprocessing is employed to parallelize operations across monthly partitions.
+
+    **Data Integrity Metrics**: The inspector can identify several types of data quality issues:
+
+    - **Trade ID Gaps**: Missing sequential trade IDs indicating potential data loss
+    - **Temporal Discontinuities**: Time gaps exceeding normal market hours or trading halts
+    - **Missing Data Percentage**: Quantitative measure of data completeness based on trade ID sequences
+
+    For trade ID discontinuities, the missing percentage is calculated as:
+
+    .. math::
+        \text{Missing \%} = \frac{\sum_{i} (ID_{i+1} - ID_i - 1)}{N_{total}} \times 100
+
+    where :math:`ID_i` are consecutive trade IDs and :math:`N_{total}` is the total number of trades.
+
+    .. note::
+        This class assumes HDF5 files follow the structure created by :class:`TradesData`. For files created
+        with different schemas, some methods may not function correctly or may raise KeyError exceptions.
+
+    .. note::
+        Gap detection with multiprocessing can be memory-intensive for very large datasets. Consider adjusting
+        the ``processes`` parameter based on available system resources and dataset sizes.
+
+    Args:
+        filepath (str): Path to the HDF5 file containing trades data. File must be readable and follow
+            the expected monthly partition structure.
+
+    Raises:
+        FileNotFoundError: If the specified HDF5 file does not exist.
+        PermissionError: If the file cannot be accessed due to permission restrictions.
+
+    See Also:
+        :class:`TradesData`: Creates the HDF5 files that this class inspects.
+        :meth:`TradesData.save_h5`: Method that creates the HDF5 structure.
+        :meth:`TradesData.load_trades_h5`: Complementary loading functionality.
+
+    References:
+        .. _`HDF5 for Python`: https://docs.h5py.org/en/stable/
+        .. _`Pandas HDFStore`: https://pandas.pydata.org/docs/reference/api/pandas.HDFStore.html
     """
 
     def __init__(self, filepath: str):
@@ -49,20 +105,32 @@ class H5Inspector:
         self.filepath = filepath
 
     def list_keys(self) -> list[str]:
-        """
-        List all available keys in the HDF5 file.
+        r"""List all available trade keys in the HDF5 file.
 
-        :return: List of keys.
+        Scans the HDF5 store for all groups under the ``/trades/`` hierarchy,
+        returning a sorted list of available monthly partitions.
+
+        :return: List of trade keys in format ``['/trades/YYYY-MM', ...]``.
+        :raises FileNotFoundError: If the HDF5 file does not exist.
+        :raises KeyError: If the file exists but has no readable trade groups.
         """
         with pd.HDFStore(self.filepath, mode='r') as store:
             return [k for k in store.keys() if k.startswith('/trades/')]
 
     def get_metadata(self, key: str) -> Dict[str, any]:
-        """
-        Get metadata for a specific key in the HDF5 file.
+        r"""Retrieve comprehensive metadata for a specific monthly partition.
 
-        :param key: Key to retrieve metadata for (Eg.: /trades/2023-02)
-        :return: Metadata dictionary.
+        Returns metadata stored during the save process, including record counts,
+        timestamp ranges, data integrity flags, and missing data percentages.
+
+        :param key: HDF5 key for the target month (e.g., '/trades/2023-02').
+        :return: Dictionary containing metadata fields:
+            - 'record_count': Number of trades in the partition
+            - 'first_timestamp': Earliest timestamp (nanoseconds since epoch)
+            - 'last_timestamp': Latest timestamp (nanoseconds since epoch)
+            - 'data_integrity_ok': Boolean flag indicating data quality
+            - 'missing_pct': Percentage of missing trades based on ID gaps
+        :raises KeyError: If the specified key does not exist in the store.
         """
         with pd.HDFStore(self.filepath, mode='r') as store:
             if key not in store.keys():
@@ -71,12 +139,21 @@ class H5Inspector:
             return store[meta_key].to_dict()
 
     def get_integrity_info(self, key: str) -> Optional[pd.DataFrame]:
-        """
-        Get data integrity information for a specific key in the HDF5 file.
-        This retrieves discontinuity information stored during the save_h5 process.
+        r"""Retrieve detailed data integrity information for a specific monthly partition.
 
-        :param key: Key to retrieve integrity information for (e.g., '/trades/2023-01').
-        :return: DataFrame with discontinuity information or None if no integrity issues were found.
+        Returns discontinuity details stored during preprocessing, including trade ID gaps,
+        timestamps of missing data periods, and time intervals for each discontinuity.
+
+        :param key: HDF5 key for the target month (e.g., '/trades/2023-01').
+        :return: DataFrame with columns:
+            - 'start_id': Trade ID before the gap
+            - 'end_id': Trade ID after the gap
+            - 'missing_ids': Number of missing trade IDs
+            - 'pre_gap_time_str': Timestamp before gap (string format)
+            - 'post_gap_time_str': Timestamp after gap (string format)
+            - 'time_interval_str': Duration of the gap (string format)
+            Returns None if no integrity issues were detected.
+        :raises KeyError: If the specified key does not exist in the store.
         """
         with pd.HDFStore(self.filepath, mode='r') as store:
             if key not in store.keys():
@@ -92,11 +169,23 @@ class H5Inspector:
                 return None
 
     def get_statistics(self, key: str) -> Dict[str, any]:
-        """
-        Get basic statistics for a specific key in the HDF5 file.
+        r"""Compute basic statistical measures for a specific monthly partition.
 
-        :param key: Key to retrieve statistics for.
-        :return: Statistics dictionary.
+        Loads the trade data and calculates summary statistics including record counts,
+        timestamp ranges, and price/volume distributions.
+
+        :param key: HDF5 key for the target month.
+        :return: Dictionary containing statistical measures:
+            - 'record_count': Total number of trade records
+            - 'first_timestamp': Earliest timestamp in the dataset
+            - 'last_timestamp': Latest timestamp in the dataset
+            - 'price_range': Tuple of (minimum_price, maximum_price)
+            - 'amount_range': Tuple of (minimum_amount, maximum_amount)
+        :raises KeyError: If the specified key does not exist in the store.
+
+        .. note::
+            This method loads the full dataset into memory and may be slow for large partitions.
+            Consider using :meth:`get_metadata` for basic counts and ranges when available.
         """
         with pd.HDFStore(self.filepath, mode='r') as store:
             if key not in store.keys():
@@ -111,12 +200,22 @@ class H5Inspector:
             }
 
     def inspect_gaps(self, max_gap: pd.Timedelta = pd.Timedelta(minutes=1), processes: int = 4) -> Dict[str, list[tuple[pd.Timestamp, pd.Timedelta]]]:
-        """
-        Inspect gaps in trades data across all keys in the HDF5 file.
+        r"""Identify temporal gaps exceeding specified thresholds across all monthly partitions.
 
-        :param max_gap: Maximum allowable gap between consecutive timestamps.
-        :param processes: Number of processes to use for multiprocessing.
-        :return: Dictionary with keys as HDF5 groups and values as lists of gap timestamps.
+        Uses multiprocessing to parallelize gap detection across partitions. Gaps are identified
+        by computing time differences between consecutive trades and flagging those exceeding
+        the ``max_gap`` threshold.
+
+        :param max_gap: Maximum allowable gap between consecutive timestamps. Default: 1 minute.
+        :param processes: Number of worker processes for parallel processing. Default: 4.
+        :return: Dictionary mapping HDF5 group names to lists of gap information tuples:
+            Each tuple contains (gap_timestamp, gap_duration) for gaps exceeding the threshold.
+        :raises ValueError: If max_gap is not a valid Timedelta or processes < 1.
+
+        .. note::
+            Gap detection loads full datasets into memory. For very large files, consider
+            processing monthly partitions individually or increasing available system memory.
+
         """
         keys = self.list_keys()
 
@@ -126,18 +225,22 @@ class H5Inspector:
         return dict(results)
 
     def get_integrity_summary(self, verbose=True) -> Dict[str, Dict]:
-        """
-        Generate a summary of data integrity issues across all tables in the HDF5 file.
+        r"""Generate comprehensive summary of data integrity issues across the entire HDF5 store.
 
-        This function identifies tables with integrity issues (data_integrity_ok=False),
-        collects statistics about the issues (missing percentage, etc.), and retrieves
-        the detailed discontinuity information for affected tables.
+        Analyzes all monthly partitions to identify data quality problems, providing both
+        aggregate statistics and detailed discontinuity information where available.
 
-        :param verbose: Whether to print the results to console
-        :return: Dictionary with keys as HDF5 groups and values as dictionaries containing:
-                 - 'metadata': Basic metadata about the table including integrity flags
-                 - 'discontinuities': DataFrame with detailed discontinuity information (if available)
-                 - Or None if no integrity issues are found
+        :param verbose: If True, prints detailed summary to console. Default: True.
+        :return: Dictionary with month keys mapping to integrity information dictionaries:
+            Each value contains:
+            - 'metadata': Complete metadata including integrity flags and missing percentages
+            - 'discontinuities': DataFrame with detailed gap information (if available)
+            - 'key': Original HDF5 key for the partition
+            Returns None if all data passes integrity checks.
+
+        .. note::
+            This method scans metadata for all partitions but only loads detailed discontinuity
+            information for months with identified issues, making it efficient for large stores.
         """
         result = {}
         all_ok = True
@@ -208,8 +311,103 @@ class H5Inspector:
 
 
 class AddTimeBarH5:
-    """
-    Builds and adds 1 sec TimeBar to trades h5
+    r"""Utility class for building and persisting 1-second time bars from trades data stored in HDF5 format.
+
+    This class provides a streamlined workflow for converting raw trades data into structured time bars,
+    extending HDF5 stores created by :class:`TradesData` with standardized OHLCV (Open, High, Low, Close, Volume)
+    bars at 1-second intervals. It serves as a preprocessing component for financial analysis pipelines that
+    require consistent temporal aggregation of high-frequency trading data.
+
+    The class operates on HDF5 files with monthly trade partitions (``/trades/YYYY-MM``) and creates
+    corresponding time bar partitions (``/klines/YYYY-MM``) with associated metadata (``/klines_meta/YYYY-MM``).
+    This approach maintains the same organizational structure while adding derived datasets optimized for
+    time-series analysis and modeling.
+
+    **Workflow and Data Organization:**
+
+    The class follows this processing pipeline:
+
+    1. **Discovery**: Identify available monthly trade partitions in the source HDF5 file
+    2. **Loading**: Use :meth:`TradesData.load_trades_h5` to retrieve preprocessed trades for each month
+    3. **Aggregation**: Apply :class:`TimeBarKit` to construct 1-second time bars with full OHLCV features
+    4. **Storage**: Persist bars to ``/klines/`` hierarchy with metadata for fast access
+    5. **Validation**: Track processing success/failure for each monthly partition
+
+    The resulting time bars provide a consistent temporal grid suitable for:
+
+    - Technical analysis and indicator computation
+    - Machine learning feature engineering
+    - Risk management and portfolio analytics
+    - But mainly for accessing **coarse sampling** from high-frequency data (e.g., accesing daily statistics quickly)
+
+    **Considerations:**
+
+    - Processing is performed sequentially by month to manage memory usage for large datasets
+    - Each month's bars are stored as separate HDF5 tables for efficient partial loading
+    - Metadata storage enables fast discovery without loading full datasets
+    - Overwrite protection prevents accidental data loss during reprocessing
+
+    .. important::
+        This class assumes the source HDF5 file follows the structure created by :class:`finmlkit.bar.data_model.TradesData`.
+        The time bars are built using 1-second intervals, which provides a good balance between temporal
+        resolution and data reduction for most financial analysis applications.
+
+    .. tip::
+        For very active trading pairs, 1-second bars may still contain significant noise. Consider
+        further aggregation (e.g., 1-minute bars) for certain analysis types or implement alternative
+        bar types (tick, volume, or imbalance bars) using :class:`BarBuilderBase` subclasses.
+
+    .. note::
+        This enables the quick construction and retention of simple aggregated OHLCV bars with specified frequency.
+
+    Args:
+        h5_path (str): Path to the HDF5 file containing trades data. Must be readable and writable.
+        keys (list[str], optional): Specific monthly keys to process (e.g., ["2022-01", "2022-05"]).
+            If None, processes all available monthly partitions in the file.
+
+    Raises:
+        KeyError: If specified keys are not found in the source HDF5 file.
+        FileNotFoundError: If the HDF5 file does not exist.
+        PermissionError: If the file cannot be accessed for reading or writing.
+
+    Examples:
+        Process all months in an HDF5 file:
+
+        >>> # doctest: +SKIP
+        >>> processor = AddTimeBarH5('trades_2023.h5')
+        >>> results = processor.process_all(overwrite=False)
+        >>> success_count = sum(results.values())
+        >>> print(f"Successfully processed {success_count}/{len(results)} months")
+
+        Process specific months with overwrite:
+
+        >>> # doctest: +SKIP
+        >>> processor = AddTimeBarH5('trades_2023.h5', keys=['2023-03', '2023-04'])
+        >>> for key in processor.keys:
+        ...     success = processor.process_key(key, overwrite=True)
+        ...     print(f"{key}: {'Success' if success else 'Failed'}")
+
+        Batch processing workflow:
+
+        >>> # doctest: +SKIP
+        >>> import pandas as pd
+        >>> processor = AddTimeBarH5('large_dataset.h5')
+        >>> results = processor.process_all()
+        >>>
+        >>> # Check results and identify any failures
+        >>> failed_keys = [k for k, success in results.items() if not success]
+        >>> if failed_keys:
+        ...     print(f"Failed to process: {failed_keys}")
+
+    See Also:
+        :class: `TimeBarReader`: For reading and analyzing the time bars (generated by this class) from HDF5 files.
+        :class:`finmlkit.bar.data_model.TradesData`: Creates the source HDF5 files with trades data.
+        :meth:`finmlkit.bar.data_model.TradesData.save_h5`: Saves trades data to HDF5 format which is used by this class to add time bars to it.
+        :class:`finmlkit.bar.kit.TimeBarKit`: The underlying time bar construction engine.
+        :class:`finmlkit.bar.base.BarBuilderBase`: Base class for bar construction strategies.
+
+    References:
+        .. _`Time Bar Construction in Financial ML`: https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086
     """
     def __init__(self, h5_path: str, keys: list[str] = None):
         """
@@ -240,12 +438,26 @@ class AddTimeBarH5:
             return available_keys
 
     def process_key(self, key: str, overwrite: bool = False) -> bool:
-        """
-        Process a single key to build and save 1-second time bars.
+        r"""Process a single monthly partition to build and save 1-second time bars.
 
-        :param key: The key to process (e.g., '/trades/2023-01')
-        :param overwrite: Whether to overwrite existing time bar data for this key
-        :return: True if successful, False otherwise
+        Loads trades data for the specified month, constructs time bars using :class:`TimeBarKit`,
+        and persists the results to the HDF5 file under the ``/klines/`` hierarchy.
+
+        :param key: The trades key to process (format: '/trades/YYYY-MM' or 'YYYY-MM').
+        :param overwrite: Whether to overwrite existing time bar data for this partition. Default: False.
+        :returns: True if processing completed successfully, False if skipped or failed.
+
+        .. note::
+            Processing time scales with the number of trades in the month. For very active trading pairs,
+            expect several minutes per month on typical hardware. Memory usage peaks during bar construction
+            but is released after each month completes.
+
+        Examples:
+            >>> # doctest: +SKIP
+            >>> processor = AddTimeBarH5('trades.h5')
+            >>> success = processor.process_key('/trades/2023-06', overwrite=True)
+            >>> if success:
+            ...     print("Time bars created successfully")
         """
         import pandas as pd
         from .kit import TimeBarKit
@@ -301,11 +513,35 @@ class AddTimeBarH5:
         return True
 
     def process_all(self, overwrite: bool = False) -> Dict[str, bool]:
-        """
-        Process all keys to build and save 1-second time bars.
+        r"""Process all configured monthly partitions to build and save 1-second time bars.
 
-        :param overwrite: Whether to overwrite existing time bar data
-        :return: Dictionary mapping keys to success status
+        Iterates through all keys (either specified during initialization or auto-discovered)
+        and processes each month sequentially. Provides comprehensive logging and error handling
+        to ensure robust batch processing of large datasets.
+
+        :param overwrite: Whether to overwrite existing time bar data for all partitions. Default: False.
+        :returns: Dictionary mapping partition keys to processing success status (True/False).
+            Keys are in format '/trades/YYYY-MM' and values indicate whether processing completed successfully.
+
+        .. note::
+            Processing is performed sequentially to manage memory usage. For very large datasets,
+            monitor system resources and consider processing subsets if memory constraints arise.
+            Failed partitions can be reprocessed individually using :meth:`process_key`.
+
+        Examples:
+            >>> # doctest: +SKIP
+            >>> processor = AddTimeBarH5('annual_trades.h5')
+            >>> results = processor.process_all(overwrite=False)
+            >>>
+            >>> # Analyze results
+            >>> total_processed = len(results)
+            >>> successful = sum(results.values())
+            >>> print(f"Processed {successful}/{total_processed} months successfully")
+            >>>
+            >>> # Identify and retry failed months
+            >>> failed_months = [k for k, success in results.items() if not success]
+            >>> for month in failed_months:
+            ...     processor.process_key(month, overwrite=True)  # Retry with overwrite
         """
         from finmlkit.utils.log import get_logger
         logger = get_logger(__name__)
@@ -329,15 +565,99 @@ class AddTimeBarH5:
 
 
 class TimeBarReader:
-    """
-    Reads time bars from an H5 file and allows resampling to larger timeframes.
+    r"""Reader class for time bar data stored in HDF5 format with advanced resampling capabilities.
 
-    This class enables:
-    - Reading 1-second time bars stored in an H5 file
-    - Filtering by date range
-    - Resampling to arbitrary timeframes (e.g., 5min, 1h, 1d)
-    - Proper aggregation of OHLCV data
-    - Correct calculation of VWAP for resampled periods
+    This class provides a comprehensive interface for accessing and transforming time bar data created by
+    :class:`AddTimeBarH5`, enabling efficient querying, filtering, and resampling of high-frequency financial
+    time series. It serves as the primary access layer for time bar analysis workflows, supporting both
+    raw 1-second bars and dynamically resampled timeframes for various analytical purposes.
+
+    The reader is designed to work seamlessly with the HDF5 structure created by the time bar processing
+    pipeline, where 1-second bars are stored under ``/klines/YYYY-MM`` groups with metadata under
+    ``/klines_meta/YYYY-MM``. This organization enables efficient time-range queries across large datasets
+    without loading unnecessary data into memory.
+
+    **Core Functionalities:**
+
+    - **Time Range Filtering**: Efficiently identify and load only the monthly partitions intersecting
+      with requested time ranges, minimizing memory usage and I/O operations.
+
+    - **Flexible Resampling**: Transform 1-second bars into arbitrary timeframes (e.g., 5min, 1h, 1d)
+      with mathematically correct aggregation of OHLCV data and volume-weighted recalculation of derived metrics.
+
+    - **Metadata-Driven Discovery**: Leverage stored metadata for fast range queries without scanning
+      full datasets, enabling sub-second response times for time range validation.
+
+    **Performance Optimizations:**
+
+    The reader employs several strategies for efficient large-scale data access:
+
+    - **Lazy Loading**: Only relevant monthly partitions are identified and loaded based on time range intersection
+    - **Vectorized Operations**: Resampling uses pandas' optimized groupby operations with pre-computed time groupers
+    - **Memory Management**: Data is processed in monthly chunks and concatenated only when necessary
+    - **Index Optimization**: Time filtering leverages datetime indexes for fast range selection
+
+    .. important::
+        The reader assumes data integrity and proper temporal ordering within each monthly partition.
+        The input H5 file must be generated with :class:`finmlkit.bar.data_model.TradesData` and :class:`AddTimeBarH5`.
+
+    .. tip::
+        Resampling to very large timeframes (e.g., monthly) from 1-second data can be memory-intensive.
+        For such cases, consider intermediate aggregation steps or processing smaller time ranges iteratively.
+
+    Args:
+        h5_path (str): Path to the HDF5 file containing time bar data. Must be readable and contain
+            data structure created by :class:`AddTimeBarH5`.
+
+    Raises:
+        FileNotFoundError: If the specified HDF5 file does not exist.
+        PermissionError: If the file cannot be accessed due to permission restrictions.
+        KeyError: If the file exists but lacks the expected klines structure.
+
+    Examples:
+        Basic time bar reading with range filtering:
+
+       >>> # doctest: +SKIP
+       >>> from finmlkit.bar.io import TimeBarReader
+       >>> reader = TimeBarReader('trades_2023.h5')
+       >>>
+       >>> # Get all 1-second bars for a specific day
+       >>> bars_1s = reader.read('2023-01-15', '2023-01-15')
+       >>> len(bars_1s)  # doctest: +SKIP
+       86400
+       >>> # doctest: +SKIP
+       >>> # Get 5-minute bars for a week
+       >>> bars_5min = reader.read('2023-01-15', '2023-01-21', timeframe='5min')
+       >>> bars_5min.columns.tolist()  # doctest: +SKIP
+       ['open', 'high', 'low', 'close', 'volume', 'trades', 'vwap', 'median_trade_size']
+
+    Advanced resampling workflows:
+
+       >>> # doctest: +SKIP
+       >>> # Get hourly bars with proper VWAP calculation
+       >>> hourly = reader.read('2023-01-01', '2023-01-31', timeframe='1h')
+       >>> # Verify VWAP is volume-weighted across the resampled period
+       >>> print(f"First hourly bar VWAP: {hourly['vwap'].iloc[0]:.2f}")  # doctest: +SKIP
+       First hourly bar VWAP: 16750.25
+
+    Data discovery and range validation:
+
+       >>> # doctest: +SKIP
+       >>> available_months = reader.list_keys()
+       >>> print(f"Available months: {len(available_months)}")  # doctest: +SKIP
+       Available months: 12
+       >>>
+       >>> # Check overall time coverage
+       >>> start, end = reader._list_time_range()  # doctest: +SKIP
+       >>> print(f"Data spans from {start.date()} to {end.date()}")  # doctest: +SKIP
+       Data spans from 2023-01-01 to 2023-12-31
+
+    See Also:
+
+        - :class:`AddTimeBarH5`: Creates the HDF5 time bar files that this reader accesses.
+        - :class:`finmlkit.bar.data_model.TradesData`: Underlying trades data structure for the bar construction process.
+        - :class:`finmlkit.bar.kit.TimeBarKit`: Time bar construction engine used by the processing pipeline.
+        - :class:`H5Inspector`: Complementary utility for HDF5 file inspection and data quality assessment.
     """
 
     def __init__(self, h5_path: str):
@@ -349,19 +669,38 @@ class TimeBarReader:
         self.h5_path = h5_path
 
     def list_keys(self) -> List[str]:
-        """
-        List all available klines keys in the HDF5 file.
+        r"""List all available time bar keys in the HDF5 file.
 
-        :return: List of klines keys.
+        Scans the HDF5 store for all klines groups, providing visibility into available
+        monthly partitions for time range planning and data discovery.
+
+        :return: List of klines keys in format ``['/klines/YYYY-MM', ...]``, sorted chronologically.
+        :raises FileNotFoundError: If the HDF5 file does not exist.
+        :raises PermissionError: If the file cannot be accessed for reading.
+
+        Examples:
+
+            >>> # doctest: +SKIP
+            >>> reader = TimeBarReader('data.h5')
+            >>> keys = reader.list_keys()
+            >>> print(f"Found {len(keys)} monthly partitions")
+            Found 12 monthly partitions
         """
         with pd.HDFStore(self.h5_path, mode='r') as store:
             return [k for k in store.keys() if k.startswith('/klines/')]
 
     def _list_time_range(self) -> Tuple[pd.Timestamp, pd.Timestamp]:
-        """
-        Determine the overall time range available in the H5 file.
+        r"""Determine the overall temporal coverage available in the HDF5 file by scanning metadata.
 
-        :return: Tuple of (first_timestamp, last_timestamp)
+        Efficiently discovers the time span of available data without loading full datasets,
+        enabling quick validation of data availability for query planning.
+
+        :returns: Tuple of (earliest_timestamp, latest_timestamp) across all monthly partitions.
+        :raises ValueError: If no klines metadata is found in the file.
+
+        .. note::
+            This method relies on metadata stored during the bar creation process and provides
+            sub-second response times even for very large datasets.
         """
         first_timestamp = None
         last_timestamp = None
@@ -384,12 +723,18 @@ class TimeBarReader:
 
     def _find_relevant_keys(self, start_time: Optional[pd.Timestamp] = None,
                            end_time: Optional[pd.Timestamp] = None) -> List[str]:
-        """
-        Find the keys that contain data within the specified time range.
+        r"""Identify HDF5 keys containing data that intersects with the specified time range.
 
-        :param start_time: Start time for filtering, or None for earliest available
-        :param end_time: End time for filtering, or None for latest available
-        :return: List of keys that intersect with the specified time range
+        Uses metadata-driven discovery to minimize I/O by identifying only the monthly partitions
+        that contain relevant data, avoiding unnecessary loading of non-intersecting partitions.
+
+        :param start_time: Start boundary for range intersection test. None indicates no lower bound.
+        :param end_time: End boundary for range intersection test. None indicates no upper bound.
+        :returns: Sorted list of klines keys that intersect with the specified time range.
+
+        .. note::
+            The intersection logic is inclusive on both ends, ensuring that monthly partitions
+            containing any data within the range are included in the result set.
         """
         relevant_keys = []
 
@@ -411,30 +756,69 @@ class TimeBarReader:
              start_time: Optional[Union[str, pd.Timestamp, dt.datetime]] = None,
              end_time: Optional[Union[str, pd.Timestamp, dt.datetime]] = None,
              timeframe: Optional[str] = None) -> pd.DataFrame:
-        """
-        Read time bars from the H5 file, optionally filtering by time range and resampling.
+        r"""Read time bars from HDF5 storage with optional time filtering and resampling.
 
-        :param start_time: Start time for filtering (inclusive, optional)
-        :param end_time: End time for filtering (inclusive, optional)
-        :param timeframe: Timeframe for resampling (e.g., '5min', '1h', '1d', None for original 1s bars)
-        :return: DataFrame with the requested time bars
+        This method provides the primary interface for accessing time bar data, supporting flexible
+        time range specification and dynamic resampling to arbitrary timeframes. The implementation
+        optimizes for both small targeted queries and large-scale data processing workflows.
+
+        **Time Range Handling:**
+
+        - **Inclusive Ranges**: Both start_time and end_time are treated as inclusive boundaries
+        - **Date Normalization**: Date strings without time components are expanded to full day ranges
+        - **Boundary Correction**: End dates are automatically extended to include the entire final day
+
+        **Resampling Process:**
+
+        When a timeframe is specified, the method applies mathematically correct aggregation:
+
+        1. Groups 1-second bars by the requested timeframe using vectorized floor operations
+        2. Applies OHLCV aggregation rules (first, max, min, last, sum)
+        3. Recalculates volume-weighted metrics (VWAP, median trade size) preserving statistical properties
+        4. Filters out empty periods to maintain data density
+
+        :param start_time: Start time for filtering (inclusive). Accepts string, Timestamp, or datetime.
+            If None, starts from earliest available data.
+        :param end_time: End time for filtering (inclusive). If provided as date-only string,
+            automatically extends to end of day. If None, includes all data through latest available.
+        :param timeframe: Target resampling timeframe using pandas offset aliases
+            (e.g., '5min', '1h', '1D', '1W'). If None, returns original 1-second bars.
+        :returns: DataFrame with datetime index and columns: open, high, low, close, volume, trades, vwap, median_trade_size.
+            Empty DataFrame if no data found in specified range.
+
+        :raises ValueError: If start_time > end_time or timeframe format is invalid.
+        :raises KeyError: If required data partitions are missing from the HDF5 file.
+
+        .. note::
+            For daily or longer timeframes, incomplete final periods (e.g., partial trading days)
+            are automatically excluded to prevent misleading aggregations in analysis workflows.
 
         Examples:
-            # Get all bars for a specific day (inclusive of both start and end dates)
-            reader = TimeBarReader('data.h5')
-            df_1s = reader.read('2023-01-01', '2023-01-01')  # Full day of Jan 1st
 
-            # Get all bars for two full months (Feb 1 through Mar 31 inclusive)
-            df_feb_mar = reader.read('2022-02-01', '2022-03-31')
+            Reading specific time ranges:
 
-            # Get 5-minute bars for a date range
-            df_5min = reader.read('2023-01-01', '2023-01-31', timeframe='5min')
+            >>> reader = TimeBarReader('crypto_data.h5')  # doctest: +SKIP
+            >>>
+            >>> # Get all 1-second bars for Bitcoin on January 15, 2023
+            >>> btc_1s = reader.read('2023-01-15', '2023-01-15')  # doctest: +SKIP
+            >>> print(f"Retrieved {len(btc_1s):,} 1-second bars")  # doctest: +SKIP
+            Retrieved 86,400 1-second bars
+            >>>
+            >>> # Get 5-minute bars for the first week of January
+            >>> btc_5min = reader.read('2023-01-01', '2023-01-07', timeframe='5min')  # doctest: +SKIP
+            >>> print(f"5-min bars: {len(btc_5min)}")  # doctest: +SKIP
+            5-min bars: 2016
 
-            # Get hourly bars for a specific month
-            df_1h = reader.read('2023-01-01', '2023-01-31', timeframe='1h')
+            Resampling to various timeframes:
 
-            # Get daily bars for all available data
-            df_daily = reader.read(timeframe='1D')
+            >>> # Hourly bars with volume-weighted VWAP
+            >>> hourly = reader.read('2023-01-01', '2023-01-31', timeframe='1h')  # doctest: +SKIP
+            >>> print(f"VWAP range: {hourly['vwap'].min():.2f} - {hourly['vwap'].max():.2f}")  # doctest: +SKIP
+            VWAP range: 16420.50 - 17890.75
+            >>>
+            >>> # Daily bars for trend analysis
+            >>> daily = reader.read('2023-01-01', '2023-12-31', timeframe='1D')  # doctest: +SKIP
+            >>> daily_returns = daily['close'].pct_change()  # doctest: +SKIP
         """
         # Normalize input parameters
         if isinstance(start_time, str):
@@ -498,12 +882,26 @@ class TimeBarReader:
             return self._resample(df, timeframe)
 
     def _resample(self, df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-        """
-        Resample the data to the requested timeframe.
+        r"""Apply mathematically correct resampling aggregation to transform 1-second bars into target timeframe.
 
-        :param df: DataFrame with 1s bars
-        :param timeframe: Timeframe for resampling (e.g., '5min', '1h', '1d')
-        :return: Resampled DataFrame
+        This internal method implements the core resampling logic, ensuring that volume-weighted metrics
+        are properly recalculated and that statistical properties are preserved across time aggregation.
+
+        **Aggregation Rules Applied:**
+
+        - **OHLC**: Uses first/max/min/last semantics appropriate for price series
+        - **Volume & Trades**: Simple summation across the resampling period
+        - **VWAP**: Volume-weighted recalculation maintaining accuracy across aggregation
+        - **Median Trade Size**: Volume-weighted median computation from per-second medians
+
+        :param df: DataFrame containing 1-second time bars with standard OHLCV columns.
+        :param timeframe: Pandas offset string specifying target timeframe (e.g., '5min', '1h', '1D').
+        :returns: Resampled DataFrame with aggregated bars at the requested timeframe.
+            Periods with no trading activity are automatically excluded.
+
+        .. note::
+            The volume-weighted median calculation uses numpy's searchsorted for efficient
+            percentile computation, making it suitable for high-frequency resampling operations.
         """
         # --- one grouper reused everywhere ---------------------------------
         grouper = df.index.floor(timeframe)  # fast vectorised

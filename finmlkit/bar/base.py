@@ -14,7 +14,7 @@ from numpy.typing import NDArray
 import io
 
 from .data_model import FootprintData
-from .utils import comp_price_tick_size, comp_trade_side
+from .utils import comp_price_tick_size
 from .data_model import TradesData
 
 from finmlkit.utils.log import get_logger
@@ -22,16 +22,51 @@ logger = get_logger(__name__)
 
 
 class BarBuilderBase(ABC):
-    """
-    This class provides a template for generating bar from raw trades data.
+    r"""Abstract base class for building various types of bars (e.g., time, tick, volume, or information based bars) from raw trades data.
+    This class serves as a template for subclasses that implement specific bar sampling strategies, enabling the transformation
+    of high-frequency trade data into structured bar features suitable for financial analysis and machine learning.
+
+    In financial machine learning, raw trade data (ticks) is often aggregated into bars to reduce noise, capture market dynamics,
+    and create features for modeling. This builder computes standard OHLCV (Open, High, Low, Close, Volume) bars, directional features
+    (e.g., buy/sell volumes), trade size metrics, and footprint data (order flow imbalances at price levels). It is inspired by
+    techniques from Marcos López de Prado's work on sampling methods to address issues like uneven information arrival rates
+    in high-frequency trading data.
+
+    Subclasses must implement the abstract method :meth:`_comp_bar_close` to define how bar close timestamps and indices are determined
+    (e.g., based on time intervals, tick counts, or volume thresholds). The builder uses these indices to aggregate trades efficiently
+    via Numba and Pandas, ensuring performance for large datasets.
+
+    Key functionalities include:
+
+    - :meth:`build_ohlcv`: Computes OHLCV, VWAP (Volume-Weighted Average Price), trade count, and median trade size.
+    - :meth:`build_directional_features`: Calculates buy/sell splits for ticks, volume, dollar value, spreads, and cumulative metrics,
+      revealing order flow directionality and market pressure.
+    - :meth:`build_trade_size_features`: Analyzes relative trade sizes, 95th percentile sizes, block trade percentages, and Gini coefficients
+        for trade size distribution, useful for detecting large orders or market concentration.
+    - :meth:`build_footprints`: Generates detailed footprint data, discretizing price levels to compute volumes, ticks, imbalances,
+      and metrics like volume profile skew and Gini, aiding in order flow and volume profile analysis.
+
+
+    Args:
+        trades (TradesData): Object containing raw trades DataFrame with columns 'timestamp', 'price', and 'amount'.
+            TradesData ensures the data is preprocessed and ready for bar construction.
+
+    Raises:
+        ValueError: If required columns are missing from trades data or if data is not properly formatted.
+
+    See Also:
+        :class:`finmlkit.bar.kit.TimeBarKit`: A concrete subclass for fixed-time interval bars.
+
+        :class:`finmlkit.bar.kit.TickBarKit`: For bars based on tick counts.
+
+        :class:`finmlkit.bar.kit.VolumeBarKit`: For volume-threshold bars.
     """
 
-    def __init__(self,trades: TradesData):
+    def __init__(self, trades: TradesData):
         """
         Initialize the bar builder with raw trades data.
 
-        :param trades: DataFrame containing raw trades data containing 'timestamp'/'time', 'price', and 'amount'/'qty'.
-            If 'is_buyer_maker' is present, it indicates the trade side otherwise it is inferred.
+        :param trades: TradesData object containing raw trades DataFrame with columns 'timestamp', 'price', and 'amount'.
         """
         self.trades_df = trades.data
 
@@ -44,7 +79,7 @@ class BarBuilderBase(ABC):
         members = "\n".join(f"{k}: {v}" for k, v in self.__dict__.items())
         buf = io.StringIO()
         try:
-            self.trades_df.info(buf=buf)  # capture, don't print; .info() returns None
+            self.trades_df.info(buf=buf)
             info = buf.getvalue()
         except Exception:
             info = "<unavailable>"

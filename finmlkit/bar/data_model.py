@@ -18,12 +18,104 @@ logger = get_logger(__name__)
 
 
 class TradesData:
-    """
-    Class to preprocess trades data for bar building.
+    r"""Preprocessor class for raw trades data, designed for efficient bar building and financial analysis.
 
-    This class handles standardization of column names, timestamp conversion,
-    trade merging, and side inference for consistent processing across different
-    data sources.
+    This class handles standardization of column names, timestamp conversion, trade merging, side inference,
+    and data validation for consistent processing across different data sources. It serves as the primary
+    data preparation component for high-frequency trading analysis and bar construction workflows.
+
+    In high-frequency trading data, raw trades often come in various formats with inconsistent timestamps,
+    split trades at the same price level, missing side information, and data integrity issues. This class
+    addresses these challenges by providing a robust preprocessing pipeline that:
+
+    - **Normalizes timestamps** to nanosecond precision for consistent temporal analysis
+    - **Merges split trades** that occur at identical timestamps and price levels to reduce noise
+    - **Infers trade sides** (buyer/seller initiated) when not explicitly provided
+    - **Validates data integrity** by detecting trade ID discontinuities and temporal inconsistencies
+    - **Provides efficient storage** via compressed HDF5 format with monthly partitioning
+    - **Enables time-slice queries** with multiprocessing support for large datasets
+
+    The preprocessing pipeline follows these steps when ``preprocess=True``:
+
+    1. **Timestamp Conversion**: Convert to nanosecond precision from various units (s, ms, μs, ns)
+    2. **Data Sorting**: Sort by trade ID first to detect gaps, then by timestamp for chronological order
+    3. **Trade Merging**: Aggregate trades with identical timestamps and prices.
+
+    4. **Resolution Processing**: Optionally round timestamps to specified resolution (e.g., millisecond)
+    5. **Side Inference**: Determine trade direction from price movements when side data is unavailable
+
+    The class supports **monthly HDF5 partitioning** for efficient storage and retrieval of large datasets.
+    Each month's data is stored under ``/trades/YYYY-MM`` with accompanying metadata for fast range queries.
+    This approach enables handling multi-terabyte datasets while maintaining query performance.
+
+    **Data Integrity Monitoring**: The class tracks discontinuities in trade IDs and timestamps, computing
+    missing data percentages and flagging potential data quality issues. This is crucial for ensuring
+    reliable downstream analysis.
+
+    .. tip::
+        For optimal performance with large datasets (>10Gb trades), enable preprocessing and use HDF5 storage
+        with compression. The class automatically handles memory-efficient processing via chunking and
+        can leverage multiprocessing for data loading operations.
+
+    .. note::
+        Trade side inference uses price tick rule and other heuristics when explicit side information
+        is unavailable. For critical applications, prefer data sources with explicit buyer/seller flags.
+
+    Args:
+        ts (NDArray): Array of timestamps in various units (s, ms, μs, ns). Must be numeric and monotonic.
+        px (NDArray): Array of trade prices as floating-point values.
+        qty (NDArray): Array of trade quantities/amounts as floating-point values.
+        id (NDArray, optional): Array of unique trade identifiers for data validation. Required if ``preprocess=True``.
+        is_buyer_maker (NDArray, optional): Boolean array indicating buyer-maker status (True if buyer is maker).
+            If provided, used for accurate side determination.
+        side (NDArray, optional): Pre-computed trade side array (-1: sell, 1: buy). Used when loading from HDF5.
+        dt_index (pd.DatetimeIndex, optional): Pre-computed datetime index. If None, created from timestamps.
+        timestamp_unit (str, optional): Explicit timestamp unit ('s', 'ms', 'us', 'ns'). Auto-inferred if None.
+        preprocess (bool, optional): Enable full preprocessing pipeline. Default: False.
+        proc_res (str, optional): Target timestamp resolution for rounding ('ms', 'us'). Default: None (no rounding).
+        name (str, optional): Instance name for logging purposes. Default: None.
+
+    Raises:
+        TypeError: If input arrays are not numpy ndarrays or have incompatible types.
+        ValueError: If required columns are missing, timestamp format is invalid, or preprocessing fails.
+
+    Examples:
+        Basic usage with preprocessing:
+
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from finmlkit.bar.data_model import TradesData
+        >>> # Raw trades data
+        >>> timestamps = np.array([1609459200000, 1609459201000, 1609459202000])  # ms
+        >>> prices = np.array([100.0, 100.5, 99.8])
+        >>> quantities = np.array([1.5, 2.0, 0.8])
+        >>> trade_ids = np.array([1001, 1002, 1003])
+        >>>
+        >>> # Create TradesData with preprocessing
+        >>> trades = TradesData(timestamps, prices, quantities, trade_ids,
+        ...                     timestamp_unit='ms', preprocess=True, name='BTCUSD')
+        >>> print(f"Processed {len(trades.data)} trades")
+        Processed 3 trades
+
+        Loading from HDF5 with time filtering:
+
+        >>> # doctest: +SKIP
+        >>> # Load specific time range with multiprocessing
+        >>> trades = TradesData.load_trades_h5('trades.h5',
+        ...                                     start_time='2021-01-01',
+        ...                                     end_time='2021-01-31',
+        ...                                     enable_multiprocessing=True)
+        >>> trades.set_view_range('2021-01-15', '2021-01-20')
+        >>> subset = trades.data  # Only data in view range
+
+    See Also:
+        :class:`finmlkit.bar.base.BarBuilderBase`: Uses TradesData for constructing various bar types.
+        :func:`finmlkit.bar.utils.merge_split_trades`: Core function for trade aggregation.
+        :func:`finmlkit.bar.utils.comp_trade_side_vector`: Trade side inference algorithm.
+
+    References:
+        .. _`HDF5 for High-Frequency Trading`: https://www.hdfgroup.org/
+        .. _`Market Microstructure in Practice`: https://www.cambridge.org/core/books/market-microstructure-in-practice/
     """
 
     def __init__(self,
@@ -118,11 +210,11 @@ class TradesData:
         return self._end_date
 
     def set_view_range(self, start: pd.Timestamp|str, end: pd.Timestamp|str):
-        """
-        Set the view range for the trades data.
-        :param start: Start timestamp for the view range.
-        :param end: End timestamp for the view range.
-        :return: None
+        r"""Set the active view range for data access, enabling efficient time-slice analysis.
+
+        :param start: Start timestamp for the view range. Accepts string or pd.Timestamp.
+        :param end: End timestamp for the view range. Accepts string or pd.Timestamp.
+        :raises ValueError: If start timestamp is not before end pd.timestamp.
         """
         if isinstance(start, str):
             start = pd.Timestamp(start)
@@ -138,10 +230,12 @@ class TradesData:
 
     @property
     def data(self) -> pd.DataFrame:
-        """
-        Get the processed trades data as a DataFrame corresponding to the active view range.
+        r"""Get the processed trades data as a DataFrame, respecting the active view range.
 
-        :return: DataFrame containing trades data.
+        Returns the full dataset if no view range is set, or a time-filtered subset otherwise.
+        The DataFrame includes columns: timestamp, price, amount, and optionally side.
+
+        :return: DataFrame containing trades data with datetime index.
         """
         if self._start_date is None and self._end_date is None:
             return self._data
@@ -334,23 +428,20 @@ class TradesData:
             chunksize: int = 1_000_000,
             overwrite_month: bool = True,
     ) -> str:
-        """
-        Persist the raw trades to an on-disk HDF5 store.
-        The data of **each calendar month** lives under ``/trades/YYYY-MM`` in the file.
+        r"""Persist trades data to HDF5 format with monthly partitioning and compression.
 
-        - When adding new monthly data, it will be stored in a new group.
-        - When adding data for an existing month, you can either append to it or overwrite it with confirmation.
+        Stores data under ``/trades/YYYY-MM`` groups for efficient range queries. Each month
+        includes metadata for fast discovery and data integrity information when available.
 
-        :param filepath: Destination `.h5` file. The parent directories are created automatically when missing.
-        :param month_key: Override the key of the form ``"YYYY-MM"``. When ``None`` the key is derived from the first timestamp of ``self.data``.
-        :param complib: Compression backend used by PyTables. Default is ``blosc:zstd``.
-        :param complevel: Compression level. Default is 5.
-        :param mode: File mode – ``"a"`` to create or append, ``"w"`` to start fresh. Default is ``"a"``.
-        :param chunksize: Row chunk size used by PyTables when writing large frames. Default is 1000000.
-        :param overwrite_month: If True and the month data exists, prompts for confirmation to overwrite. Default is True.
-
-        :returns: The full key used inside the store, e.g. ``"/trades/2025-02"``.
-        :raises: ValueError if user declines to overwrite existing data.
+        :param filepath: Destination HDF5 file path. Parent directories created automatically.
+        :param month_key: Override automatic monthly key derivation (format: "YYYY-MM").
+        :param complib: Compression library ("blosc:lz4", "blosc:zstd", "zlib"). Default: "blosc:lz4".
+        :param complevel: Compression level (0-9). Higher values increase compression ratio. Default: 1.
+        :param mode: File access mode ("a" for append, "w" for overwrite). Default: "a".
+        :param chunksize: Row chunk size for writing large datasets. Default: 1,000,000.
+        :param overwrite_month: Prompt for confirmation when overwriting existing monthly data. Default: True.
+        :returns: Full HDF5 key path used for storage (e.g., "/trades/2021-03").
+        :raises ValueError: If user declines to overwrite existing data or if data format is invalid.
         """
         # ------------------------------------------------------------------
         #  Derive the monthly key and ensure output path exists
@@ -517,24 +608,41 @@ class TradesData:
         enable_multiprocessing: bool = True,
         min_groups_for_mp: int = 2,
     ) -> "TradesData":
-        """
-        Load trades from *filepath* with optional multiprocessing support.
+        r"""Load trades from HDF5 storage with optional multiprocessing and time filtering.
 
-        Three usage modes exist:
+        Supports three loading modes:
 
-        1. ``key`` only – load the full monthly partition ``/trades/<key>``.
-        2. ``start_time`` / ``end_time`` – assemble the minimal set of monthly
-           groups touching the range, slice **at read time** for maximum speed.
-        3. Combination – constrain selection *within* the chosen "key".
+            1. **Single month**: Load specific monthly partition using ``key`` parameter
+            2. **Time range**: Auto-discover monthly groups intersecting ``[start_time, end_time]``
+            3. **Filtered month**: Combine ``key`` with time range for constrained loading
 
-        :param filepath: Path to the HDF5 file.
-        :param key: Optional specific monthly key to load (e.g., "2025-03").
-        :param start_time: Optional start time for filtering.
-        :param end_time: Optional end time for filtering.
+        Multiprocessing is automatically enabled for loading multiple monthly groups,
+        significantly improving performance for large time ranges.
+
+        :param filepath: Path to HDF5 file containing trades data.
+        :param key: Specific monthly key to load (e.g., "2021-03"). If None, uses time range discovery.
+        :param start_time: Start time for filtering (string or Timestamp). None for no start limit.
+        :param end_time: End time for filtering (string or Timestamp). None for no end limit.
         :param n_workers: Number of worker processes. If None, uses CPU count - 1.
-        :param enable_multiprocessing: Whether to use multiprocessing when loading multiple groups.
-        :param min_groups_for_mp: Minimum number of groups required to enable multiprocessing.
-        :return: TradesData instance with loaded data.
+        :param enable_multiprocessing: Enable parallel loading for multiple groups. Default: True.
+        :param min_groups_for_mp: Minimum groups required to trigger multiprocessing. Default: 2.
+        :returns: TradesData instance with loaded and concatenated data.
+        :raises KeyError: If specified key doesn't exist or no groups match the time range.
+        :raises ValueError: If no data is successfully loaded from any group.
+
+        Examples:
+            Load specific month:
+
+            >>> # doctest: +SKIP
+            >>> trades = TradesData.load_trades_h5('data.h5', key='2021-03')
+
+            Load time range with multiprocessing:
+
+            >>> # doctest: +SKIP
+            >>> trades = TradesData.load_trades_h5('data.h5',
+            ...                                     start_time='2021-01-01',
+            ...                                     end_time='2021-12-31',
+            ...                                     n_workers=4)
         """
         # ------------------------------------------------------------------
         #  Normalise temporal boundaries

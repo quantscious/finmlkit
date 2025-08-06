@@ -30,6 +30,13 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.todo',
               'sphinx.ext.graphviz']
 
+# Configure doctest to show output
+doctest_show_output = True
+doctest_global_setup = '''
+import numpy as np
+import pandas as pd
+'''
+
 # Autodoc / autosummary quality-of-life
 autosummary_generate = False
 # autodoc_typehints = 'description'     # cleaner type hints in text
@@ -38,6 +45,8 @@ autodoc_default_options = {
     'undoc-members': False,
     'show-inheritance': True,
     'ignore-module-all': True,
+    'private-members': True,
+    'special-members': '__init__'
 }
 
 # Napoleon (docstring style)
