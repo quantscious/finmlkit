@@ -37,7 +37,7 @@ pip install .
 See the [examples directory](https://github.com/quantscious/finmlkit/tree/main/examples) to learn about the practical usage of the library. How to process trades data and build bars, features, and labels for machine learning models.
 
 ## 📖 Documentation
-The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/).
+The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/en/latest/).
 
 ## 🪵 Logger Configuration
 By default, logging is directed to the console at `INFO` level, but you can change this and also enable file-based logging by setting the appropriate environment variables.
@@ -149,7 +149,7 @@ By ensuring that the algorithms are well-documented, with clear references to th
 
 
 # 📚 Documentation
-**FinMLKit** is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses `reStructured` style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses `Sphinx` to generate the documentation and automatically deploy it to [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/). This way, users can access the documentation online and easily navigate through the library's features and functionalities. This framework also enables the creation of tutorials or in-depth descriptions of the methods.
+**FinMLKit** is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses `reStructured` style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses `Sphinx` to generate the documentation and automatically deploy it to [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/en/latest/). This way, users can access the documentation online and easily navigate through the library's features and functionalities. This framework also enables the creation of tutorials or in-depth descriptions of the methods.
 
 # 🤝 Contribution
 We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, 
