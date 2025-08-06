@@ -13,7 +13,7 @@ from finmlkit._version import __version__        # no try/except needed
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'FinMLKit'
-copyright = '2025, FinMLKit Developers'
+copyright = '2025, FinMLKit'
 author = 'Dániel Terbe'
 release = __version__
 
@@ -25,7 +25,10 @@ extensions = ['sphinx.ext.autodoc',
               'sphinx.ext.napoleon',
               'sphinx.ext.viewcode',
               'sphinx.ext.autosummary',
-              'sphinx.ext.doctest']
+              'sphinx.ext.doctest',
+              'sphinx.ext.intersphinx',
+              'sphinx.ext.todo',
+              'sphinx.ext.graphviz']
 
 # Autodoc / autosummary quality-of-life
 autosummary_generate = False

@@ -54,9 +54,11 @@ class TBMLabel:
         0, & \text{if vertical barrier touched first}
         \end{cases}
 
-    .. note::
-        In this implementation we are constructing binary labels: either +1 or -1 for side prediction as recommended in
-        `Advances in Financial Machine Learning`_.
+    .. important::
+        In this implementation, we are constructing binary labels: either +1 or -1 for side prediction as recommended in
+        Advances in Financial Machine Learning. We introduce "vertical_touch_weights" to decrease the weights of misleading labels associated with a vertical barrier touch.
+        Consider the following scenario: vertical barrier is hit slightly **above**/below the initial price resulting in **1**/-1 label,
+        but the price path was very close to the **lower**/upper barrier (almost hit it). If the ML model predicted **-1**/1 for this event, we don't want to heavily punish it.
 
     In meta-labeling, the label is modulated by the primary side :math:`s \in \{-1, 1\}`:
 
@@ -74,19 +76,10 @@ class TBMLabel:
         This implementation supports computation of sample weights via the related :class:`SampleWeights` class.
         After labeling, use :meth:`compute_weights` to calculate information-driven weights, including:
 
-        - **Label concurrency**: Measures overlap of event durations. High concurrency indicates crowded trades.
-          The average uniqueness :math:`u_i` for event :math:`i` is:
-
-          .. math::
-              u_i = \frac{1}{\sum_{j} \mathbb{I}(overlap_{i,j})}
-
+        - **Label concurrency**: Measures overlap of event durations.
         - **Return attribution**: Attributes returns to overlapping events proportionally to their uniqueness.
-          For event :math:`i` with return :math:`r_i` and concurrency :math:`c_i`:
 
-          .. math::
-              a_i = \frac{r_i}{c_i} \cdot u_i
-
-        These can be combined with time decay and class balancing for final sample weights in model training.
+        These can be combined with time decay and class balancing for final sample weights in model training using :meth:`SampleWeights.compute_final_weights`.
 
     .. _`Advances in Financial Machine Learning`: https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086
 
