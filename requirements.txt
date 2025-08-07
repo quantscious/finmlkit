@@ -1,8 +1,7 @@
 numpy~=2.2.0
-scipy>=1.16.1,<2.0
+scipy>=1.10.0,<2.0
 numba~=0.61.2
 pandas~=2.2.3
-pytest~=8.3.3
 python-dotenv~=1.0.1
 pympler~=1.1
 tables~=3.10.2
