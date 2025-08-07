@@ -3,7 +3,7 @@
 Testing is done using the `pytest` framework. 
 
 > [!CAUTION]
-> Note that **testing numba function** are often **tricky and challenging**. I recommend to first disable jit and debug the code in pure python. If that passes, then re-enable jit and run the tests again. Both ways should pass.
+> Note that **testing numba function** are often **tricky and challenging**. I recommend to first disable jit and debug the code in pure python. If that passes, then re-enable jit and run the tests again. Both ways should pass. 
 
 You can disable jit by setting the environment variable `NUMBA_DISABLE_JIT=1`.
 ```python test_my_testfile.py
