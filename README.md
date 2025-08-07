@@ -67,7 +67,7 @@ Key principles are **Simplicity**, **Speed**, and **Accessibility** (SSA):
 Many existing pipelines still rely on outdated conventions like time bars, fixed-window labels, and oversimplified features—not because they are optimal, but because better alternatives are often harder to implement and scale. 
 FinMLKit addresses this gap by providing a research-grade foundation for working directly with raw trade data, including information-driven bar types, path-aware labeling with the Triple Barrier Method, microstructure features like volume profiles and footprints, and sample weighting for overlapping events—all powered by high-performance, Numba-accelerated internals.
 
-This project aims not only to offer tools, but to foster collaboration. By open-sourcing the core infrastructure, we invite contributors to improve, extend, and build on a shared foundation—raising the methodological standard across both academia and industry. FinMLKit is structured to support reproducible research, with clean APIs, modular design, and citable releases (see citation info at the bottom). 
+This project aims not only to offer tools, but to foster collaboration. By open-sourcing the core infrastructure, we invite contributors to improve, extend, and build on a shared foundation—raising the methodological standard across both academia and industry. FinMLKit is structured to support **reproducible research**, with clean APIs, modular design, and **citable releases** (see citation info at the bottom). 
 Our vision is to **democratize access to advanced techniques**, make rigorous pipelines more practical, and accelerate the adoption of robust, transparent practices in financial ML.
 
 
