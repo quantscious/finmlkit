@@ -4,18 +4,17 @@
 [![Python Versions](https://img.shields.io/pypi/pyversions/finmlkit.svg)](https://pypi.python.org/pypi/finmlkit)
 [![Platforms](https://img.shields.io/badge/Platforms-linux--64,win--64,osx--64-orange.svg?style=flat-square)](https://pypi.python.org/pypi/finmlkit)
 [![PyPI Version](https://img.shields.io/pypi/v/finmlkit.svg)](https://pypi.python.org/pypi/finmlkit)
-[![MIT License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://pypi.python.org/pypi/finmlkit)
-[![DOI](https://zenodo.org/badge/867537116.svg)](https://doi.org/10.5281/zenodo.16731879)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/quantscious/finmlkit/deploy.yml)](https://github.com/quantscious/finmlkit)
 [![Documentation Status](https://readthedocs.org/projects/finmlkit/badge/?version=latest)](https://finmlkit.readthedocs.io/en/latest/?version=latest)
+[![codecov](https://codecov.io/gh/quantscious/finmlkit/graph/badge.svg?token=2H6VR817RB)](https://codecov.io/gh/quantscious/finmlkit)
 [![Total Downloads](https://static.pepy.tech/badge/finmlkit)](https://pepy.tech/project/finmlkit)
 [![GitHub Stars](https://img.shields.io/github/stars/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/network)
 [![GitHub Issues](https://img.shields.io/github/issues/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/quantscious/finmlkit.svg)](https://github.com/quantscious/finmlkit/commits/main)
 ![Contributions](https://img.shields.io/badge/Contributions-Welcome-ff69b4)
-
-[//]: # ([![Coverage]&#40;https://codecov.io/github/quantscious/finmlkit/coverage.svg?branch=main&#41;]&#40;https://codecov.io/github/quantscious/finmlkit&#41; )
+[![MIT License](https://img.shields.io/badge/license-MIT-brightgreen.svg)](https://pypi.python.org/pypi/finmlkit)
+[![DOI](https://zenodo.org/badge/867537116.svg)](https://doi.org/10.5281/zenodo.16731879)
 
 **FinMLKit** is an open-source, lightweight **financial machine learning library** designed to be simple, blazing fast, and easy to contribute to. Whether you’re a seasoned quant or a beginner in finance and programming, FinMLKit welcomes contributions from everyone.
  
