@@ -26,11 +26,20 @@ setup(
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="Dániel Terbe",
+    author_email="dainel@terbe.dev",
     url="https://github.com/quantscious/finmlkit",
     license="MIT",
     packages=find_packages(exclude=("tests", "docs")),
     python_requires=">=3.9",
     install_requires=requirements,
+    extras_require={
+        "dev": [
+            "pytest>=8.0",
+            "pytest-cov>=6.0",
+            "flake8",
+            "black",
+        ]
+    },
     include_package_data=True,
     classifiers=[
         "Programming Language :: Python :: 3",

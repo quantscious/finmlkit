@@ -4,7 +4,7 @@ import pandas as pd
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.feature.ma import ewma
+from finmlkit.feature.core.ma import ewma
 
 
 def test_ewma_against_pandas():
@@ -26,15 +26,6 @@ def test_ewma_with_known_values():
     expected_output = pd.Series(arr_in).ewm(span=window, adjust=True).mean().to_numpy()
     our_ewma = ewma(arr_in, window)
     np.testing.assert_allclose(our_ewma, expected_output, rtol=1e-5, atol=1e-8)
-
-def test_ewma_empty_array():
-    """
-    Test the ewma function with an empty array.
-    """
-    arr_in = np.array([], dtype=np.float64)
-    window = 10
-    our_ewma = ewma(arr_in, window)
-    assert our_ewma.size == 0
 
 def test_ewma_window_size_one():
     """

@@ -10,3 +10,5 @@ finmlkit.egg-info
 build/
 dist/
 *.egg-info/
+.coverage
+coverage.xml

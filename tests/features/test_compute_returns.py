@@ -4,18 +4,18 @@ import pytest
 import os
 #os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 
-from finmlkit.feature.utils import comp_lagged_returns
+from finmlkit.feature.core.utils import comp_lagged_returns
 from numpy.testing import assert_allclose
 
 
 def generate_sample_data():
     # Generate a datetime index
-    dates = pd.date_range(start='2021-01-01', periods=100, freq='T')  # 1-minute intervals
+    dates = pd.date_range(start='2021-01-01', periods=100, freq='min')  # 1-minute intervals
     n = len(dates)
 
     # Generate synthetic closing prices
     np.random.seed(42)
-    prices = np.cumsum(np.random.randn(n)) + 100  # Random walk starting from 100
+    prices = np.cumsum(np.random.randn(n)) + 1000  # Random walk starting from 1000
 
     # Ensure no zeros in prices to avoid division by zero
     prices = np.abs(prices) + 1
@@ -37,7 +37,7 @@ def alternative_return_calculation(close, days=0, hours=0, minutes=0, seconds=0)
     df0 = close.index.searchsorted(close.index - time_delta, side='right') - 1
 
     # Create a mask for valid indices
-    valid_mask = df0 >= 0
+    valid_mask = df0 > 0
 
     # Filter out invalid indices
     df0 = df0[valid_mask]
@@ -67,7 +67,7 @@ def test_returns_equivalence():
     minutes = 1
 
     # Compute returns in Numba function
-    returns_numba = comp_lagged_returns(timestamps, close_array, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, close_array, return_window_sec, is_log=False)
 
     # Compute returns in pandas function
     returns_pandas = alternative_return_calculation(close_series, days=0, hours=0, minutes=minutes, seconds=0)
@@ -88,7 +88,7 @@ def test_returns_equivalence_large_return_window():
     Test the functions with a large return window.
     """
     # Generate regular data
-    dates = pd.date_range(start='2021-01-01', periods=2000, freq='T')  # 1-minute intervals
+    dates = pd.date_range(start='2021-01-01', periods=2000, freq='min')  # 1-minute intervals
     n = len(dates)
 
     # Generate synthetic closing prices
@@ -105,7 +105,7 @@ def test_returns_equivalence_large_return_window():
     return_window_sec = 3600  # 1 hour
 
     # Compute returns in both functions
-    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec, is_log=False)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns
@@ -119,7 +119,7 @@ def test_returns_zero_return_window():
     Test the functions with a zero return window, expecting a ValueError.
     """
     # Generate regular data
-    dates = pd.date_range(start='2021-01-01', periods=10, freq='T')
+    dates = pd.date_range(start='2021-01-01', periods=10, freq='min')
     n = len(dates)
     prices = np.arange(1, n + 1)
 
@@ -131,7 +131,7 @@ def test_returns_zero_return_window():
 
     # Test Numba function raises ValueError
     with pytest.raises(ValueError):
-        comp_lagged_returns(timestamps, prices, return_window_sec)
+        comp_lagged_returns(timestamps, prices, return_window_sec, is_log=False)
 
 
 # Test with data containing zeros
@@ -140,7 +140,7 @@ def test_returns_data_with_zeros():
     Test the functions with data that includes zeros in prices.
     """
     # Generate regular data
-    dates = pd.date_range(start='2021-01-01', periods=100, freq='T')
+    dates = pd.date_range(start='2021-01-01', periods=100, freq='min')
     n = len(dates)
 
     # Generate prices with zeros
@@ -158,7 +158,7 @@ def test_returns_data_with_zeros():
     return_window_sec = 60
 
     # Compute returns in both functions
-    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices, return_window_sec, is_log=False)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns, allowing NaNs
@@ -173,7 +173,7 @@ def test_returns_data_with_nans():
     Test the functions with data that includes NaNs in prices.
     """
     # Generate regular data
-    dates = pd.date_range(start='2021-01-01', periods=100, freq='T')
+    dates = pd.date_range(start='2021-01-01', periods=100, freq='min')
     n = len(dates)
 
     # Generate prices with NaNs
@@ -186,14 +186,14 @@ def test_returns_data_with_nans():
 
     # Handle NaNs in prices (Numba function may not handle NaNs)
     # For testing purposes, we'll fill NaNs with the last valid price
-    prices_filled = pd.Series(prices).fillna(method='ffill').values
+    prices_filled = pd.Series(prices).ffill.values
 
     # Parameters
     return_window_sec = 60
 
     # Compute returns in both functions
-    returns_numba = comp_lagged_returns(timestamps, prices_filled, return_window_sec)
-    returns_pandas = alternative_return_calculation(close_series.fillna(method='ffill'), seconds=return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps, prices_filled, return_window_sec, is_log=False)
+    returns_pandas = alternative_return_calculation(close_series.ffill(), seconds=return_window_sec)
 
     # Align and compare returns, allowing NaNs
     returns_numba_series = pd.Series(returns_numba, index=dates)
@@ -236,7 +236,7 @@ def test_returns_equivalence_irregular_data():
     return_window_sec = 60  # 1 minutes
 
     # Compute returns in both functions
-    returns_numba = comp_lagged_returns(timestamps_ns, prices, return_window_sec)
+    returns_numba = comp_lagged_returns(timestamps_ns, prices, return_window_sec, is_log=False)
     returns_pandas = alternative_return_calculation(close_series, seconds=return_window_sec)
 
     # Align and compare returns

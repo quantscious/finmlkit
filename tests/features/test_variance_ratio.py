@@ -54,7 +54,7 @@ def test_variance_ratio_1_4_core():
 
     # Calculate variance ratio
     window = 20
-    result = variance_ratio_1_4_core(price, window=window)
+    result = variance_ratio_1_4_core(price, window=window, ddof=0, ret_type="simple")
 
     # First values should be NaN due to insufficient data
     # (At least window + 4 for the 4-bar return calculation)
@@ -69,8 +69,8 @@ def test_variance_ratio_1_4_core():
     # of price series to validate the indicator's behavior
 
     # Test with different return types
-    result_simple = variance_ratio_1_4_core(price, window=window, ret_type="simple")
-    result_log = variance_ratio_1_4_core(price, window=window, ret_type="log")
+    result_simple = variance_ratio_1_4_core(price, window=window, ddof=0, ret_type="simple")
+    result_log = variance_ratio_1_4_core(price, window=window, ddof=0, ret_type="log")
 
     # Both should produce valid results
     valid_simple = result_simple[~np.isnan(result_simple)]
@@ -80,14 +80,14 @@ def test_variance_ratio_1_4_core():
     # Test with NaN values
     price_with_nans = price.copy()
     price_with_nans[30:35] = np.nan
-    result_with_nans = variance_ratio_1_4_core(price_with_nans, window=window)
+    result_with_nans = variance_ratio_1_4_core(price_with_nans, window=window, ddof=0, ret_type="simple")
     # NaNs in the price should affect calculations
     assert np.isnan(result_with_nans[30:35]).any() or not np.array_equal(result_with_nans[30:35], result[30:35])
 
     # Test handling of zero prices
     price_with_zeros = price.copy()
     price_with_zeros[40:45] = 0.0
-    result_with_zeros = variance_ratio_1_4_core(price_with_zeros, window=window)
+    result_with_zeros = variance_ratio_1_4_core(price_with_zeros, window=window, ddof=0, ret_type="simple")
     # Zero prices should be handled appropriately
     assert np.isnan(result_with_zeros[40:45]).any() or not np.array_equal(result_with_zeros[40:45], result[40:45])
 
@@ -97,7 +97,7 @@ def test_variance_ratio_1_4_core():
     noise = np.random.normal(0, 0.5, n+1)
     trend_price = 100.0 + linear_trend + noise
 
-    result_trend = variance_ratio_1_4_core(trend_price, window=window)
+    result_trend = variance_ratio_1_4_core(trend_price, window=window, ddof=0, ret_type="simple")
     valid_trend = result_trend[~np.isnan(result_trend)]
     assert len(valid_trend) > 0, "Should have valid trend results"
 
@@ -111,7 +111,7 @@ def test_variance_ratio_1_4_core():
         # Price moves back toward 100 with strong reversion
         mean_rev_price[i] = mean_rev_price[i-1] + (100 - mean_rev_price[i-1]) * mean_reversion_strength + shock
 
-    result_mean_rev = variance_ratio_1_4_core(mean_rev_price, window=window)
+    result_mean_rev = variance_ratio_1_4_core(mean_rev_price, window=window, ddof=0, ret_type="simple")
     valid_mean_rev = result_mean_rev[~np.isnan(result_mean_rev)]
     assert len(valid_mean_rev) > 0, "Should have valid mean reversion results"
 

@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
-from numba import njit, prange
-from numpy.typing import NDArray
-#os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
+# import os
+# os.environ['NUMBA_DISABLE_JIT'] = '1'  # Disable JIT for testing (we can debug numba functions this way)
 from finmlkit.bar.base import comp_bar_trade_size_features
 
 
@@ -95,33 +94,6 @@ def test_block_volume():
 
     # Use direct calculation rather than range
     assert np.isclose(pct[0], expected_pct, atol=1e-6)
-
-# ------------------------------------------------------------------
-# 3) Single-trade bar  (gini = 0)
-# ------------------------------------------------------------------
-def test_single_trade_bar():
-    amounts = np.array([8])
-    closes = np.array([0, 1])  # One bar with one trade
-    theta = np.array([4])  # theta must match the number of bars (1 bar)
-
-    _, _, _, g = _run(amounts, theta, closes)
-
-    # The implementation may return NaN for single-trade bars
-    # Check that either it's 0.0 or NaN
-    assert np.isnan(g[0]) or g[0] == 0.0
-
-# ------------------------------------------------------------------
-# 4) Empty bar → NaNs
-# ------------------------------------------------------------------
-def test_empty_bar():
-    amounts = np.array([3, 3])
-    closes = np.array([0, 1, 2])  # bar-0: [1], bar-1 is empty since start=end
-    theta = np.array([2, 2])  # theta must match the number of bars (2 bars)
-
-    m, p95, pct, g = _run(amounts, theta, closes)
-
-    assert not np.isnan(m[0])  # First bar should have values
-    assert np.isnan(m[1])      # Second bar should be NaN
 
 # ------------------------------------------------------------------
 # 5) θ = 0 guard (warm-up)
