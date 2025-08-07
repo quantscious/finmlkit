@@ -49,6 +49,9 @@ FinMLKit documentation
         :target: https://github.com/quantscious/finmlkit/commits/main
         :alt: Last Commit
 
+.. image:: https://codecov.io/gh/quantscious/finmlkit/graph/badge.svg?token=2H6VR817RB
+        :target: https://codecov.io/gh/quantscious/finmlkit
+
 Welcome to FinMLKit's documentation! This is a Python package for financial machine learning and more broadly quantitative finance.
 
 The main goal of this library is to provide a solid foundation for financial machine learning, enabling users to process raw trades data, generate different types of bars, intra-bar features (eg. footprints), bar-level features (indicators), and labels for supervised learning.
