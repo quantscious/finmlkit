@@ -15,8 +15,9 @@ os.environ['NUMBA_DISABLE_JIT'] = "1"  # disable jit
 from finmlkit.utils import my_numba_fn
 ...
 ```
-
 After you are done, it is important to **re-enable jit** by removing or commenting out the above code (otherwise it can broke the full test pipeline if numba disabling stays there) 
+
+Alternatively, simply run the test with `NUMBA_DISABLE_JIT=1 pytest`.
 
 For convenience, we created bash scripts to create a fresh virtual test environment and run all tests with and without jit enabled.
 
