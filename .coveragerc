@@ -1,0 +1,3 @@
+[run]
+omit =
+    finmlkit/feature/transforms.py
