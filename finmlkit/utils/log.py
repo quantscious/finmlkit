@@ -10,7 +10,7 @@ load_dotenv()
 def setup_logging():
     """
     Sets up logging configuration with separate console and file handlers.
-    Console logs go to stdout while file logs are stored in the directory specified by LOGGER_DIR.
+    Console logs go to stdout while file logs are stored in the directory specified by `LOG_FILE_PATH`.
     """
     root_logger = logging.getLogger()
 

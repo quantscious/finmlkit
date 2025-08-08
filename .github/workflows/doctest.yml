@@ -1,0 +1,32 @@
+name: docs-doctest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install documentation dependencies
+        run: |
+          pip install -U pip
+          pip install 'sphinx>=7.1,<8' furo>=2024.1.29 myst-parser>=2.0 sphinx-autodoc-typehints>=2.1
+          pip install -e .
+
+      - name: Generate API docs (optional)
+        working-directory: docs
+        run: sphinx-apidoc -o source/api ../finmlkit
+
+      - name: Build HTML docs
+        working-directory: docs
+        run: sphinx-build -n -b html source build/html

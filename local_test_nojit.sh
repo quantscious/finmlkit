@@ -20,8 +20,7 @@ pip install -e .[dev]
 # Set PYTHONPATH and DISABLE JIT for testing
 export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 export NUMBA_DISABLE_JIT=1
-
-echo "⚠️  JIT compilation disabled for testing reliability"
+echo "⚠️  JIT compilation disabled for testing"
 
 # Run tests with coverage from project root
 echo "🧪 Running tests..."

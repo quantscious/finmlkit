@@ -30,7 +30,7 @@ jobs:
       env:
         NUMBA_DISABLE_JIT: 1
       run: |
-        pytest tests/ --cov=finmlkit --cov-report=xml --cov-report=term -v
+        pytest --jit tests/ --cov=finmlkit --cov-report=xml --cov-report=term -v
 
     - name: Upload results to CodecovB
       uses: codecov/codecov-action@v5
