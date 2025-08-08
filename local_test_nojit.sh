@@ -9,8 +9,8 @@ cd "$PROJECT_ROOT"
 
 # Create and activate temp virtual environment
 echo "🆕 Creating temporary virtual environment..."
-python -m venv temp_test_env
-source temp_test_env/bin/activate
+python -m venv .temp_test_env
+source .temp_test_env/bin/activate
 
 # Install in development mode
 echo "📦 Installing package..."
@@ -32,13 +32,13 @@ if [ -f "coverage.xml" ]; then
 else
     echo "❌ Coverage report not found"
     deactivate
-    rm -rf temp_test_env
+    rm -rf .temp_test_env
     exit 1
 fi
 
 # Deactivate and remove temp environment
 echo "🧹 Cleaning up environment..."
 deactivate
-rm -rf temp_test_env
+rm -rf .temp_test_env
 
 echo "🎉 Local CI test completed successfully!"

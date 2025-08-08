@@ -9,8 +9,8 @@ cd "$PROJECT_ROOT"
 
 # Create and activate temp virtual environment
 echo "🆕 Creating temporary virtual environment..."
-python -m venv temp_test_env
-source temp_test_env/bin/activate
+python -m venv .temp_test_env
+source .temp_test_env/bin/activate
 
 # Install in development mode
 echo "📦 Installing package..."
@@ -130,7 +130,7 @@ fi
 echo ""
 echo "🧹 Cleaning up environment..."
 deactivate
-rm -rf temp_test_env
+rm -rf .temp_test_env
 
 echo ""
 if [ $failed_files -eq 0 ]; then
