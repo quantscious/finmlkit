@@ -4,9 +4,6 @@ import os
 from logging.handlers import TimedRotatingFileHandler
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
 def setup_logging():
     """
     Sets up logging configuration with separate console and file handlers.
@@ -18,10 +15,13 @@ def setup_logging():
     if root_logger.hasHandlers():
         return
 
+    # Load environment variables from .env file lazily to avoid import-time side effects
+    load_dotenv()
+
     # Get configuration from environment
-    file_level = os.getenv('FILE_LOGGER_LEVEL', 'DEBUG').upper()
-    console_level = os.getenv('CONSOLE_LOGGER_LEVEL', 'INFO').upper()
-    log_file_path = os.getenv('LOG_FILE_PATH')
+    file_level = os.getenv('FMK_FILE_LOGGER_LEVEL', 'DEBUG').upper()
+    console_level = os.getenv('FMK_CONSOLE_LOGGER_LEVEL', 'INFO').upper()
+    log_file_path = os.getenv('FMK_LOG_FILE_PATH')
 
     # Set root logger to the minimum of console and file levels to capture all needed logs
     root_level = min(logging.getLevelName(file_level), logging.getLevelName(console_level))
