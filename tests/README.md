@@ -18,12 +18,14 @@ from finmlkit.utils import my_numba_fn
 
 After you are done, it is important to **re-enable jit** by removing or commenting out the above code (otherwise it can broke the full test pipeline if numba disabling stays there) 
 
-To run all tests with jit disabled, you can use the following script in the root directory of the project:
+For convenience, we created bash scripts to create a fresh virtual test environment and run all tests with and without jit enabled.
+
+To run all tests with jit enabled, you can use the following script in the root directory of the project:
 ```bash
 chmode +x ../local_test.sh
 ../local_test.sh
 ```
-To run all tests with jit enabled, you can use the following command:
+To run all tests with jit disabled, you can use the following command:
 ```bash
 chmod +x ../local_test_nojit.sh
 ../local_test_nojit.sh
