@@ -26,11 +26,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .[dev]  # Install your package in development mode
 
-    - name: Run tests with coverage (JIT enabled)
+    - name: Run tests with coverage (JIT disabled)
       env:
         NUMBA_DISABLE_JIT: 1
       run: |
-        pytest --jit tests/ --cov=finmlkit --cov-report=xml --cov-report=term -v
+        pytest tests/ --cov=finmlkit --cov-report=xml --cov-report=term -v
 
     - name: Upload results to CodecovB
       uses: codecov/codecov-action@v5
