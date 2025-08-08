@@ -33,7 +33,7 @@ jobs:
           curl "https://models.github.ai/inference/chat/completions" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
-            -d @- <<'JSON' > RELEASES.md
+            -d @- <<'JSON' > SUMMARY.md
           {
             "model": "openai/gpt-5",
             "messages": [
@@ -50,6 +50,6 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name:     ${{ github.ref_name }}
-          body_path: RELEASES.md
+          body_path: SUMMARY.md
           files: |
             CHANGELOG.md
