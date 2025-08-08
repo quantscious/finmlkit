@@ -26,7 +26,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .[dev]  # Install your package in development mode
 
-    - name: Run tests with coverage (JIT disabled for CI reliability)
+    - name: Run tests with coverage (JIT enabled)
       env:
         NUMBA_DISABLE_JIT: 1
       run: |
