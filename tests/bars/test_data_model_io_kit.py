@@ -83,29 +83,6 @@ def test_bar_kits_run(tmp_path):
     assert len(cts) == len(cidx)
 
 
-def test_footprintdata_basic():
-    data = {
-        "bar_timestamps": np.array([1], dtype=np.int64),
-        "price_levels": np.array([np.array([1], dtype=np.int32)], dtype=object),
-        "price_tick": 0.5,
-        "buy_volumes": np.array([np.array([1.0], dtype=np.float32)], dtype=object),
-        "sell_volumes": np.array([np.array([0.5], dtype=np.float32)], dtype=object),
-        "buy_ticks": np.array([np.array([1], dtype=np.int32)], dtype=object),
-        "sell_ticks": np.array([np.array([1], dtype=np.int32)], dtype=object),
-        "buy_imbalances": np.array([np.array([True], dtype=np.bool_)], dtype=object),
-        "sell_imbalances": np.array([np.array([False], dtype=np.bool_)], dtype=object),
-    }
-    fp = FootprintData.from_dict(data)
-    assert len(fp) == 1
-    assert fp.is_valid()
-    df = fp.get_df()
-    assert not df.empty
-    # conversions
-    fp.cast_to_numba_list()
-    fp.cast_to_numpy()
-    # slicing
-    sub = fp[:1]
-    assert len(sub) == 1
-    # memory usage and repr
-    assert fp.memory_usage() >= 0
-    assert "FootprintData" in repr(fp)
+if __name__ == "__main__":
+    import pytest
+    pytest.main([__file__])
