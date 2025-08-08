@@ -81,6 +81,7 @@ run_tests_in_directory "tests/labels"
 run_tests_in_directory "tests/sampling"
 run_tests_in_directory "tests/structural_breaks"
 run_tests_in_directory "tests/integration"
+run_tests_in_directory "tests/utils"
 
 echo ""
 echo "================================"
