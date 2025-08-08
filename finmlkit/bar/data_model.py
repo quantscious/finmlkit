@@ -866,6 +866,9 @@ class FootprintData:
             f"    COT Price Levels: {additional_info['cot_price_levels']}\n"
             f"    Sell Imbalances Sum: {additional_info['sell_imbalances_sum']}\n"
             f"    Buy Imbalances Sum: {additional_info['buy_imbalances_sum']}\n"
+            f"    Imbalance Max Run Signed: {'present' if self.imb_max_run_signed is not None else 'missing'}\n"
+            f"    VP Skew: {'present' if self.vp_skew is not None else 'missing'}\n"
+            f"    VP Gini: {'present' if self.vp_gini is not None else 'missing'}\n"
             f"  Total Memory Usage: {total_memory_usage:.3f} MB\n"
         )
 
@@ -912,73 +915,66 @@ class FootprintData:
         :returns: A validated FootprintData instance.
         :raises ValueError: If data length is inconsistent.
         """
-        # Handle the case when the data tuple includes the new metrics
-        if len(data) >= 14:  # Complete data tuple with all metrics
-            instance = cls(
-                bar_timestamps=np.array(data[0], dtype=np.int64),
-                price_levels=np.array(data[1], dtype=object),
-                price_tick=price_tick,
-                buy_volumes=np.array(data[2], dtype=object),
-                sell_volumes=np.array(data[3], dtype=object),
-                buy_ticks=np.array(data[4], dtype=object),
-                sell_ticks=np.array(data[5], dtype=object),
-                buy_imbalances=np.array(data[6], dtype=object),
-                sell_imbalances=np.array(data[7], dtype=object),
-                buy_imbalances_sum=np.array(data[8], dtype=np.uint16),
-                sell_imbalances_sum=np.array(data[9], dtype=np.uint16),
-                cot_price_levels=np.array(data[10], dtype=np.int32),
-                imb_max_run_signed=np.array(data[11], dtype=np.int16),
-                vp_skew=np.array(data[12], dtype=np.float64),
-                vp_gini=np.array(data[13], dtype=np.float64)
-            )
-        else:
-            # Handle the case when the data tuple has the original fields only
-            instance = cls(
-                bar_timestamps=np.array(data[0], dtype=np.int64),
-                price_levels=np.array(data[1], dtype=object),
-                price_tick=price_tick,
-                buy_volumes=np.array(data[2], dtype=object),
-                sell_volumes=np.array(data[3], dtype=object),
-                buy_ticks=np.array(data[4], dtype=object),
-                sell_ticks=np.array(data[5], dtype=object),
-                buy_imbalances=np.array(data[6], dtype=object),
-                sell_imbalances=np.array(data[7], dtype=object),
-                buy_imbalances_sum=np.array(data[8], dtype=np.uint16),
-                sell_imbalances_sum=np.array(data[9], dtype=np.uint16),
-                cot_price_levels=np.array(data[10], dtype=np.int32)
-            )
-
-        # Validate the data
-        if not instance.is_valid():
-            raise ValueError("Inconsistent data length in the FootprintData container!")
-
-        return instance
-
-    @classmethod
-    def from_dict(cls, data: Dict) -> 'FootprintData':
-        """
-        Create a FootprintData object from a dictionary of arrays.
-        :param data: Dictionary with raw footprint arrays.
-        :returns: A validated FootprintData instance.
-        :raises ValueError: If data length is inconsistent.
-        """
         instance = cls(
-            bar_timestamps=data['bar_timestamps'],
-            price_levels=data['price_levels'],
-            price_tick=data['price_tick'],
-            buy_volumes=data['buy_volumes'],
-            sell_volumes=data['sell_volumes'],
-            buy_ticks=data['buy_ticks'],
-            sell_ticks=data['sell_ticks'],
-            buy_imbalances=data['buy_imbalances'],
-            sell_imbalances=data['sell_imbalances']
+            bar_timestamps=np.array(data[0], dtype=np.int64),
+            price_levels=np.array(data[1], dtype=object),
+            price_tick=price_tick,
+            buy_volumes=np.array(data[2], dtype=object),
+            sell_volumes=np.array(data[3], dtype=object),
+            buy_ticks=np.array(data[4], dtype=object),
+            sell_ticks=np.array(data[5], dtype=object),
+            buy_imbalances=np.array(data[6], dtype=object),
+            sell_imbalances=np.array(data[7], dtype=object),
+            buy_imbalances_sum=np.array(data[8], dtype=np.uint16),
+            sell_imbalances_sum=np.array(data[9], dtype=np.uint16),
+            cot_price_levels=np.array(data[10], dtype=np.int32),
+            imb_max_run_signed=np.array(data[11], dtype=np.int16),
+            vp_skew=np.array(data[12], dtype=np.float64),
+            vp_gini=np.array(data[13], dtype=np.float64)
         )
-
         # Validate the data
         if not instance.is_valid():
             raise ValueError("Inconsistent data length in the FootprintData container!")
 
         return instance
+
+    # @classmethod
+    # def from_dict(cls, data: Dict) -> 'FootprintData':
+    #     """
+    #     Create a FootprintData object from a dictionary of arrays.
+    #     :param data: Dictionary with raw footprint arrays.
+    #     :returns: A validated FootprintData instance.
+    #     :raises ValueError: If data length is inconsistent.
+    #     """
+    #     instance = cls(
+    #         bar_timestamps=np.asarray(data['bar_timestamps'], dtype=np.int64),
+    #         price_levels=data['price_levels'],
+    #         price_tick=data['price_tick'],
+    #         buy_volumes=data['buy_volumes'],
+    #         sell_volumes=data['sell_volumes'],
+    #         buy_ticks=data['buy_ticks'],
+    #         sell_ticks=data['sell_ticks'],
+    #         buy_imbalances=data['buy_imbalances'],
+    #         sell_imbalances=data['sell_imbalances'],
+    #         cot_price_levels=(np.asarray(data['cot_price_levels'], dtype=np.int32)
+    #                           if 'cot_price_levels' in data else None),
+    #         sell_imbalances_sum=(np.asarray(data['sell_imbalances_sum'], dtype=np.uint16)
+    #                              if 'sell_imbalances_sum' in data else None),
+    #         buy_imbalances_sum=(np.asarray(data['buy_imbalances_sum'], dtype=np.uint16)
+    #                             if 'buy_imbalances_sum' in data else None),
+    #         imb_max_run_signed=(np.asarray(data['imb_max_run_signed'], dtype=np.int16)
+    #                             if 'imb_max_run_signed' in data else None),
+    #         vp_skew=(np.asarray(data['vp_skew'], dtype=np.float64)
+    #                  if 'vp_skew' in data else None),
+    #         vp_gini=(np.asarray(data['vp_gini'], dtype=np.float64)
+    #                  if 'vp_gini' in data else None)
+    #     )
+    #
+    #     # Validate the data
+    #     if not instance.is_valid():
+    #         raise ValueError("Inconsistent data length in the FootprintData container!")
+    #
+    #     return instance
 
     def get_df(self):
         """
