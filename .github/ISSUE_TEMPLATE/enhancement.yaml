@@ -1,0 +1,30 @@
+name: Enhancement idea
+description: Improve existing functionality or performance
+labels: [improvement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share your idea for enhancing current features, APIs, or performance.
+  - type: input
+    id: area
+    attributes:
+      label: Area to improve
+      placeholder: Which part of the project?
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Suggested approach
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Impact or benchmarks

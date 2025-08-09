@@ -1,11 +1,16 @@
 # Tests
 
-Testing is done using the `pytest` framework. 
+Testing is done using the `pytest` framework. Install the package in
+editable mode with development dependencies before running tests:
+
+```bash
+pip install -e .[dev]
+```
 
 > [!CAUTION]
 > Note that **testing numba function** are often **tricky and challenging**. I recommend to first disable jit and debug the code in pure python. If that passes, then re-enable jit and run the tests again. Both ways should pass. 
 
-You can disable jit by setting the environment variable `NUMBA_DISABLE_JIT=1`.
+You can disable JIT by setting the environment variable `NUMBA_DISABLE_JIT=1`.
 ```python test_my_testfile.py
 # test_my_testfile.py
 import os
@@ -17,19 +22,19 @@ from finmlkit.utils import my_numba_fn
 ```
 After you are done, it is important to **re-enable jit** by removing or commenting out the above code (otherwise it can broke the full test pipeline if numba disabling stays there) 
 
-Alternatively, simply run the test with `NUMBA_DISABLE_JIT=1 pytest`.
+Alternatively, run the entire suite with `NUMBA_DISABLE_JIT=1 pytest`.
 
-For convenience, we created bash scripts to create a fresh virtual test environment and run all tests with and without jit enabled.
+For convenience, bash scripts are provided to create a fresh virtual test
+environment and run all tests with and without JIT enabled.
 
-To run all tests with jit enabled, you can use the following script in the root directory of the project:
+Run these from the project root:
+
 ```bash
-chmode +x ../local_test.sh
-../local_test.sh
-```
-To run all tests with jit disabled, you can use the following command:
-```bash
-chmod +x ../local_test_nojit.sh
-../local_test_nojit.sh
+chmod +x local_test.sh
+./local_test.sh          # JIT enabled
+
+chmod +x local_test_nojit.sh
+./local_test_nojit.sh    # JIT disabled
 ```
 
 >[!IMPORTANT]
