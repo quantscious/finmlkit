@@ -1,0 +1,26 @@
+name: Documentation update
+description: Suggest improvements or report gaps in docs
+labels: [documentation]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us keep documentation accurate and helpful.
+  - type: input
+    id: section
+    attributes:
+      label: Documentation section
+      placeholder: e.g. README, API reference
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What should be added or changed?
+    validations:
+      required: true
+  - type: textarea
+    id: suggestions
+    attributes:
+      label: Proposed text or examples

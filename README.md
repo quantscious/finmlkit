@@ -150,8 +150,21 @@ By ensuring that the algorithms are well-documented, with clear references to th
 **FinMLKit** is designed to be **well-documented**, with detailed explanations of each algorithm, method, and function. It uses `reStructured` style docstrings to provide clear and concise documentation for each function, class, and module. This makes it easier for users to understand how to use the library and what each function does. It uses `Sphinx` to generate the documentation and automatically deploy it to [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/en/latest/). This way, users can access the documentation online and easily navigate through the library's features and functionalities. This framework also enables the creation of tutorials or in-depth descriptions of the methods.
 
 # 🤝 Contribution
-We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features, 
+We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features,
 or improving documentation, **your contribution matters**. Let’s work together to make the common ground for financial machine learning!
+
+See [CONTRIBUTION.md](CONTRIBUTION.md) for detailed guidelines on bug reports, new features, enhancements, documentation, and testing.
+
+## 🧪 Testing
+To run the full test suite locally, disable Numba's JIT compiler:
+
+```bash
+NUMBA_DISABLE_JIT=1 pytest -q
+```
+
+Alternatively, use the helper scripts `./local_test.sh` (JIT enabled) or
+`./local_test_nojit.sh` (JIT disabled). See [tests/README.md](tests/README.md)
+for more guidance.
 
 **Star** the repo, **cite** it in your work, file issues, propose features, and share benchmark results. Let’s make **better defaults** the norm.
 

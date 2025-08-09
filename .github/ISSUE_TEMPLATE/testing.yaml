@@ -1,0 +1,26 @@
+name: Testing improvement
+description: Improve test coverage or report failing tests
+labels: [testing]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues related to tests or continuous integration.
+  - type: input
+    id: area
+    attributes:
+      label: Affected module
+      placeholder: Which part of the codebase?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: What test fails or what coverage is missing?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed tests or fixes

@@ -1,0 +1,4 @@
+blank_issues_enabled: false
+defaults:
+  assignees: []
+  labels: []

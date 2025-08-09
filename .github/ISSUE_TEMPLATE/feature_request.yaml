@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest a new idea for FinMLKit
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a feature in mind? Describe it below to start the conversation.
+  - type: input
+    id: summary
+    attributes:
+      label: Feature summary
+      placeholder: Briefly describe the feature
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why is this feature useful?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Outline how you plan to implement it
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
