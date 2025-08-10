@@ -38,11 +38,18 @@ jobs:
         run: |
           pytest tests/ --cov=finmlkit --cov-report=xml:coverage.xml -v
 
-      - name: Upload coverage to Codecov (OIDC)
+      - name: Debug SHAs
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          git rev-parse HEAD
+          git show -s --pretty=reference HEAD
+
+      # Upload from a single matrix job to avoid merge/fan-in issues
+      - name: Upload coverage to Codecov (OIDC, single job)
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v5
         with:
           use_oidc: true
           files: ./coverage.xml
-          flags: unit
           fail_ci_if_error: true
           verbose: true
