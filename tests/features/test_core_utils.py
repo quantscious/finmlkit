@@ -66,5 +66,6 @@ def test_pct_change_basic_and_nonpositive_base():
 
     x_neg = np.array([-1.0, -0.5, 0.0], dtype=np.float64)
     res_neg = pct_change(x_neg, periods=1)
-    assert np.isnan(res_neg[1]) and np.isnan(res_neg[2])
+    assert np.isnan(res_neg[1])
+    assert np.isnan(res_neg[2])
 
