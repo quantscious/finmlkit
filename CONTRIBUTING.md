@@ -10,15 +10,11 @@ FinMLKit thrives on community involvement. We value **contribution**, **transpar
 
 ## Getting Started
 1. Fork the repository and clone your fork.
-2. Install the package in editable mode:
+2. Install the package in editable mode with development dependencies:
    ```bash
-   pip install -e .
+   pip install -e .[dev]
    ```
-3. Install development dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Create a new branch for your work. *(Avoid pushing to `main` directly).* 
+3. Create a new branch for your work. *(Avoid pushing to `main` directly).*
 
 ## How to Contribute
 Choose the path that matches your idea:
