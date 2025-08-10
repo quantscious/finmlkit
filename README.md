@@ -153,7 +153,7 @@ By ensuring that the algorithms are well-documented, with clear references to th
 We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features,
 or improving documentation, **your contribution matters**. Let’s work together to make the common ground for financial machine learning!
 
-See [CONTRIBUTION.md](CONTRIBUTING.md) for detailed guidelines on bug reports, new features, enhancements, documentation, and testing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines on bug reports, new features, enhancements, documentation, and testing.
 
 **Star** the repo, **cite** it in your work, file issues, propose features, and share benchmark results. Let’s make **better defaults** the norm.
 
