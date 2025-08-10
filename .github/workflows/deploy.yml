@@ -2,19 +2,25 @@ name: Publish to PyPI on release tag
 
 on:
   push:
-    tags:
-      - "v*.*.*"   # only semantic version tags
+    tags: ["v*.*.*"]   # semantic version tags: vX.Y.Z
+
+permissions:
+  contents: write      # needed by gh-release
+  models:   read       # call GitHub Models from Actions
 
 jobs:
   build-and-publish:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
-      id-token: write   # OIDC for Trusted Publishing
+      id-token: write  # OIDC for PyPI Trusted Publishing
       contents: read
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Install build tooling
         run: python -m pip install --upgrade pip setuptools wheel build twine
@@ -50,3 +56,57 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           skip-existing: true
+
+  release:
+    needs: build-and-publish
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Generate CHANGELOG with git-cliff
+        uses: orhun/git-cliff-action@v4
+        id: cliff
+        with:
+          args: --tag ${{ github.ref_name }}
+        env:
+          OUTPUT: CHANGELOG.md
+
+      - name: Summarise with GitHub Models (GPT-5, fallback to 4.1)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          CONTENT=$(jq -Rs . < CHANGELOG.md)
+          jq -n --argjson content "$CONTENT" '{
+            model: "openai/gpt-5",
+            messages: [
+              { "role": "system", "content": "You are a release-notes generator. Output crisp, user-facing highlights." },
+              { "role": "user",   "content": $content }
+            ]
+          }' > body.json
+      
+          set -o pipefail
+          CURL=( -sS -L --fail-with-body -X POST
+            -H "Accept: application/vnd.github+json"
+            -H "X-GitHub-Api-Version: 2022-11-28"
+            -H "Content-Type: application/json"
+            -H "Authorization: Bearer $GITHUB_TOKEN" )
+      
+          if ! curl "${CURL[@]}" https://models.github.ai/inference/chat/completions \
+               --data @body.json | jq -e -r '.choices[0].message.content' > SUMMARY.md; then
+            jq '.model="openai/gpt-4.1"' body.json > body_fallback.json
+            curl "${CURL[@]}" https://models.github.ai/inference/chat/completions \
+               --data @body_fallback.json | jq -e -r '.choices[0].message.content' > SUMMARY.md
+          fi
+      
+          test -s SUMMARY.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:  ${{ github.ref_name }}
+          name:      ${{ github.ref_name }}
+          body_path: SUMMARY.md
+          files: |
+            CHANGELOG.md
