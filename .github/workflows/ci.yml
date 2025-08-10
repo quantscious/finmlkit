@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  id-token: write         # required for OIDC
+  checks: write           # optional: to publish a GitHub Check summary
+  pull-requests: write    # optional
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -14,27 +20,27 @@ jobs:
         python-version: ['3.10', '3.11', '3.12']
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }  # let Codecov resolve parents
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - uses: actions/setup-python@v5
+        with: { python-version: ${{ matrix.python-version }} }
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e .[dev]  # Install your package in development mode
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
 
-    - name: Run tests with coverage (JIT disabled)
-      env:
-        NUMBA_DISABLE_JIT: 1
-      run: |
-        pytest tests/ --cov=finmlkit --cov-report=xml --cov-report=term -v
+      - name: Run tests with coverage (JIT disabled)
+        env: { NUMBA_DISABLE_JIT: 1 }
+        run: |
+          pytest tests/ --cov=finmlkit --cov-report=xml:coverage.xml -v
 
-    - name: Upload results to CodecovB
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        fail_ci_if_error: true
-        verbose: true
+      - name: Upload coverage to Codecov (OIDC)
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: ./coverage.xml
+          flags: unit
+          fail_ci_if_error: true
+          verbose: true
