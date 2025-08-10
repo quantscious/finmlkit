@@ -153,7 +153,9 @@ By ensuring that the algorithms are well-documented, with clear references to th
 We aim to make **FinMLKit** as easy to contribute to as possible. Whether it’s fixing bugs, adding new features,
 or improving documentation, **your contribution matters**. Let’s work together to make the common ground for financial machine learning!
 
-See [CONTRIBUTION.md](CONTRIBUTION.md) for detailed guidelines on bug reports, new features, enhancements, documentation, and testing.
+See [CONTRIBUTION.md](CONTRIBUTING.md) for detailed guidelines on bug reports, new features, enhancements, documentation, and testing.
+
+**Star** the repo, **cite** it in your work, file issues, propose features, and share benchmark results. Let’s make **better defaults** the norm.
 
 ## 🧪 Testing
 To run the full test suite locally, disable Numba's JIT compiler:
@@ -165,8 +167,6 @@ NUMBA_DISABLE_JIT=1 pytest -q
 Alternatively, use the helper scripts `./local_test.sh` (JIT enabled) or
 `./local_test_nojit.sh` (JIT disabled). See [tests/README.md](tests/README.md)
 for more guidance.
-
-**Star** the repo, **cite** it in your work, file issues, propose features, and share benchmark results. Let’s make **better defaults** the norm.
 
 # ⚡ Speed & Performance Tests
 FinMLKit is built with speed in mind. We use Numba for high-performance computation, 
