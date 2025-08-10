@@ -51,5 +51,10 @@ jobs:
         with:
           use_oidc: true
           files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella  
+          override_branch: ${{ github.head_ref || github.ref_name }}
+          override_commit: ${{ github.sha }}
+          override_pr: ${{ github.event.number }}
           fail_ci_if_error: true
           verbose: true
