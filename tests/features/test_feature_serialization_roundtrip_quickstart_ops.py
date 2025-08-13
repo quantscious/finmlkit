@@ -7,7 +7,7 @@ import finmlkit.feature.transforms as tfs
 
 
 def make_df(n=128):
-    idx = pd.date_range("2024-01-01", periods=n, freq="H")
+    idx = pd.date_range("2024-01-01", periods=n, freq="h")
     rng = np.random.default_rng(42)
     return pd.DataFrame({
         "close": 100 + rng.normal(0, 1, n).cumsum(),
