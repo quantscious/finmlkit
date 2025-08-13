@@ -125,6 +125,41 @@ Everything that processes bars data (candlestick/OHLCV, directional features, or
 - [x] Cusum Monitoring structural break feature _(Chu-Stinchcombe-White CUSUM Test on Levels based on Homm and Breitung (2011))_
 - [x] And many more... Consult the [documentation](https://finmlkit.readthedocs.io/en/latest/api/finmlkit.feature.transforms.html#module-finmlkit.feature.transforms) for a complete list of implemented transform examples. Feel free to **build your own features** to your specific needs, the **framework design is given**.
 
+### External libraries (TA-Lib) integration
+You can wrap third-party functions as transforms using `ExternalFunction`, enabling direct use of libraries like **TA-Lib** alongside FinMLKit features. Use a Callable for best developer experience and auto-completion; serialization is supported for reproducibility.
+
+Quick example:
+
+```python
+import talib
+import pandas as pd
+import numpy as np
+from finmlkit.feature.kit import Feature, FeatureKit
+from finmlkit.feature.transforms import ExternalFunction
+
+# Minimal example input DataFrame with a 'close' column
+idx = pd.date_range("2024-01-01", periods=64, freq="D")
+df = pd.DataFrame({"close": 100 + np.random.default_rng(0).normal(0, 1, len(idx)).cumsum()}, index=idx)
+
+ext_sma14 = ExternalFunction(talib.SMA, input_cols="close", output_cols="talib_sma14", args=[14], pass_numpy=True)
+ext_rsi14 = ExternalFunction(talib.RSI, input_cols="close", output_cols="talib_rsi14", args=[14], pass_numpy=True)
+
+kit = FeatureKit([Feature(ext_sma14), Feature(ext_rsi14)], retain=["close"])
+out = kit.build(df, backend="pd", order="topo")
+
+# round-trip
+kit.save_config("featurekit_talib.json")
+kit2 = FeatureKit.load_config("featurekit_talib.json")
+out2 = kit2.build(df, backend="pd", order="topo")
+```
+
+Notes:
+- Set `pass_numpy=True` for libraries expecting `ndarray` inputs (TA-Lib).
+- Multi-output functions are supported by supplying `output_cols=[...]`.
+- If installing TA-Lib is problematic, try `pip install talib-binary`.
+
+See the tutorial: Feature pipelines – Integrating external libraries with ExternalFunction (docs).
+
 ## Labels
 Labels are the target values that we want to predict in a supervised learning problem. Currently, Triple Barrier Method is implemented with meta-label support, which is an advanced approach in financial machine learning.
 

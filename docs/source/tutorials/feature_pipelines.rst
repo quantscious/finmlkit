@@ -106,3 +106,59 @@ Tips
   create intermediate Features or manage DataFrame columns explicitly.
 - Use the pandas backend (``backend="pd"``) when developing or debugging; switch
   to Numba (``backend="nb"``) for performance once things work.
+
+
+Integrating external libraries (e.g. TA-Lib) with ExternalFunction
+------------------------------------------------------------------
+
+You can integrate third-party Python libraries into your feature pipelines via
+``ExternalFunction``. This allows you to call external functions (by object or
+import path) as transforms while keeping consistent input/output handling and
+full serialization support.
+
+Key points:
+
+- Accepts a Callable (recommended) or an import path string (``"pkg.mod.func"``).
+- ``pass_numpy=True`` passes NumPy arrays to the external function (useful for TA-Lib).
+- Supports single or multiple outputs. For multi-output functions, provide
+  ``output_cols`` with matching length.
+- Fully serializable: configurations round-trip via ``FeatureKit.save_config``/
+  ``FeatureKit.load_config``.
+
+Example: TA-Lib SMA/RSI using callables
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+   import talib
+   import numpy as np
+   from finmlkit.feature.kit import Feature, FeatureKit
+   from finmlkit.feature.transforms import ExternalFunction
+
+   # Wrap TA-Lib indicators; pass_numpy=True for ndarray inputs
+   ext_sma14 = ExternalFunction(talib.SMA, input_cols="close", output_cols="talib_sma14", args=[14], pass_numpy=True)
+   ext_rsi14 = ExternalFunction(talib.RSI, input_cols="close", output_cols="talib_rsi14", args=[14], pass_numpy=True)
+
+   f_sma14 = Feature(ext_sma14)
+   f_rsi14 = Feature(ext_rsi14)
+
+   kit = FeatureKit([f_sma14, f_rsi14], retain=["close"])  # compute both
+   out = kit.build(df, backend="pd", order="topo")
+
+   # Serialize and load back
+   kit.save_config("featurekit_talib.json")
+   kit2 = FeatureKit.load_config("featurekit_talib.json")
+   out2 = kit2.build(df, backend="pd", order="topo")
+
+   assert set(out.columns) == set(out2.columns)
+
+Installation notes for TA-Lib
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- TA-Lib may require platform-specific setup. Try:
+
+  - ``pip install TA-Lib``
+  - If that fails, consider ``pip install talib-binary`` (prebuilt wheels).
+
+- When using ``pass_numpy=True``, ensure your input columns are numeric and
+  free of mixed types for best compatibility.
