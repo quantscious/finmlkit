@@ -32,7 +32,7 @@ def test_featurekit_save_load_roundtrip(tmp_path):
     cfg_path = tmp_path / "kit.json"
     kit.save_config(str(cfg_path))
 
-    loaded = FeatureKit.load_config(str(cfg_path))
+    loaded = FeatureKit.from_config(str(cfg_path))
     out2 = loaded.build(df, backend="pd", timeit=False, order="topo")
 
     assert list(out1.columns) == list(out2.columns)

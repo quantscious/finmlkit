@@ -53,7 +53,7 @@ def test_quickstart_ops_kit_roundtrip(tmp_path):
         cfg = json.load(f)
         assert isinstance(cfg, dict)
 
-    loaded = FeatureKit.load_config(str(cfg_path))
+    loaded = FeatureKit.from_config(str(cfg_path))
     out2 = loaded.build(df, backend="pd", order="topo")
 
     assert set(out1.columns) == set(out2.columns)

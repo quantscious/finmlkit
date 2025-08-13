@@ -12,7 +12,7 @@ This section provides detailed, step-by-step tutorials to help you get started w
    tutorials/saving_and_loading_data
    tutorials/building_intra_bar_features
    tutorials/building_inter_bar_features
-   tutorials/building_labels
    tutorials/feature_pipelines
+   tutorials/building_labels
 .. _tutorials:
 

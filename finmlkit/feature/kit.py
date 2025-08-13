@@ -82,8 +82,8 @@ _OP_UNARY = {
 
 
 def _maybe_unary_from_name(name: str):
+    # Dynamic clip pattern: clip_<lower>_<upper>, where bounds may be empty
     if name.startswith("clip_"):
-        # clip_-0.1_0.1 or clip_10_
         parts = name.split("_")
         try:
             lower = float(parts[1]) if parts[1] != "" else None
@@ -94,6 +94,31 @@ def _maybe_unary_from_name(name: str):
         except Exception:
             upper = None
         return lambda x: x.clip(lower=lower, upper=upper)
+
+    # Rolling/statistical patterns
+    try:
+        if name.startswith("rmean"):
+            n = int(name[len("rmean"):])
+            return lambda x: x.rolling(window=n).mean()
+        if name.startswith("rstd"):
+            n = int(name[len("rstd"):])
+            return lambda x: x.rolling(window=n).std()
+        if name.startswith("rsum") or name.startswith("tsum"):
+            base = "rsum" if name.startswith("rsum") else "tsum"
+            n = int(name[len(base):])
+            return lambda x: x.rolling(window=n).sum()
+        if name.startswith("ema"):
+            n = int(name[len("ema"):])
+            # Default to adjust=True (matches Feature.ema default)
+            return lambda x: x.ewm(span=n, adjust=True).mean()
+        if name.startswith("lag"):
+            n = int(name[len("lag"):])
+            return lambda x: x.shift(n)
+    except Exception:
+        # Fall through to static map if parsing fails
+        pass
+
+    # Static unary map (abs, log, log1p, exp, square, sqrt, ...)
     return _OP_UNARY.get(name)
 
 
@@ -1301,7 +1326,7 @@ class FeatureKit:
            # Save and reload feature pipeline configuration
            kit = FeatureKit(features, retain=['close', 'volume'])
            kit.save_config('featurekit.json')
-           kit2 = FeatureKit.load_config('featurekit.json')
+           kit2 = FeatureKit.from_config('featurekit.json')
            df2 = kit2.build(large_data, backend='pd', order='defined')
 
         Execution order and dependency graph:
@@ -1351,21 +1376,21 @@ class FeatureKit:
             "features": [f.to_config() for f in self.features],
         }
 
-    @staticmethod
-    def from_config(cfg: dict) -> "FeatureKit":
-        feats = [Feature.from_config(fc) for fc in cfg.get("features", [])]
-        retain = cfg.get("retain", [])
-        return FeatureKit(feats, retain=retain)
-
     def save_config(self, path: str):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_config(), f, ensure_ascii=False, indent=2)
 
     @staticmethod
-    def load_config(path: str) -> "FeatureKit":
+    def from_dict(cfg: dict) -> "FeatureKit":
+        feats = [Feature.from_config(fc) for fc in cfg.get("features", [])]
+        retain = cfg.get("retain", [])
+        return FeatureKit(feats, retain=retain)
+
+    @classmethod
+    def from_config(cls, path: str) -> "FeatureKit":
         with open(path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return FeatureKit.from_config(cfg)
+        return cls.from_dict(cfg)
 
     # --- Graph API --------------------------------------------------------
     def build_graph(self) -> ComputationGraph:

@@ -29,7 +29,7 @@ def test_external_function_single_output_roundtrip(tmp_path):
     # Round-trip config
     cfg_path = tmp_path / "ext_log_kit.json"
     kit.save_config(str(cfg_path))
-    kit2 = FeatureKit.load_config(str(cfg_path))
+    kit2 = FeatureKit.from_config(str(cfg_path))
 
     out2 = kit2.build(df, backend="pd")
 
@@ -53,7 +53,7 @@ def test_external_function_multi_output_roundtrip(tmp_path):
     # Round-trip config
     cfg_path = tmp_path / "ext_modf_kit.json"
     kit.save_config(str(cfg_path))
-    kit2 = FeatureKit.load_config(str(cfg_path))
+    kit2 = FeatureKit.from_config(str(cfg_path))
 
     out2 = kit2.build(df, backend="pd")
 

@@ -31,7 +31,7 @@ def test_compose_chain_execute_and_roundtrip(tmp_path):
     # Round-trip config
     cfg_path = tmp_path / "compose_kit.json"
     kit.save_config(str(cfg_path))
-    kit2 = FeatureKit.load_config(str(cfg_path))
+    kit2 = FeatureKit.from_config(str(cfg_path))
 
     out2 = kit2.build(df, backend="pd", order="defined")
 

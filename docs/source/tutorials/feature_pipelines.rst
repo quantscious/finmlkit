@@ -95,7 +95,7 @@ pipeline and reload it later to reproduce the same features.
 .. code-block:: python
 
    kit.save_config("featurekit.json")
-   kit2 = FeatureKit.load_config("featurekit.json")
+   kit2 = FeatureKit.from_config("featurekit.json")
    out2 = kit2.build(df, backend="pd", order="topo")
 
 Tips
@@ -147,7 +147,7 @@ Example: TA-Lib SMA/RSI using callables
 
    # Serialize and load back
    kit.save_config("featurekit_talib.json")
-   kit2 = FeatureKit.load_config("featurekit_talib.json")
+   kit2 = FeatureKit.from_config("featurekit_talib.json")
    out2 = kit2.build(df, backend="pd", order="topo")
 
    assert set(out.columns) == set(out2.columns)

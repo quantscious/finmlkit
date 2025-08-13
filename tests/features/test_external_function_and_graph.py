@@ -37,7 +37,7 @@ def test_external_function_numpy_single_and_multi_roundtrip(tmp_path):
     # Round-trip serialization
     cfg_path = tmp_path / "external_numpy_kit.json"
     kit.save_config(str(cfg_path))
-    loaded = FeatureKit.load_config(str(cfg_path))
+    loaded = FeatureKit.from_config(str(cfg_path))
 
     out2 = loaded.build(df, backend="pd", order="topo")
 
