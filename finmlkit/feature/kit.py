@@ -263,7 +263,45 @@ def transform_from_config(cfg: Dict[str, Any]) -> BaseTransform:
 
 
 class ComputationGraph:
-    """Lightweight computation graph (DAG) for features based on requires/produces."""
+    """Directed acyclic graph (DAG) capturing feature dependencies.
+
+    The ComputationGraph models relationships between raw inputs and feature outputs
+    based on the requires/produces metadata of transforms and Features. It is used to:
+
+    - Visualize dataflow between inputs and derived features
+    - Determine a valid topological execution order for interdependent features
+    - Debug missing inputs or circular dependencies in complex pipelines
+
+    Node semantics:
+    - Input nodes are prefixed with "input:" (e.g., "input:close") and represent
+      raw DataFrame columns needed by at least one feature
+    - Feature nodes are the string names of Feature outputs
+
+    Edge semantics:
+    - An edge A -> B means B depends on A. For example, "input:close" -> "sma20"
+      indicates that the SMA feature requires the "close" column; "sma20" -> "ratio"
+      indicates the ratio feature depends on the SMA feature.
+
+    Typical usage:
+    - Build from a FeatureKit via FeatureKit.build_graph()
+    - Call topological_sort() to obtain a valid ordering
+    - Call visualize() to produce a human-readable adjacency listing
+
+    Examples:
+        >>> # doctest: +SKIP
+        >>> f_sma = Feature(SMA(5, input_col="close"))
+        >>> f_ewm = Feature(EWMA(10, input_col="close"))
+        >>> f_ratio = f_sma / f_ewm
+        >>> kit = FeatureKit([f_ratio, f_sma, f_ewm], retain=["close"])
+        >>> g = kit.build_graph()
+        >>> print(g.visualize())
+        ComputationGraph:
+          input:close -> [close_ewma10, close_sma5, div(close_sma5,close_ewma10)]
+          close_ewma10 -> [div(close_sma5,close_ewma10)]
+          close_sma5 -> [div(close_sma5,close_ewma10)]
+        >>> kit.topological_order()
+        ['close_sma5', 'close_ewma10', 'div(close_sma5,close_ewma10)']
+    """
     def __init__(self):
         self.edges: Dict[str, Set[str]] = {}  # src -> set(dst)
         self.nodes: Set[str] = set()
@@ -1336,6 +1374,21 @@ class FeatureKit:
         return order + missing
 
     def build(self, df, *, backend="nb", timeit=False, order: str = "defined"):
+        """Execute all Features and return a DataFrame with retained and computed columns.
+
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing raw columns required by features.
+            backend (str): Computational backend for all features. "pd" for pandas, "nb" for numba. Default "nb".
+            timeit (bool): If True, prints a timing analysis for each feature after execution.
+            order (str): Execution order for features:
+                - "defined" (default): Run features in the order they were provided to FeatureKit
+                - "topo": Run features in topological order based on dependencies inferred
+                  from their underlying transforms. This helps when the list order doesn't already
+                  respect dependencies (e.g., when a feature uses the output of another).
+
+        Returns:
+            pd.DataFrame: A DataFrame that contains retained columns and all computed feature columns.
+        """
         out = df[self.retain].copy()
         df = df.copy()
 

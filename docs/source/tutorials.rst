@@ -13,5 +13,6 @@ This section provides detailed, step-by-step tutorials to help you get started w
    tutorials/building_intra_bar_features
    tutorials/building_inter_bar_features
    tutorials/building_labels
+   tutorials/feature_pipelines
 .. _tutorials:
 
