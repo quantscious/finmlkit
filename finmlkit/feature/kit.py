@@ -6,6 +6,398 @@ import time
 
 logger = get_logger(__name__)
 
+# --- Serialization and Graph Utilities ---------------------------------------
+import json
+import inspect
+import importlib
+from typing import Any, Dict, List, Tuple, Optional, Set
+
+
+def _serialize_value(val: Any) -> Any:
+    """Best-effort JSON-serializable conversion for common types used in transforms."""
+    try:
+        import pandas as pd  # local import to avoid circulars when packaging
+    except Exception:  # pragma: no cover - defensive
+        pd = None
+    if pd is not None and isinstance(val, pd.Timedelta):
+        return {"__timedelta__": True, "seconds": val.total_seconds()}
+    if isinstance(val, (str, int, float, bool)) or val is None:
+        return val
+    if isinstance(val, (list, tuple)):
+        return [_serialize_value(v) for v in val]
+    if isinstance(val, dict):
+        return {k: _serialize_value(v) for k, v in val.items()}
+    # Fallback to string repr
+    return str(val)
+
+
+def _deserialize_value(val: Any) -> Any:
+    try:
+        import pandas as pd
+    except Exception:  # pragma: no cover
+        pd = None
+    if isinstance(val, dict) and val.get("__timedelta__") and pd is not None:
+        return pd.Timedelta(seconds=val["seconds"])  # type: ignore[arg-type]
+    if isinstance(val, list):
+        return [_deserialize_value(v) for v in val]
+    if isinstance(val, dict):
+        return {k: _deserialize_value(v) for k, v in val.items()}
+    return val
+
+
+def _class_path(obj: Any) -> str:
+    cls = obj if isinstance(obj, type) else obj.__class__
+    return f"{cls.__module__}.{cls.__name__}"
+
+
+def _import_class(path: str):
+    module_name, cls_name = path.rsplit(".", 1)
+    mod = importlib.import_module(module_name)
+    return getattr(mod, cls_name)
+
+
+# Map op_name -> functions for reconstruction
+_OP_BINARY = {
+    "add": lambda x, y: x + y,
+    "sub": lambda x, y: x - y,
+    "mul": lambda x, y: x * y,
+    "div": lambda x, y: x / y,
+    "rsub": lambda x, y: y - x,
+    "rdiv": lambda x, y: y / x,
+}
+
+_OP_MINMAX = {
+    "min": lambda x, y: np.minimum(x, y),
+    "max": lambda x, y: np.maximum(x, y),
+}
+
+_OP_UNARY = {
+    "abs": lambda x: x.abs(),
+    "log": lambda x: x.apply(lambda v: np.log(v) if v > 0 else np.nan),
+    "log1p": lambda x: x.apply(lambda v: np.log1p(v) if v >= 0 else np.nan),
+    "exp": lambda x: x.apply(np.exp),
+    "square": lambda x: x ** 2,
+    "sqrt": lambda x: x.apply(lambda v: np.sqrt(v) if v >= 0 else np.nan),
+}
+
+
+def _maybe_unary_from_name(name: str):
+    if name.startswith("clip_"):
+        # clip_-0.1_0.1 or clip_10_
+        parts = name.split("_")
+        try:
+            lower = float(parts[1]) if parts[1] != "" else None
+        except Exception:
+            lower = None
+        try:
+            upper = float(parts[2]) if len(parts) > 2 and parts[2] != "" else None
+        except Exception:
+            upper = None
+        return lambda x: x.clip(lower=lower, upper=upper)
+    return _OP_UNARY.get(name)
+
+
+def transform_to_config(t: BaseTransform) -> Dict[str, Any]:
+    """Serialize a BaseTransform (including operation and Compose transforms) into a dict."""
+    cfg: Dict[str, Any] = {
+        "class": _class_path(t),
+        "requires": list(getattr(t, "requires", [])),
+        "produces": list(getattr(t, "produces", [])),
+    }
+    # Operation transforms
+    if isinstance(t, BinaryOpTransform):
+        cfg.update({
+            "kind": "binary",
+        })
+        # Prefer explicit attribute when available; fallback to parsing from produces
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
+        cfg["op_name"] = op_name
+        cfg["left"] = transform_to_config(t.left)
+        cfg["right"] = transform_to_config(t.right)
+        return cfg
+    if isinstance(t, MinMaxOpTransform):
+        cfg.update({"kind": "minmax"})
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
+        cfg["op_name"] = op_name
+        cfg["left"] = transform_to_config(t.left)
+        cfg["right"] = transform_to_config(t.right)
+        return cfg
+    if isinstance(t, ConstantOpTransform):
+        cfg.update({"kind": "const"})
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
+        cfg["op_name"] = op_name
+        cfg["constant"] = t.constant
+        cfg["child"] = transform_to_config(t.transform)
+        return cfg
+    if isinstance(t, UnaryOpTransform):
+        cfg.update({"kind": "unary"})
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
+        cfg["op_name"] = op_name
+        cfg["child"] = transform_to_config(t.transform)
+        return cfg
+    # External function transform
+    if getattr(t, "_is_external_function", False):
+        cfg.update({
+            "kind": "external",
+            "func": getattr(t, "func_path", None),
+            "args": _serialize_value(getattr(t, "args", [])),
+            "kwargs": _serialize_value(getattr(t, "kwargs", {})),
+            "pass_numpy": bool(getattr(t, "pass_numpy", False)),
+        })
+        return cfg
+
+    # Compose is defined in this module
+    if isinstance(t, Compose):
+        cfg.update({
+            "kind": "compose",
+            "steps": [transform_to_config(tt) for tt in t.transforms],
+        })
+        return cfg
+
+    # Generic: capture constructor parameters by signature names found on instance
+    try:
+        cls = t.__class__
+        sig = inspect.signature(cls.__init__)
+        params = {}
+        for name, p in sig.parameters.items():
+            if name == "self":
+                continue
+            if name == "input_col" and hasattr(t, "requires"):
+                params[name] = t.requires[0]
+            elif name == "input_cols" and hasattr(t, "requires"):
+                params[name] = list(t.requires)
+            elif hasattr(t, name):
+                params[name] = getattr(t, name)
+        cfg["kind"] = "transform"
+        cfg["params"] = {k: _serialize_value(v) for k, v in params.items()}
+    except Exception as e:  # pragma: no cover
+        logger.warning(f"Failed to introspect params for {t}: {e}")
+        cfg["kind"] = "transform"
+        cfg["params"] = {}
+    return cfg
+
+
+def transform_from_config(cfg: Dict[str, Any]) -> BaseTransform:
+    kind = cfg.get("kind")
+    if kind == "binary":
+        left = transform_from_config(cfg["left"])  # type: ignore[index]
+        right = transform_from_config(cfg["right"])  # type: ignore[index]
+        op_name = cfg.get("op_name", "add")
+        op = _OP_BINARY.get(op_name)
+        if op is None:
+            raise ValueError(f"Unsupported binary op: {op_name}")
+        return BinaryOpTransform(left, right, op_name, op)
+    if kind == "minmax":
+        left = transform_from_config(cfg["left"])  # type: ignore[index]
+        right = transform_from_config(cfg["right"])  # type: ignore[index]
+        op_name = cfg.get("op_name", "min")
+        op = _OP_MINMAX.get(op_name)
+        if op is None:
+            raise ValueError(f"Unsupported minmax op: {op_name}")
+        return MinMaxOpTransform(left, right, op_name, op)
+    if kind == "const":
+        child = transform_from_config(cfg["child"])  # type: ignore[index]
+        op_name = cfg.get("op_name", "add")
+        const = cfg.get("constant")
+        if op_name in ("add", "sub", "mul", "div"):
+            op = _OP_BINARY[op_name]
+            return ConstantOpTransform(child, const, op_name, lambda x, c: op(x, c))
+        if op_name in ("rsub", "rdiv"):
+            # right-constant operations
+            return ConstantOpTransform(child, const, op_name, (lambda x, c: c - x) if op_name == "rsub" else (lambda x, c: c / x))
+        if op_name in ("min", "max"):
+            mm = _OP_MINMAX[op_name]
+            return ConstantOpTransform(child, const, op_name, lambda x, c: mm(x, c))
+        raise ValueError(f"Unsupported const op: {op_name}")
+    if kind == "unary":
+        child = transform_from_config(cfg["child"])  # type: ignore[index]
+        op_name = cfg.get("op_name", "abs")
+        op = _maybe_unary_from_name(op_name)
+        if op is None:
+            raise ValueError(f"Unsupported unary op: {op_name}")
+        return UnaryOpTransform(child, op_name, op)
+    if kind == "compose":
+        steps = [transform_from_config(s) for s in cfg.get("steps", [])]
+        return Compose(*steps)  # type: ignore[arg-type]
+    if kind == "external":
+        # Lazy import to avoid circulars
+        from finmlkit.feature.transforms import ExternalFunction  # type: ignore
+        func_path = cfg.get("func")
+        if not func_path:
+            raise ValueError("ExternalFunction config requires 'func' path")
+        input_cols = cfg.get("requires", [])
+        if not input_cols:
+            raise ValueError("ExternalFunction config missing 'requires'")
+        input_cols = input_cols[0] if len(input_cols) == 1 else input_cols
+        produces = cfg.get("produces", [])
+        if isinstance(produces, list):
+            output_cols = produces[0] if len(produces) == 1 else produces
+        else:
+            output_cols = produces
+        args = _deserialize_value(cfg.get("args", []))
+        kwargs = _deserialize_value(cfg.get("kwargs", {}))
+        pass_numpy = bool(cfg.get("pass_numpy", False))
+        return ExternalFunction(func_path, input_cols, output_cols, args=args, kwargs=kwargs, pass_numpy=pass_numpy)
+
+    # Generic transform reconstruction via constructor signature
+    cls = _import_class(cfg["class"])  # type: ignore[index]
+    params = {k: _deserialize_value(v) for k, v in cfg.get("params", {}).items()}
+    try:
+        obj = cls(**params)
+        return obj
+    except Exception as e:  # fallback: shallow construct without __init__ (best-effort)
+        logger.warning(f"Falling back to shallow reconstruction for {cfg['class']}: {e}")
+        obj = cls.__new__(cls)
+        # Set minimal fields
+        setattr(obj, "requires", cfg.get("requires", []))
+        setattr(obj, "produces", cfg.get("produces", []))
+        # Restore common attributes
+        for k, v in params.items():
+            setattr(obj, k, v)
+        return obj
+
+
+class ComputationGraph:
+    """Directed acyclic graph (DAG) capturing feature dependencies.
+
+    The ComputationGraph models relationships between raw inputs and feature outputs
+    based on the requires/produces metadata of transforms and Features. It is used to:
+
+    - Visualize dataflow between inputs and derived features
+    - Determine a valid topological execution order for interdependent features
+    - Debug missing inputs or circular dependencies in complex pipelines
+
+    Node semantics:
+    - Input nodes are prefixed with "input:" (e.g., "input:close") and represent
+      raw DataFrame columns needed by at least one feature
+    - Feature nodes are the string names of Feature outputs
+
+    Edge semantics:
+    - An edge A -> B means B depends on A. For example, "input:close" -> "sma20"
+      indicates that the SMA feature requires the "close" column; "sma20" -> "ratio"
+      indicates the ratio feature depends on the SMA feature.
+
+    Typical usage:
+    - Build from a FeatureKit via FeatureKit.build_graph()
+    - Call topological_sort() to obtain a valid ordering
+    - Call visualize() to produce a human-readable adjacency listing
+
+    Examples:
+        >>> # doctest: +SKIP
+        >>> f_sma = Feature(SMA(5, input_col="close"))
+        >>> f_ewm = Feature(EWMA(10, input_col="close"))
+        >>> f_ratio = f_sma / f_ewm
+        >>> kit = FeatureKit([f_ratio, f_sma, f_ewm], retain=["close"])
+        >>> g = kit.build_graph()
+        >>> print(g.visualize())
+        ComputationGraph:
+          input:close -> [close_ewma10, close_sma5, div(close_sma5,close_ewma10)]
+          close_ewma10 -> [div(close_sma5,close_ewma10)]
+          close_sma5 -> [div(close_sma5,close_ewma10)]
+        >>> kit.topological_order()  # doctest: +SKIP
+        ['close_sma5', 'close_ewma10', 'div(close_sma5,close_ewma10)']
+    """
+    def __init__(self):
+        self.edges: Dict[str, Set[str]] = {}  # src -> set(dst)
+        self.nodes: Set[str] = set()
+
+    def add_edge(self, src: str, dst: str):
+        self.nodes.update([src, dst])
+        self.edges.setdefault(src, set()).add(dst)
+        self.edges.setdefault(dst, set())  # ensure dst in map
+
+    def add_node(self, node: str):
+        self.nodes.add(node)
+        self.edges.setdefault(node, set())
+
+    def topological_sort(self) -> List[str]:
+        # Kahn's algorithm
+        indeg = {n: 0 for n in self.nodes}
+        for src, dests in self.edges.items():
+            for d in dests:
+                indeg[d] = indeg.get(d, 0) + 1
+        zero = [n for n, d in indeg.items() if d == 0]
+        order = []
+        while zero:
+            n = zero.pop(0)
+            order.append(n)
+            for d in list(self.edges.get(n, [])):
+                indeg[d] -= 1
+                if indeg[d] == 0:
+                    zero.append(d)
+        return order
+
+    def visualize(self) -> str:
+        lines = ["ComputationGraph:"]
+        for src in sorted(self.edges.keys()):
+            dests = ", ".join(sorted(self.edges[src]))
+            lines.append(f"  {src} -> [{dests}]")
+        return "\n".join(lines)
+
+
+def _flatten_requires(t: BaseTransform) -> List[str]:
+    # For op transforms, union child requires
+    if isinstance(t, (BinaryOpTransform, MinMaxOpTransform)):
+        return list(set(_flatten_requires(t.left) + _flatten_requires(t.right)))
+    if isinstance(t, (UnaryOpTransform, ConstantOpTransform)):
+        return _flatten_requires(t.transform)
+    if isinstance(t, Compose):
+        return t.transforms[0].requires  # first input drives
+    return getattr(t, "requires", [])
+
+
+def build_feature_graph(features: List["Feature"]) -> ComputationGraph:
+    g = ComputationGraph()
+    # Map of feature output names for cross-referencing
+    outputs = {str(f.name): f for f in features if isinstance(f.name, (str,))}
+
+    def _child_out_names(t: BaseTransform) -> List[str]:
+        if isinstance(t, (BinaryOpTransform, MinMaxOpTransform)):
+            left_name = t.left.output_name if isinstance(t.left.output_name, str) else str(t.left.output_name)
+            right_name = t.right.output_name if isinstance(t.right.output_name, str) else str(t.right.output_name)
+            return [left_name, right_name]
+        if isinstance(t, (UnaryOpTransform, ConstantOpTransform)):
+            child_name = t.transform.output_name
+            return [child_name if isinstance(child_name, str) else str(child_name)]
+        if isinstance(t, Compose):
+            # Link to first step output if it exists among features
+            first_out = t.transforms[0].output_name
+            return [first_out if isinstance(first_out, str) else str(first_out)]
+        return []
+
+    for f in features:
+        out_name = str(f.name)
+        g.add_node(out_name)
+        # Edges from raw inputs
+        reqs = _flatten_requires(f.transform)
+        for r in reqs:
+            in_node = f"input:{r}"
+            g.add_node(in_node)
+            g.add_edge(in_node, out_name)
+        # Edges from child transforms if those outputs are also features
+        for child_out in _child_out_names(f.transform):
+            if child_out in outputs and child_out != out_name:
+                g.add_edge(child_out, out_name)
+        # Back-compat: dependencies on other features if require equals other feature's output
+        for other_name in outputs.keys():
+            if other_name == out_name:
+                continue
+            if other_name in reqs:
+                g.add_edge(other_name, out_name)
+    return g
+
 
 class Feature:
     r"""High-level wrapper for data transformations enabling intuitive mathematical operations and fluent feature engineering.
@@ -212,6 +604,27 @@ class Feature:
         if isinstance(output_name, (tuple, list)):
             assert len(output_name) == len(self._name), "same length"
         self._name = output_name
+
+    # --- Serialization -----------------------------------------------------
+    def to_config(self) -> dict:
+        """Serialize this Feature (and underlying transform) to a JSON-serializable dict.
+        Note: custom arbitrary functions used via Feature.apply may not be fully reconstructable
+        unless their op_name is recognized (abs, log, log1p, exp, square, sqrt, clip_*).
+        """
+        return {
+            "name": self._name if isinstance(self._name, str) else list(self._name),
+            "transform": transform_to_config(self.transform),
+        }
+
+    @staticmethod
+    def from_config(cfg: dict) -> "Feature":
+        t = transform_from_config(cfg["transform"])  # type: ignore[index]
+        f = Feature(t)
+        # Preserve custom name if provided
+        name = cfg.get("name")
+        if name is not None:
+            f.name = name
+        return f
 
     def apply(self, func, *args, suffix=None, **kwargs):
         """
@@ -640,30 +1053,50 @@ class Compose(BaseTransform):
 
     def _run_pipeline(self, x: pd.DataFrame, *, backend) -> pd.Series:
         """
-        Apply the composed transforms to the input DataFrame.
+        Apply the composed transforms to the input DataFrame with caching/optimization:
+        - If the final output already exists in the input DataFrame, return it immediately.
+        - For each step, if its output exists in the DataFrame, reuse it rather than recomputing.
+        - Prefer DataFrame-provided required column(s) when available; else use the prior step's output.
         :param x: DataFrame to transform
         :param backend: Backend is already specified in the transforms
         :return: Transformed Series
         """
         self._validate_input(x)
-        series_out = None
+
+        # Short-circuit if final output is already present in the DataFrame
+        final_name = self.output_name
+        if final_name in x.columns:
+            return x[final_name]
+
+        current_series = None
         for i, tfs in enumerate(self.transforms):
+            out_name = tfs.produces[0]
+
+            # If this step's output already exists, reuse it
+            if out_name in x.columns:
+                current_series = x[out_name]
+                continue
+
             if i == 0:
-                # First transform on the input DataFrame
-                # Check if the first product is already in the DataFrame (Often the case for the first transform in the chain)
-                if tfs.produces[0] in x.columns:
-                    series_out = x[tfs.produces[0]]
-                else:
-                    series_out = tfs(x)
+                # First transform: operate on full DataFrame x
+                current_series = tfs(x, backend=backend)
             else:
-                # Subsequent transforms on the output of the previous transform
-                # print(tfs.requires[0])
-                series_out = tfs(pd.DataFrame(series_out.values, index=series_out.index, columns=[tfs.requires[0]]), backend=backend)
+                # Subsequent transforms: prefer required column from DataFrame if available,
+                # otherwise use the prior step's series as the required input column.
+                req_col = tfs.requires[0]
+                if req_col in x.columns:
+                    df_in = x[[req_col]]
+                else:
+                    df_in = pd.DataFrame(current_series.values, index=current_series.index, columns=[req_col])
+                current_series = tfs(df_in, backend=backend)
+
+            # Optionally cache into x for downstream steps to reuse (without mutating original reference)
+            # We avoid modifying the input DataFrame in-place; downstream steps consult x for presence.
+            # If consumers expect caching to materialize, FeatureKit handles DataFrame accumulation.
 
         # Return the final output Series with the composed name
-        series_out.name = self.output_name
-
-        return series_out
+        current_series.name = final_name
+        return current_series
 
     def __call__(self, x: pd.DataFrame, *, backend="nb") -> pd.Series:
         """
@@ -861,6 +1294,40 @@ class FeatureKit:
            # Save results for model training
            feature_matrix.to_parquet('feature_matrix.parquet')
 
+        Reproducibility and config I/O:
+
+        .. code-block:: python
+
+           # Save and reload feature pipeline configuration
+           kit = FeatureKit(features, retain=['close', 'volume'])
+           kit.save_config('featurekit.json')
+           kit2 = FeatureKit.load_config('featurekit.json')
+           df2 = kit2.build(large_data, backend='pd', order='defined')
+
+        Execution order and dependency graph:
+
+        .. code-block:: python
+
+           # Compute in topological order to resolve dependencies automatically
+           df_topo = kit.build(large_data, backend='pd', order='topo')
+           # Visualize the graph
+           print(kit.build_graph().visualize())
+
+        External functions (e.g., NumPy/TA-Lib) via ExternalFunction:
+
+        .. code-block:: python
+
+           from finmlkit.feature.transforms import ExternalFunction
+
+           # Single-output example using NumPy (passes numpy arrays to function)
+           log_close = Feature(ExternalFunction('numpy.log', input_cols='close', output_cols='log_close', pass_numpy=True))
+
+           # TA-Lib example (if talib is installed)
+           # rsi14 = Feature(ExternalFunction('talib.RSI', input_cols='close', output_cols='ta_rsi14', args=[14], pass_numpy=True))
+
+           kit_ext = FeatureKit([log_close], retain=['close'])
+           df_ext = kit_ext.build(large_data, backend='pd')
+
     See Also:
 
         - :class:`Feature`: Core wrapper class for individual transformations with mathematical operations.
@@ -877,13 +1344,94 @@ class FeatureKit:
         self.features = features
         self.retain = retain or []
 
-    def build(self, df, *, backend="nb", timeit=False):
+    # --- Serialization / Reproducibility ---------------------------------
+    def to_config(self) -> dict:
+        return {
+            "retain": list(self.retain),
+            "features": [f.to_config() for f in self.features],
+        }
+
+    @staticmethod
+    def from_config(cfg: dict) -> "FeatureKit":
+        feats = [Feature.from_config(fc) for fc in cfg.get("features", [])]
+        retain = cfg.get("retain", [])
+        return FeatureKit(feats, retain=retain)
+
+    def save_config(self, path: str):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.to_config(), f, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def load_config(path: str) -> "FeatureKit":
+        with open(path, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        return FeatureKit.from_config(cfg)
+
+    # --- Graph API --------------------------------------------------------
+    def build_graph(self) -> ComputationGraph:
+        return build_feature_graph(self.features)
+
+    def topological_order(self) -> list[str]:
+        # Compute topo order among feature names only (ignore input nodes)
+        g = self.build_graph()
+        names = [str(f.name) for f in self.features]
+        name_set = set(names)
+        # Build subgraph edges between feature nodes
+        edges = {n: set() for n in name_set}
+        indeg = {n: 0 for n in name_set}
+        for src, dests in g.edges.items():
+            if src not in name_set:
+                continue
+            for d in dests:
+                if d in name_set:
+                    edges[src].add(d)
+                    indeg[d] += 1
+        # Kahn on feature-only subgraph
+        zero = [n for n, d in indeg.items() if d == 0]
+        order = []
+        while zero:
+            n = zero.pop(0)
+            order.append(n)
+            for d in list(edges.get(n, [])):
+                indeg[d] -= 1
+                if indeg[d] == 0:
+                    zero.append(d)
+        # Append any missing (fallback to original order)
+        missing = [n for n in names if n not in order]
+        return order + missing
+
+    def build(self, df, *, backend="nb", timeit=False, order: str = "defined"):
+        """Execute all Features and return a DataFrame with retained and computed columns.
+
+        Parameters:
+            df (pd.DataFrame): Input DataFrame containing raw columns required by features.
+            backend (str): Computational backend for all features. "pd" for pandas, "nb" for numba. Default "nb".
+            timeit (bool): If True, prints a timing analysis for each feature after execution.
+            order (str): Execution order for features:
+                - "defined" (default): Run features in the order they were provided to FeatureKit
+                - "topo": Run features in topological order based on dependencies inferred
+                  from their underlying transforms. This helps when the list order doesn't already
+                  respect dependencies (e.g., when a feature uses the output of another).
+
+        Returns:
+            pd.DataFrame: A DataFrame that contains retained columns and all computed feature columns.
+        """
         out = df[self.retain].copy()
         df = df.copy()
 
+        # Determine execution order
+        features_seq = self.features
+        if order == "topo":
+            name2feat = {str(f.name): f for f in self.features}
+            topo_names = self.topological_order()
+            # Stable order: topo first, then any remaining by original order
+            topo_feats = [name2feat[n] for n in topo_names if n in name2feat]
+            remaining = [f for f in self.features if str(f.name) not in set(topo_names)]
+            features_seq = topo_feats + remaining
+
         timing_info = {}
 
-        for feat in self.features:
+        for feat in features_seq:
             if timeit:
                 start_time = time.time()
 

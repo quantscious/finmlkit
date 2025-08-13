@@ -112,11 +112,15 @@ Bars are the primary data structure in FinMLKit – constructed from preprocesse
 Everything that processes bars data (candlestick/OHLCV, directional features, or footprints) and calculates derived values from it is considered a feature. This includes moving averages, RSI, MACD, etc. Here we are focusing on more unconventional indicators that are not commonly found in other libraries and builds on our advanced data structures like footprints, for example, **volume profile features**. Features are the building blocks of trading strategies and are used to generate signals for buying or selling assets.
 
 **FeatureKit Framework:**
-- [x] Dual-backend architecture (pandas for development and prototyping ideas, Numba for production)
+- [x] Dual-backend architecture (pandas for development/prototyping, Numba for production)
 - [x] SISO, MISO, SIMO, MIMO transform patterns for flexible feature engineering
 - [x] Compose class for sequential transform chaining
-- [x] Mathematical operations and function composition with Feature wrapper class
-- [x] FeatureKit for batch feature computation with performance profiling
+- [x] Mathematical operations and function composition with the Feature wrapper class
+- [x] **Computational graph:** visualize dependencies and compute in topological order
+- [x] **Optimized, caching-aware execution:** reuse precomputed columns across features and pipelines
+- [x] **Reproducibility:** JSON serialization of Features/FeatureKit with full config export/import
+- [x] **Integration with external libraries** (e.g., TA-Lib) via `ExternalFunction` transform wrapper
+- [x] **FeatureKit** for batch feature computation with optional performance profiling
 
 **Implemented Features:**
 - [x] Adjusted Exponential Moving Average

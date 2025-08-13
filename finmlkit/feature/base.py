@@ -1264,6 +1264,7 @@ class BinaryOpTransform(BaseTransform):
         self.left = left
         self.right = right
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         # binary operations are valid for SISO and MISO transforms
@@ -1280,8 +1281,19 @@ class BinaryOpTransform(BaseTransform):
         return self.produces
 
     def __call__(self, x, *, backend="nb"):
-        left_result = self.left(x, backend=backend)
-        right_result = self.right(x, backend=backend)
+        # Short-circuit if final output already cached
+        out_name = self.output_name if isinstance(self.output_name, str) else self.produces[0]
+        if isinstance(x, pd.DataFrame) and out_name in x.columns:
+            return x[out_name]
+        # Try to reuse cached child outputs if present
+        if isinstance(x, pd.DataFrame) and isinstance(self.left.output_name, str) and self.left.output_name in x.columns:
+            left_result = x[self.left.output_name]
+        else:
+            left_result = self.left(x, backend=backend)
+        if isinstance(x, pd.DataFrame) and isinstance(self.right.output_name, str) and self.right.output_name in x.columns:
+            right_result = x[self.right.output_name]
+        else:
+            right_result = self.right(x, backend=backend)
         result = self.op_func(left_result, right_result)
         result.name = self.output_name
         return result
@@ -1294,6 +1306,7 @@ class ConstantOpTransform(BaseTransform):
         self.transform = transform
         self.constant = constant
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         return self.transform._validate_input(x)
@@ -1305,8 +1318,16 @@ class ConstantOpTransform(BaseTransform):
         return self.produces
 
     def __call__(self, x, *, backend="nb"):
-        result = self.transform(x, backend=backend)
-        result = self.op_func(result, self.constant)
+        # Short-circuit if final output already cached
+        out_name = self.output_name if isinstance(self.output_name, str) else self.produces[0]
+        if isinstance(x, pd.DataFrame) and out_name in x.columns:
+            return x[out_name]
+        # Reuse cached child if present
+        if isinstance(x, pd.DataFrame) and isinstance(self.transform.output_name, str) and self.transform.output_name in x.columns:
+            base = x[self.transform.output_name]
+        else:
+            base = self.transform(x, backend=backend)
+        result = self.op_func(base, self.constant)
         result.name = self.output_name
         return result
 
@@ -1317,6 +1338,7 @@ class UnaryOpTransform(BaseTransform):
         super().__init__(transform.requires, f"{op_name}({transform.output_name})")
         self.transform = transform
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         return self.transform._validate_input(x)
@@ -1328,8 +1350,16 @@ class UnaryOpTransform(BaseTransform):
         return self.produces
 
     def __call__(self, x, *, backend="nb"):
-        result = self.transform(x, backend=backend)
-        result = self.op_func(result)
+        # Short-circuit if final output already cached
+        out_name = self.output_name if isinstance(self.output_name, str) else self.produces[0]
+        if isinstance(x, pd.DataFrame) and out_name in x.columns:
+            return x[out_name]
+        # Reuse cached child if present
+        if isinstance(x, pd.DataFrame) and isinstance(self.transform.output_name, str) and self.transform.output_name in x.columns:
+            base = x[self.transform.output_name]
+        else:
+            base = self.transform(x, backend=backend)
+        result = self.op_func(base)
         result.name = self.output_name
         return result
 
@@ -1344,6 +1374,7 @@ class MinMaxOpTransform(BaseTransform):
         self.left = left
         self.right = right
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         # min/max operations are valid for SISO and MISO transforms
@@ -1360,8 +1391,19 @@ class MinMaxOpTransform(BaseTransform):
         return self.produces
 
     def __call__(self, x, *, backend="nb"):
-        left_result = self.left(x, backend=backend)
-        right_result = self.right(x, backend=backend)
+        # Short-circuit if final output already cached
+        out_name = self.output_name if isinstance(self.output_name, str) else self.produces[0]
+        if isinstance(x, pd.DataFrame) and out_name in x.columns:
+            return x[out_name]
+        # Try to reuse cached child outputs if present
+        if isinstance(x, pd.DataFrame) and isinstance(self.left.output_name, str) and self.left.output_name in x.columns:
+            left_result = x[self.left.output_name]
+        else:
+            left_result = self.left(x, backend=backend)
+        if isinstance(x, pd.DataFrame) and isinstance(self.right.output_name, str) and self.right.output_name in x.columns:
+            right_result = x[self.right.output_name]
+        else:
+            right_result = self.right(x, backend=backend)
         result = self.op_func(left_result, right_result)
         result.name = self.output_name
         return result

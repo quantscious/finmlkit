@@ -12,7 +12,7 @@ from .core.momentum import roc, rsi_wilder, stoch_k
 from .core.trend import adx_core
 from .core.structural_break.cusum import cusum_test_rolling
 from .core.correlation import rolling_price_volume_correlation
-from typing import Union
+from typing import Union, Sequence, Callable, Any, Optional
 from finmlkit.utils.log import get_logger
 from numba import njit
 import pandas as pd
@@ -563,7 +563,7 @@ class SMA(SISOTransform):
     def _pd(self, x):
         series = x[self.requires[0]]
         outp = series.rolling(window=self.window).mean()
-        outp.name = self.produces
+        outp.name = self.output_name
 
         return outp
 
@@ -1662,3 +1662,144 @@ class DirRunLen(SISOTransform):
             prev_sign = sign
 
         return run_lengths
+
+
+
+class ExternalFunction(BaseTransform):
+    """
+    Wrap an external Python callable (by object or import path) as a Transform.
+
+    This enables integrating third-party libraries (e.g., NumPy, TA-Lib) into the
+    Feature/FeatureKit pipelines while preserving consistent input/output handling
+    and enabling serialization.
+
+    Notes:
+
+    - For multiple outputs (functions returning a tuple/list), you must provide
+      `output_cols` with matching length.
+    - If `pass_numpy=True`, the callable receives NumPy arrays instead of pandas
+      Series, which improves compatibility/performance for libraries expecting
+      ndarrays (e.g., TA-Lib).
+    """
+    def __init__(
+        self,
+        func: Union[str, Callable],
+        input_cols: Union[str, Sequence[str]],
+        output_cols: Union[str, Sequence[str], None] = None,
+        *,
+        args: Optional[Sequence[Any]] = None,
+        kwargs: Optional[dict] = None,
+        pass_numpy: bool = False,
+    ):
+        """
+        Initialize the ExternalFunction transform.
+        This transform wraps an external Python function or import path to be used
+        as a Transform in the Feature/FeatureKit pipeline.
+
+        :param func: String import path or callable object to wrap.
+        :param input_cols: Columns required as input for the function.
+        :param output_cols: Columns produced by the function.
+        :param args: Additional positional arguments to pass to the function.
+        :param kwargs: Additional keyword arguments to pass to the function.
+        :param pass_numpy: If True, the function receives NumPy arrays instead of pandas Series.
+        """
+        # Determine function path and display name
+        if isinstance(func, str):
+            func_path = func
+            func_obj: Optional[Callable] = None
+            func_name = func.split(".")[-1]
+        else:
+            module = getattr(func, "__module__", None)
+            name = getattr(func, "__name__", None)
+            func_name = name or "external"
+            func_path = f"{module}.{name}" if module and name else None
+            func_obj = func
+
+        # Default output naming for single-output case
+        if output_cols is None:
+            default_name = f"ext_{func_name}"
+            produces = default_name
+        else:
+            produces = output_cols
+
+        super().__init__(input_cols, produces)
+        self._callable = func_obj
+        self.func_path: Optional[str] = func_path
+        self.args: list[Any] = list(args) if args is not None else []
+        self.kwargs: dict[str, Any] = dict(kwargs) if kwargs is not None else {}
+        self.pass_numpy = pass_numpy
+
+        # Marker for serialization detection
+        self._is_external_function = True
+
+    @property
+    def output_name(self) -> str | list[str]:
+        if isinstance(self.produces, list) and len(self.produces) == 1:
+            return self.produces[0]
+        return self.produces
+
+    def _validate_input(self, x: pd.DataFrame) -> bool:
+        if not isinstance(x, pd.DataFrame):
+            raise TypeError("Input must be a pandas DataFrame")
+        missing = [c for c in self.requires if c not in x.columns]
+        if missing:
+            raise ValueError(f"Missing required columns: {missing}")
+        return True
+
+    def _resolve_func(self) -> Callable:
+        if self._callable is not None:
+            return self._callable
+        if not self.func_path:
+            raise ValueError("ExternalFunction requires a callable or import path")
+        module_name, attr = self.func_path.rsplit(".", 1)
+        mod = __import__(module_name, fromlist=[attr])
+        fn = getattr(mod, attr)
+        if not callable(fn):
+            raise TypeError(f"Imported object {self.func_path} is not callable")
+        self._callable = fn
+        return fn
+
+    def __call__(self, x: pd.DataFrame, *, backend="nb") -> Union[pd.Series, tuple[pd.Series, ...]]:
+        self._validate_input(x)
+        fn = self._resolve_func()
+
+        # Prepare inputs
+        inputs: list[Any] = []
+        if len(self.requires) == 1:
+            series = x[self.requires[0]]
+            inputs.append(series.to_numpy() if self.pass_numpy else series)
+            index = series.index
+        else:
+            # Multiple inputs pass as separate positional args
+            idx_series = x[self.requires[0]]
+            index = idx_series.index
+            for c in self.requires:
+                s = x[c]
+                inputs.append(s.to_numpy() if self.pass_numpy else s)
+
+        # Combine with user args/kwargs
+        call_args = inputs + list(self.args)
+        result = fn(*call_args, **self.kwargs)
+
+        # Build outputs
+        if isinstance(result, (tuple, list)):
+            if not isinstance(self.produces, list) or len(result) != len(self.produces):
+                raise ValueError(
+                    f"ExternalFunction returned {len(result)} outputs, but produces={self.produces}"
+                )
+            outs: list[pd.Series] = []
+            for name, item in zip(self.produces, result):
+                if isinstance(item, pd.Series):
+                    s = item.copy()
+                    s.name = name
+                else:
+                    s = pd.Series(item, index=index, name=name)
+                outs.append(s)
+            return tuple(outs)
+        else:
+            if isinstance(result, pd.Series):
+                s = result.copy()
+                s.name = self.output_name if isinstance(self.output_name, str) else self.produces[0]
+                return s
+            s = pd.Series(result, index=index, name=self.output_name if isinstance(self.output_name, str) else self.produces[0])
+            return s
