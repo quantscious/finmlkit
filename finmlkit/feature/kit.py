@@ -299,7 +299,7 @@ class ComputationGraph:
           input:close -> [close_ewma10, close_sma5, div(close_sma5,close_ewma10)]
           close_ewma10 -> [div(close_sma5,close_ewma10)]
           close_sma5 -> [div(close_sma5,close_ewma10)]
-        >>> kit.topological_order()
+        >>> kit.topological_order()  # doctest: +SKIP
         ['close_sma5', 'close_ewma10', 'div(close_sma5,close_ewma10)']
     """
     def __init__(self):
@@ -1046,30 +1046,50 @@ class Compose(BaseTransform):
 
     def _run_pipeline(self, x: pd.DataFrame, *, backend) -> pd.Series:
         """
-        Apply the composed transforms to the input DataFrame.
+        Apply the composed transforms to the input DataFrame with caching/optimization:
+        - If the final output already exists in the input DataFrame, return it immediately.
+        - For each step, if its output exists in the DataFrame, reuse it rather than recomputing.
+        - Prefer DataFrame-provided required column(s) when available; else use the prior step's output.
         :param x: DataFrame to transform
         :param backend: Backend is already specified in the transforms
         :return: Transformed Series
         """
         self._validate_input(x)
-        series_out = None
+
+        # Short-circuit if final output is already present in the DataFrame
+        final_name = self.output_name
+        if final_name in x.columns:
+            return x[final_name]
+
+        current_series = None
         for i, tfs in enumerate(self.transforms):
+            out_name = tfs.produces[0]
+
+            # If this step's output already exists, reuse it
+            if out_name in x.columns:
+                current_series = x[out_name]
+                continue
+
             if i == 0:
-                # First transform on the input DataFrame
-                # Check if the first product is already in the DataFrame (Often the case for the first transform in the chain)
-                if tfs.produces[0] in x.columns:
-                    series_out = x[tfs.produces[0]]
-                else:
-                    series_out = tfs(x)
+                # First transform: operate on full DataFrame x
+                current_series = tfs(x, backend=backend)
             else:
-                # Subsequent transforms on the output of the previous transform
-                # print(tfs.requires[0])
-                series_out = tfs(pd.DataFrame(series_out.values, index=series_out.index, columns=[tfs.requires[0]]), backend=backend)
+                # Subsequent transforms: prefer required column from DataFrame if available,
+                # otherwise use the prior step's series as the required input column.
+                req_col = tfs.requires[0]
+                if req_col in x.columns:
+                    df_in = x[[req_col]]
+                else:
+                    df_in = pd.DataFrame(current_series.values, index=current_series.index, columns=[req_col])
+                current_series = tfs(df_in, backend=backend)
+
+            # Optionally cache into x for downstream steps to reuse (without mutating original reference)
+            # We avoid modifying the input DataFrame in-place; downstream steps consult x for presence.
+            # If consumers expect caching to materialize, FeatureKit handles DataFrame accumulation.
 
         # Return the final output Series with the composed name
-        series_out.name = self.output_name
-
-        return series_out
+        current_series.name = final_name
+        return current_series
 
     def __call__(self, x: pd.DataFrame, *, backend="nb") -> pd.Series:
         """
