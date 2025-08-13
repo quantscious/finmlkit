@@ -108,35 +108,42 @@ def transform_to_config(t: BaseTransform) -> Dict[str, Any]:
     if isinstance(t, BinaryOpTransform):
         cfg.update({
             "kind": "binary",
-            "op_name": getattr(t, "op_func_name", getattr(t, "op_name", getattr(t, "_op_name", "add"))) if False else "add"
         })
-        # derive op name from produces prefix: it's formatted as op(left,right)
-        name = t.produces[0] if isinstance(t.produces, list) else t.produces
-        op_name = name.split("(")[0]
+        # Prefer explicit attribute when available; fallback to parsing from produces
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
         cfg["op_name"] = op_name
         cfg["left"] = transform_to_config(t.left)
         cfg["right"] = transform_to_config(t.right)
         return cfg
     if isinstance(t, MinMaxOpTransform):
         cfg.update({"kind": "minmax"})
-        name = t.produces[0] if isinstance(t.produces, list) else t.produces
-        op_name = name.split("(")[0]
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
         cfg["op_name"] = op_name
         cfg["left"] = transform_to_config(t.left)
         cfg["right"] = transform_to_config(t.right)
         return cfg
     if isinstance(t, ConstantOpTransform):
         cfg.update({"kind": "const"})
-        name = t.produces[0] if isinstance(t.produces, list) else t.produces
-        op_name = name.split("(")[0]
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
         cfg["op_name"] = op_name
         cfg["constant"] = t.constant
         cfg["child"] = transform_to_config(t.transform)
         return cfg
     if isinstance(t, UnaryOpTransform):
         cfg.update({"kind": "unary"})
-        name = t.produces[0] if isinstance(t.produces, list) else t.produces
-        op_name = name.split("(")[0]
+        op_name = getattr(t, "op_name", None)
+        if not op_name:
+            name = t.produces[0] if isinstance(t.produces, list) else t.produces
+            op_name = name.split("(")[0]
         cfg["op_name"] = op_name
         cfg["child"] = transform_to_config(t.transform)
         return cfg

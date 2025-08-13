@@ -1264,6 +1264,7 @@ class BinaryOpTransform(BaseTransform):
         self.left = left
         self.right = right
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         # binary operations are valid for SISO and MISO transforms
@@ -1305,6 +1306,7 @@ class ConstantOpTransform(BaseTransform):
         self.transform = transform
         self.constant = constant
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         return self.transform._validate_input(x)
@@ -1336,6 +1338,7 @@ class UnaryOpTransform(BaseTransform):
         super().__init__(transform.requires, f"{op_name}({transform.output_name})")
         self.transform = transform
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         return self.transform._validate_input(x)
@@ -1371,6 +1374,7 @@ class MinMaxOpTransform(BaseTransform):
         self.left = left
         self.right = right
         self.op_func = op_func
+        self.op_name = op_name
 
     def _validate_input(self, x):
         # min/max operations are valid for SISO and MISO transforms

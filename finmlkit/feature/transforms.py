@@ -1691,6 +1691,18 @@ class ExternalFunction(BaseTransform):
         kwargs: Optional[dict] = None,
         pass_numpy: bool = False,
     ):
+        """
+        Initialize the ExternalFunction transform.
+        This transform wraps an external Python function or import path to be used
+        as a Transform in the Feature/FeatureKit pipeline.
+
+        :param func: String import path or callable object to wrap.
+        :param input_cols: Columns required as input for the function.
+        :param output_cols: Columns produced by the function.
+        :param args: Additional positional arguments to pass to the function.
+        :param kwargs: Additional keyword arguments to pass to the function.
+        :param pass_numpy: If True, the function receives NumPy arrays instead of pandas Series.
+        """
         # Determine function path and display name
         if isinstance(func, str):
             func_path = func
