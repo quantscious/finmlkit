@@ -35,6 +35,8 @@ pip install .
 
 See the [examples directory](https://github.com/quantscious/finmlkit/tree/main/examples) to learn about the practical usage of the library. How to process trades data and build bars, features, and labels for machine learning models.
 
+Build your **own crypto database** ready to used by **FinMLKit** with the `binance2h5.py` script. This downloads raw trades data from Binance in monthly chunks and processes it into HDF5 format compatible with **FinMLKit**.
+
 ## 📖 Documentation
 The documentation is available at [finmlkit.readthedocs.io](https://finmlkit.readthedocs.io/en/latest/).
 
