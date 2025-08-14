@@ -390,10 +390,22 @@ def orchestrate_symbol(symbol: str, market: str, start: Month, end: Month, workd
             except Exception:
                 pass
 
-    # Compute target h5 name with market label
-    yymm_start = months[0].yymm()
-    yymm_end = months[-1].yymm()
+    # Determine which months actually have data present (ZIP downloaded)
+    available_months: List[Month] = []
+    for mon in months:
+        url_zip, _ = build_urls(market, symbol, mon)
+        file_zip = os.path.join(raw_dir, os.path.basename(url_zip))
+        if os.path.exists(file_zip):
+            available_months.append(mon)
+
     mlabel = market_label(market)
+    if not available_months:
+        print(f"[info] No available monthly data for {symbol} [{mlabel}] between {months[0].ym()} and {months[-1].ym()}; skipping.")
+        return
+
+    # Compute target h5 name with market label based on available range
+    yymm_start = available_months[0].yymm()
+    yymm_end = available_months[-1].yymm()
     target_name = f"{symbol}_{mlabel}_{yymm_start}-{yymm_end}.h5"
     target_path = os.path.join(h5_dir, target_name)
 
@@ -408,7 +420,7 @@ def orchestrate_symbol(symbol: str, market: str, start: Month, end: Month, workd
             break
 
     # Process raw zips into H5 for these months
-    dates = [m.ym() for m in months]
+    dates = [m.ym() for m in available_months]
     print(f"Processing {symbol} [{mlabel}] into {target_path}")
     process_all(raw_dir, target_path, from_date=None, dates=dates, workers=workers)
 
