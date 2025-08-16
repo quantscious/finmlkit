@@ -507,7 +507,6 @@ class TradesData:
                     format="table",
                     data_columns=["timestamp"],
                     index=False,
-                    min_itemsize={"side": 1},
                 )
             elif month_exists:
                 # Append using PyTables row‑wise interface (fast)
@@ -518,7 +517,6 @@ class TradesData:
                     format="table",
                     data_columns=["timestamp"],
                     index=False,
-                    min_itemsize={"side": 1},
                     chunksize=chunksize,
                 )
             else:
@@ -530,7 +528,6 @@ class TradesData:
                     format="table",
                     data_columns=["timestamp"],
                     index=False,
-                    min_itemsize={"side": 1},
                 )
 
             # ------------------------------------------------------------------
