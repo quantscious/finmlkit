@@ -27,7 +27,7 @@ Use the `TradesData` class to preprocess the raw data:
    import pandas as pd
    from finmlkit.bar.data_model import TradesData
 
-   df = pd.read_csv("BTCUSDT-trades-2025-07.csv")
+   df = pd.read_csv("BTCUSDT-trades-2025-07.csv", encoding="latin1")
    trades = TradesData(
        df.time.values, df.price.values, df.qty.values,
        id=df.id.values, is_buyer_maker=df.is_buyer_maker.values,
@@ -45,8 +45,8 @@ Inspect the processed data:
 
 .. code-block:: python
 
-   print(trades.discontinuities)  # Check for discontinuities
-   print(trades.data.head())      # View the processed data
+   print(trades.data())      # View the processed data
+   print(trades.discontinuities)  # Check for discontinuities; [] means discontinuities were removed by setting preprocess=True when initializing TradesData.
 
 Next Steps
 ----------
